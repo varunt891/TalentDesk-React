@@ -1,0 +1,233 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String
+  slug          String?  @unique
+  subdomain     String?  @unique
+  email_domain  String?  @unique
+  industry      String?
+  company_size  String?
+  primary_color String   @default("#4f7cff")
+  logo_url      String?
+  timezone      String   @default("America/New_York")
+  plan          String   @default("starter")
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  profiles    Profile[]
+  candidates  Candidate[]
+  jobs        Job[]
+  callbacks   Callback[]
+  followups   Followup[]
+  postings    Posting[]
+  invitations UserInvitation[]
+  auditLog    AdminAuditLog[]
+  activityLogs ActivityLog[]
+
+  @@map("organizations")
+}
+
+model Profile {
+  id           String   @id @default(uuid()) @db.Uuid
+  org_id       String?  @db.Uuid
+  email        String?  @unique
+  passwordHash String?
+  full_name    String?
+  phone        String?
+  extension    String?
+  role         String   @default("recruiter")
+  team         String?
+  department   String?
+  manager_id   String?  @db.Uuid
+  is_active    Boolean  @default(true)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  organization Organization? @relation(fields: [org_id], references: [id], onDelete: SetNull)
+  manager      Profile?      @relation("ProfileManager", fields: [manager_id], references: [id], onDelete: SetNull)
+  reports      Profile[]     @relation("ProfileManager")
+
+  @@map("profiles")
+}
+
+model Candidate {
+  id               String   @id @default(uuid()) @db.Uuid
+  org_id           String?  @db.Uuid
+  user_id          String?  @db.Uuid
+  first_name       String?
+  last_name        String?
+  email            String?
+  phone            String?
+  location         String?
+  work_auth        String?
+  experience       String?
+  linkedin         String?
+  submission_date  String?
+  job_id           String?
+  job_title        String?
+  client           String?
+  rate             String?
+  relocation       String?
+  internal_status  String?
+  external_status  String?
+  feedback_status  String?
+  priority         String?
+  interview_date   String?
+  interview_type   String?
+  fe_name          String?
+  fe_extension     String?
+  account_manager  String?
+  recruiter_name   String?
+  recruiter_id     String?  @db.Uuid
+  skills           Json?
+  notes            String?
+  followup_date    String?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  organization Organization? @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@map("candidates")
+}
+
+model Job {
+  id          String   @id @default(uuid()) @db.Uuid
+  org_id      String?  @db.Uuid
+  user_id     String?  @db.Uuid
+  job_id      String?
+  title       String?
+  client      String?
+  location    String?
+  type        String?
+  status      String?
+  rate        String?
+  open_date   String?
+  priority    String?
+  fe          String?
+  skills      Json?
+  description String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  organization Organization? @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@map("jobs")
+}
+
+model Callback {
+  id             String   @id @default(uuid()) @db.Uuid
+  org_id         String?  @db.Uuid
+  user_id        String?  @db.Uuid
+  candidate_name String?
+  phone          String?
+  job            String?
+  date           String?
+  time           String?
+  timezone       String?
+  interest       String?
+  notes          String?
+  status         String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  organization Organization? @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@map("callbacks")
+}
+
+model Followup {
+  id             String   @id @default(uuid()) @db.Uuid
+  org_id         String?  @db.Uuid
+  user_id        String?  @db.Uuid
+  candidate_name String?
+  date           String?
+  type           String?
+  status         String?
+  priority       String?
+  notes          String?
+  next_action    String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  organization Organization? @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@map("followups")
+}
+
+model Posting {
+  id         String   @id @default(uuid()) @db.Uuid
+  org_id     String?  @db.Uuid
+  user_id    String?  @db.Uuid
+  portal     String?
+  date       String?
+  job_id     String?
+  job_title  String?
+  location   String?
+  manager    String?
+  recruiter  String?
+  link       String?
+  notes      String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  organization Organization? @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@map("postings")
+}
+
+model UserInvitation {
+  id         String   @id @default(uuid()) @db.Uuid
+  org_id     String?  @db.Uuid
+  email      String
+  role       String   @default("recruiter")
+  team       String?
+  manager_id String?  @db.Uuid
+  invited_by String?  @db.Uuid
+  status     String   @default("pending")
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  organization Organization? @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@map("user_invitations")
+}
+
+model AdminAuditLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  org_id       String?  @db.Uuid
+  actor_id     String?  @db.Uuid
+  action       String
+  target_email String?
+  details      Json?
+  created_at   DateTime @default(now())
+
+  organization Organization? @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@map("admin_audit_log")
+}
+
+model ActivityLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  org_id      String?  @db.Uuid
+  actor_id    String?  @db.Uuid
+  actor_name  String?
+  action      String
+  entity      String
+  entity_id   String?
+  summary     String?
+  details     Json?
+  created_at  DateTime @default(now())
+
+  organization Organization? @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@map("activity_logs")
+}
