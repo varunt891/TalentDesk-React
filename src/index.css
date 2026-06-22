@@ -3074,274 +3074,9 @@ input, select, textarea, button {
   }
 }
 
-@media (max-width: 760px) {
-  .app-shell {
-    position: relative;
-  }
+/* Original media query moved to bottom of stylesheet to prevent desktop style overrides */
 
-  .app-main {
-    width: 100%;
-    min-width: 0;
-  }
-
-  .mobile-topbar {
-    display: flex;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: 12px;
-    min-height: 58px;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
-    padding: 10px 14px;
-    z-index: 20;
-  }
-
-  .mobile-menu-button {
-    display: inline-flex;
-    width: 38px;
-    height: 38px;
-    flex: 0 0 38px;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--surface2);
-    cursor: pointer;
-  }
-
-  .mobile-menu-button span {
-    width: 17px;
-    height: 2px;
-    border-radius: 999px;
-    background: var(--text);
-  }
-
-  .mobile-brand-name {
-    color: var(--accent);
-    font-family: var(--mono);
-    font-size: 15px;
-    font-weight: 700;
-  }
-
-  .mobile-page-name {
-    margin-top: 1px;
-    color: var(--text3);
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-  }
-
-  .app-sidebar {
-    position: fixed;
-    inset: 0 auto 0 0;
-    width: min(84vw, 292px);
-    min-width: 0;
-    max-width: 292px;
-    box-shadow: 28px 0 70px rgba(0, 0, 0, 0.28);
-    transform: translateX(-105%);
-    transition: transform 220ms ease;
-  }
-
-  .sidebar-open .app-sidebar {
-    transform: translateX(0);
-  }
-
-  .mobile-sidebar-backdrop {
-    position: fixed;
-    inset: 0;
-    display: block;
-    background: rgba(0, 0, 0, 0.42);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 220ms ease;
-    z-index: 35;
-  }
-
-  .sidebar-open .mobile-sidebar-backdrop {
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  .sidebar-close {
-    display: inline-flex;
-    width: 32px;
-    height: 32px;
-    flex: 0 0 32px;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--surface2);
-    color: var(--text2);
-    cursor: pointer;
-    font: inherit;
-    font-size: 14px;
-    font-weight: 800;
-  }
-
-  .sidebar-logo {
-    padding: 16px;
-  }
-
-  .sidebar-footer {
-    padding-bottom: max(12px, env(safe-area-inset-bottom));
-  }
-
-  .candidates-page {
-    min-width: 0;
-  }
-
-  .candidates-topbar {
-    height: auto !important;
-    min-height: 58px;
-    align-items: stretch !important;
-    flex-wrap: wrap;
-    gap: 10px !important;
-    padding: 12px 14px !important;
-  }
-
-  .candidates-topbar > div:first-child {
-    flex: 1 1 100% !important;
-  }
-
-  .candidates-search {
-    width: 100% !important;
-    order: 2;
-  }
-
-  .candidates-action,
-  .candidates-topbar > button {
-    flex: 1 1 calc(50% - 6px);
-    justify-content: center;
-    min-height: 38px;
-    padding-left: 10px !important;
-    padding-right: 10px !important;
-  }
-
-  .candidates-filters {
-    flex-wrap: nowrap !important;
-    overflow-x: auto;
-    padding: 10px 14px !important;
-    scrollbar-width: none;
-  }
-
-  .candidates-filters::-webkit-scrollbar {
-    display: none;
-  }
-
-  .candidates-filters > * {
-    flex: 0 0 auto;
-  }
-
-  .candidates-filters > span:last-child {
-    margin-left: 0 !important;
-    padding-right: 8px;
-  }
-
-  .candidates-content {
-    padding: 14px !important;
-  }
-
-  .candidates-table-card {
-    border-radius: 8px !important;
-  }
-
-  .candidates-table-header {
-    align-items: flex-start !important;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .candidates-table-scroll table {
-    min-width: 920px;
-  }
-
-  .admin-page {
-    padding: 14px;
-  }
-
-  .admin-header {
-    flex-direction: column;
-  }
-
-  .admin-header h1 {
-    font-size: 22px;
-  }
-
-  .admin-grid,
-  .admin-form-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .admin-stat-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .admin-member,
-  .admin-rank {
-    grid-template-columns: 1fr;
-  }
-
-  .admin-span-2 {
-    grid-column: auto;
-  }
-
-  .admin-toast {
-    right: 14px;
-    bottom: 14px;
-    left: 14px;
-  }
-
-  .dashboard-page,
-  .directory-page {
-    padding: 14px;
-  }
-
-  .dashboard-hero,
-  .directory-topbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .dashboard-hero h1,
-  .directory-topbar h1 {
-    font-size: 22px;
-  }
-
-  .dashboard-stat-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .dashboard-grid,
-  .directory-summary,
-  .directory-form-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .directory-actions {
-    justify-content: stretch;
-  }
-
-  .directory-actions input,
-  .directory-actions select,
-  .directory-actions button {
-    width: 100%;
-  }
-
-  .dashboard-chart,
-  .dashboard-donut {
-    height: 230px;
-  }
-}
-
-@media (max-width: 430px) {
-  .candidates-topbar > button {
-    flex-basis: 100%;
-  }
-}
+/* Original media query moved to bottom of stylesheet */
 
 .jobs-page {
   flex: 1;
@@ -3670,34 +3405,7 @@ input, select, textarea, button {
   font-size: 13px;
 }
 
-@media (max-width: 1120px) {
-  .jobs-topbar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .jobs-toolbar,
-  .jobs-search {
-    width: 100%;
-  }
-
-  .jobs-list-header {
-    display: none;
-  }
-
-  .jobs-row {
-    grid-template-columns: 1fr;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-  }
-
-  .jobs-list {
-    gap: 10px;
-    overflow: visible;
-    border: 0;
-    background: transparent;
-  }
-}
+/* Original media query moved to bottom of stylesheet */
 
 /* ===== DASHBOARD ===== */
 
@@ -4358,5 +4066,528 @@ input, select, textarea, button {
 
 [data-theme="light"] .dashboard-scratchpad:focus {
   background: #fff;
+}
+
+/* ==========================================================================
+   RESPONSIVENESS AND LAYOUT FIXES
+   ========================================================================== */
+
+/* Utility details wrappers and labels */
+.jobs-row-details {
+  display: contents;
+}
+
+.jobs-mobile-label {
+  display: none;
+}
+
+/* Candidate modal/form layout classes */
+.candidate-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+
+.candidate-details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.candidate-score-card-body {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.candidate-score-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+/* Jobs modal/form layout classes */
+.jobs-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+
+.jobs-details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+/* Intermediate screen sizes (Tablets / Small Desktops) */
+@media (max-width: 1200px) {
+  .dashboard-stat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+  .candidates-stat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 992px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Unified Media Queries defined at the end of stylesheet to ensure priority overrides */
+@media (max-width: 760px) {
+  .app-shell {
+    position: relative !important;
+  }
+
+  .app-main {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .mobile-topbar {
+    display: flex !important;
+    flex: 0 0 auto !important;
+    align-items: center !important;
+    gap: 12px !important;
+    min-height: 58px !important;
+    border-bottom: 1px solid var(--border) !important;
+    background: var(--surface) !important;
+    padding: 10px 14px !important;
+    z-index: 20 !important;
+  }
+
+  .mobile-menu-button {
+    display: inline-flex !important;
+    width: 38px !important;
+    height: 38px !important;
+    flex: 0 0 38px !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+    background: var(--surface2) !important;
+    cursor: pointer !important;
+  }
+
+  .mobile-menu-button span {
+    width: 17px !important;
+    height: 2px !important;
+    border-radius: 999px !important;
+    background: var(--text) !important;
+  }
+
+  .mobile-brand-name {
+    color: var(--accent) !important;
+    font-family: var(--mono) !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+  }
+
+  .mobile-page-name {
+    margin-top: 1px !important;
+    color: var(--text3) !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    letter-spacing: 1.5px !important;
+    text-transform: uppercase !important;
+  }
+
+  .app-sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    width: min(84vw, 292px) !important;
+    min-width: 0 !important;
+    max-width: 292px !important;
+    box-shadow: 28px 0 70px rgba(0, 0, 0, 0.28) !important;
+    transform: translateX(-105%) !important;
+    transition: transform 220ms ease !important;
+  }
+
+  .sidebar-open .app-sidebar {
+    transform: translateX(0) !important;
+  }
+
+  .mobile-sidebar-backdrop {
+    position: fixed !important;
+    inset: 0 !important;
+    display: block !important;
+    background: rgba(0, 0, 0, 0.42) !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transition: opacity 220ms ease !important;
+    z-index: 35 !important;
+  }
+
+  .sidebar-open .mobile-sidebar-backdrop {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+
+  .sidebar-close {
+    display: inline-flex !important;
+    width: 32px !important;
+    height: 32px !important;
+    flex: 0 0 32px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+    background: var(--surface2) !important;
+    color: var(--text2) !important;
+    cursor: pointer !important;
+    font: inherit !important;
+    font-size: 14px !important;
+    font-weight: 800 !important;
+  }
+
+  .sidebar-logo {
+    padding: 16px !important;
+  }
+
+  .sidebar-footer {
+    padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
+  }
+
+  .candidates-page {
+    min-width: 0 !important;
+  }
+
+  .candidates-topbar {
+    height: auto !important;
+    min-height: 58px !important;
+    align-items: stretch !important;
+    flex-wrap: wrap !important;
+    gap: 14px !important;
+    padding: 12px 14px !important;
+    flex-direction: column !important;
+  }
+
+  .candidates-title-block {
+    min-width: 0 !important;
+    flex: none !important;
+    width: 100% !important;
+  }
+
+  .candidates-toolbar {
+    flex-wrap: wrap !important;
+    width: 100% !important;
+    justify-content: stretch !important;
+    gap: 10px !important;
+  }
+
+  .jobs-topbar {
+    height: auto !important;
+    min-height: 58px !important;
+    align-items: stretch !important;
+    flex-wrap: wrap !important;
+    gap: 14px !important;
+    padding: 12px 14px !important;
+    flex-direction: column !important;
+  }
+
+  .jobs-title-block {
+    min-width: 0 !important;
+    flex: none !important;
+    width: 100% !important;
+  }
+
+  .jobs-toolbar {
+    flex-wrap: wrap !important;
+    width: 100% !important;
+    justify-content: stretch !important;
+    gap: 10px !important;
+  }
+
+  .jobs-search {
+    width: 100% !important;
+  }
+
+  .jobs-primary-btn {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  .candidates-search {
+    width: 100% !important;
+    order: -1 !important;
+  }
+
+  .candidate-btn {
+    flex: 1 1 calc(50% - 6px) !important;
+    justify-content: center !important;
+    min-height: 38px !important;
+  }
+
+  .candidates-filters {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    padding: 10px 14px !important;
+    scrollbar-width: none !important;
+  }
+
+  .candidates-filters::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .candidates-filters > * {
+    flex: 0 0 auto !important;
+  }
+
+  .candidates-filters > span:last-child {
+    margin-left: 0 !important;
+    padding-right: 8px !important;
+  }
+
+  .candidates-content {
+    padding: 14px !important;
+  }
+
+  .candidates-table-card {
+    border-radius: 8px !important;
+  }
+
+  .candidates-table-header {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+  }
+
+  .candidates-table-scroll table {
+    min-width: 920px !important;
+  }
+
+  .admin-page {
+    padding: 14px !important;
+  }
+
+  .admin-header {
+    flex-direction: column !important;
+  }
+
+  .admin-header h1 {
+    font-size: 22px !important;
+  }
+
+  .admin-grid,
+  .admin-form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .admin-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .admin-member,
+  .admin-rank {
+    grid-template-columns: 1fr !important;
+  }
+
+  .admin-span-2 {
+    grid-column: auto !important;
+  }
+
+  .admin-toast {
+    right: 14px !important;
+    bottom: 14px !important;
+    left: 14px !important;
+  }
+
+  .dashboard-page,
+  .directory-page {
+    padding: 14px !important;
+  }
+
+  .dashboard-hero,
+  .directory-topbar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .dashboard-hero h1,
+  .directory-topbar h1 {
+    font-size: 22px !important;
+  }
+
+  .dashboard-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .dashboard-grid,
+  .directory-summary,
+  .directory-form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .directory-actions {
+    justify-content: stretch !important;
+    width: 100% !important;
+  }
+
+  .directory-search {
+    width: 100% !important;
+  }
+
+  .directory-actions input,
+  .directory-actions select,
+  .directory-actions button,
+  .directory-member-count {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  .dashboard-chart,
+  .dashboard-donut {
+    height: 230px !important;
+  }
+
+  /* Dashboard Details stack */
+  .dashboard-welcome-panel {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 16px !important;
+  }
+
+  .quick-actions-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  /* Candidate details grid collapse */
+  .candidate-details-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .candidates-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    padding: 10px 14px 0 !important;
+  }
+}
+
+/* Mobile screen sizes (Phones) */
+@media (max-width: 600px) {
+  .candidate-form-grid,
+  .jobs-form-grid,
+  .jobs-details-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .candidate-score-card-body {
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 16px !important;
+  }
+  .candidate-score-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .dashboard-stat-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .candidates-stat-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .quick-actions-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Jobs page mobile layout override */
+@media (max-width: 1120px) {
+  .jobs-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    padding: 12px 14px 0 !important;
+  }
+  .jobs-filterbar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+    margin: 12px 14px 0 !important;
+  }
+  .jobs-filterbar > span {
+    margin-left: 0 !important;
+    text-align: right !important;
+  }
+  .jobs-content {
+    padding: 14px !important;
+  }
+  .jobs-row {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    padding: 16px !important;
+    gap: 12px !important;
+    background: var(--surface) !important;
+  }
+  .jobs-row-details {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px 16px !important;
+    padding-top: 8px !important;
+    border-top: 1px dashed var(--border) !important;
+  }
+  .jobs-cell {
+    font-size: 13px !important;
+    color: var(--text2) !important;
+  }
+  .jobs-mobile-label {
+    display: inline !important;
+    color: var(--text3) !important;
+    font-weight: 600 !important;
+    margin-right: 6px !important;
+  }
+  .jobs-status-pill {
+    align-self: flex-start !important;
+  }
+  .jobs-row-actions {
+    justify-content: flex-start !important;
+    margin-top: 4px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .jobs-summary {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Candidates Page small button fixes */
+@media (max-width: 430px) {
+  .candidate-btn {
+    flex-basis: 100% !important;
+  }
+}
+
+/* Activity Feed item text overflow fix */
+.dashboard-activity-row > div {
+  min-width: 0;
+}
+
+/* Page vertical scroll fixes on mobile */
+@media (max-width: 760px) {
+  .candidates-page {
+    overflow-y: auto !important;
+    height: 100% !important;
+  }
+  .candidates-content {
+    overflow-y: visible !important;
+    flex: none !important;
+  }
+  .jobs-page {
+    overflow-y: auto !important;
+    height: 100% !important;
+  }
+  .jobs-content {
+    overflow-y: visible !important;
+    flex: none !important;
+  }
 }
 

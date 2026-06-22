@@ -162,10 +162,12 @@ export default function Jobs() {
                   <span>{j.job_id || 'No Job ID'} - {j.client || 'Client n/a'}</span>
                 </div>
                 <span className="jobs-status-pill" style={{ '--job-status-color': STATUS_COLORS[j.status] || 'var(--text3)' }}>{j.status || 'Open'}</span>
-                <span className="jobs-cell">{j.location || 'Location n/a'}</span>
-                <span className="jobs-cell">{j.type || 'Type n/a'}</span>
-                <span className="jobs-cell jobs-rate">{j.rate || 'Rate n/a'}</span>
-                <span className="jobs-cell">{j.fe || 'No owner'}</span>
+                <div className="jobs-row-details">
+                  <span className="jobs-cell"><span className="jobs-mobile-label">Location: </span>{j.location || 'Location n/a'}</span>
+                  <span className="jobs-cell"><span className="jobs-mobile-label">Type: </span>{j.type || 'Type n/a'}</span>
+                  <span className="jobs-cell jobs-rate"><span className="jobs-mobile-label">Rate: </span>{j.rate || 'Rate n/a'}</span>
+                  <span className="jobs-cell"><span className="jobs-mobile-label">Owner: </span>{j.fe || 'No owner'}</span>
+                </div>
                 <div className="jobs-row-actions">
                   <button onClick={(e) => { e.stopPropagation(); openEdit(j) }}>Edit</button>
                   <button className="danger" onClick={(e) => { e.stopPropagation(); setDeleteId(j.id) }}>Delete</button>
@@ -184,7 +186,7 @@ export default function Jobs() {
               <button onClick={() => setShowModal(false)} style={closeBtn}>x</button>
             </div>
             <div style={{ overflowY: 'auto', flex: 1, padding: '20px 24px' }}>
-              <div style={grid2}>
+              <div className="jobs-form-grid">
                 <Field label="Job ID"><input {...inp('job_id')} placeholder="JOB-001" /></Field>
                 <Field label="Job Title *"><input {...inp('title')} placeholder="Senior Developer" /></Field>
                 <Field label="Client"><input {...inp('client')} placeholder="Acme Corp" /></Field>
@@ -248,7 +250,7 @@ export default function Jobs() {
               </div>
 
               {/* Details Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+              <div className="jobs-details-grid">
                 <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px' }}>
                   <div style={{ fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Client</div>
                   <div style={{ fontSize: '14px', color: 'var(--text)', fontWeight: '600' }}>{showDetail.client || '-'}</div>

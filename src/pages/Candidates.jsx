@@ -515,7 +515,7 @@ export default function Candidates() {
                       <div style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--accent)' }}>Candidate Score Card</div>
                       <span style={{ background: `${sc.gradeColor}22`, color: sc.gradeColor, border: `1px solid ${sc.gradeColor}44`, borderRadius: '20px', padding: '3px 12px', fontSize: '11px', fontWeight: '700', fontFamily: 'Space Mono, monospace' }}>{sc.gradeLabel}</span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+                    <div className="candidate-score-card-body">
                       <div style={{ position: 'relative', flexShrink: 0 }}>
                         <svg width="100" height="100" viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)' }}>
                           <circle cx="50" cy="50" r="40" fill="none" stroke="var(--surface3)" strokeWidth="8" />
@@ -526,7 +526,7 @@ export default function Candidates() {
                           <div style={{ fontSize: '9px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '1px' }}>/ 100</div>
                         </div>
                       </div>
-                      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <div className="candidate-score-grid">
                         {[['Profile', sc.completeness, 25], ['Skills', sc.skillScore, 25], ['Pipeline', sc.statusScore, 30], ['Recency', sc.recencyScore, 20]].map(([label, score, max]) => (
                           <div key={label} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px' }}>
                             <div style={{ fontSize: '10px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>{label}</div>
@@ -550,7 +550,7 @@ export default function Candidates() {
               })()}
 
               {/* Details Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div className="candidate-details-grid">
                 <DetailSection title="Personal Info" rows={[['Full Name', `${showDetail.first_name} ${showDetail.last_name}`], ['Email', showDetail.email], ['Phone', showDetail.phone], ['Location', showDetail.location], ['Work Auth', showDetail.work_auth], ['Experience', showDetail.experience ? showDetail.experience + ' yrs' : '-'], ['LinkedIn', showDetail.linkedin], ['Relocation', showDetail.relocation]]} />
                 <DetailSection title="Submission" rows={[['Date', showDetail.submission_date], ['Job ID', showDetail.job_id], ['Job Title', showDetail.job_title], ['Client', showDetail.client], ['Rate', showDetail.rate]]} />
                 <DetailSection title="Status" rows={[['Internal', showDetail.internal_status], ['External', showDetail.external_status], ['Feedback', showDetail.feedback_status], ['Priority', showDetail.priority], ['Interview Date', showDetail.interview_date], ['Interview Type', showDetail.interview_type], ['Follow-up', showDetail.followup_date]]} />
@@ -585,7 +585,7 @@ export default function Candidates() {
             </div>
             <div style={{ overflowY: 'auto', flex: 1, padding: '20px 24px' }}>
               <Section title="Personal Info" />
-              <div style={grid2}>
+              <div className="candidate-form-grid">
                 <Field label="First Name *"><input {...inp('first_name')} placeholder="John" /></Field>
                 <Field label="Last Name *"><input {...inp('last_name')} placeholder="Smith" /></Field>
                 <Field label="Email"><input {...inp('email')} type="email" placeholder="john@email.com" /></Field>
@@ -596,7 +596,7 @@ export default function Candidates() {
                 <Field label="LinkedIn"><input {...inp('linkedin')} placeholder="linkedin.com/in/..." /></Field>
               </div>
               <Section title="Submission Details" />
-              <div style={grid2}>
+              <div className="candidate-form-grid">
                 <Field label="Submission Date *"><input {...inp('submission_date')} type="date" /></Field>
                 <Field label="Job ID *"><input {...inp('job_id')} placeholder="JOB-001" /></Field>
                 <Field label="Job Title *"><input {...inp('job_title')} placeholder="Software Engineer" /></Field>
@@ -605,7 +605,7 @@ export default function Candidates() {
                 <Field label="Relocation"><select {...inp('relocation')} style={inputStyle}>{['Yes', 'No', 'Negotiable'].map(o => <option key={o}>{o}</option>)}</select></Field>
               </div>
               <Section title="Status Tracking" />
-              <div style={grid2}>
+              <div className="candidate-form-grid">
                 <Field label="Internal Status"><select {...inp('internal_status')} style={inputStyle}>{STATUSES.map(s => <option key={s}>{s}</option>)}</select></Field>
                 <Field label="External Status"><select {...inp('external_status')} style={inputStyle}>{STATUSES.map(s => <option key={s}>{s}</option>)}</select></Field>
                 <Field label="Feedback Status"><select {...inp('feedback_status')} style={inputStyle}>{FEEDBACK.map(o => <option key={o}>{o}</option>)}</select></Field>
@@ -614,7 +614,7 @@ export default function Candidates() {
                 <Field label="Interview Type"><select {...inp('interview_type')} style={inputStyle}>{['', 'Phone Screen', 'Video Call', 'On-site', 'Panel', 'Technical'].map(o => <option key={o}>{o}</option>)}</select></Field>
               </div>
               <Section title="Front End / Ownership" />
-              <div style={grid2}>
+              <div className="candidate-form-grid">
                 <Field label="FE Name *"><input {...inp('fe_name')} placeholder="Sarah K." /></Field>
                 <Field label="Extension"><input {...inp('fe_extension')} placeholder="x204" /></Field>
                 <Field label="Account Manager"><input {...inp('account_manager')} placeholder="Mike R." /></Field>

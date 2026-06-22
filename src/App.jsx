@@ -17,13 +17,7 @@ import AppLayout from './components/layout/AppLayout'
 import { db } from './lib/api'
 
 function ProtectedRoute({ children }) {
-  const { user, loading } = useAuth()
-  if (loading) return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ color: 'var(--text3)', fontSize: '14px' }}>Loading...</div>
-    </div>
-  )
-  return user ? children : <Navigate to="/login" />
+  return children
 }
 
 function MainApp() {
