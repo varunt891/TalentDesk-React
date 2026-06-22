@@ -14,26 +14,39 @@ export function signSession(user) {
 export function setSessionCookie(res, token) {
   res.cookie(cookieName, token, {
     httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: true,
+    sameSite: 'none',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   })
 }
 
 export function clearSessionCookie(res) {
-  res.clearCookie(cookieName)
+  res.clearCookie(cookieName, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+  })
 }
 
 export function getTenantKey(req) {
-  const host = (req.headers['x-forwarded-host'] || req.headers.host || '').split(':')[0].toLowerCase()
+  const host = (req.headers['x-forwarded-host'] || req.headers.host || '')
+    .split(':')[0]
+    .toLowerCase()
+
   const firstPart = host.split('.')[0]
-  if (!host || host === 'localhost' || host === '127.0.0.1' || firstPart === 'www') return null
+
+  if (!host || host === 'localhost' || host === '127.0.0.1' || firstPart === 'www') {
+    return null
+  }
+
   return firstPart
 }
 
 export async function findTenantOrganization(req) {
   const key = getTenantKey(req)
+
   if (!key) return null
+
   return prisma.organization.findFirst({
     where: {
       OR: [
@@ -48,9 +61,13 @@ export async function findTenantOrganization(req) {
 export async function requireAuth(req, res, next) {
   try {
     const token = req.cookies[cookieName]
-    if (!token) return res.status(401).json({ error: 'Not authenticated' })
+
+    if (!token) {
+      return res.status(401).json({ error: 'Not authenticated' })
+    }
 
     const payload = jwt.verify(token, process.env.JWT_SECRET)
+
     const profile = await prisma.profile.findUnique({
       where: { id: payload.sub },
       include: { organization: true },
@@ -61,20 +78,25 @@ export async function requireAuth(req, res, next) {
     }
 
     const tenantOrg = await findTenantOrganization(req)
+
     if (tenantOrg && profile.org_id !== tenantOrg.id) {
-      return res.status(403).json({ error: 'This account does not belong to this company workspace' })
+      return res.status(403).json({
+        error: 'This account does not belong to this company workspace',
+      })
     }
 
     req.user = {
       id: profile.id,
       email: profile.email,
     }
+
     req.profile = {
       ...profile,
       organizations: profile.organization,
       passwordHash: undefined,
       organization: undefined,
     }
+
     next()
   } catch {
     return res.status(401).json({ error: 'Invalid session' })
@@ -85,5 +107,6 @@ export function requireAdmin(req, res, next) {
   if (!['admin', 'superadmin'].includes(req.profile?.role)) {
     return res.status(403).json({ error: 'Admin access required' })
   }
+
   next()
 }
