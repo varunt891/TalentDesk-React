@@ -23,13 +23,27 @@ export default function Jobs() {
   const [toast, setToast] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
 
-  useEffect(() => { if (user) fetchJobs() }, [user])
+  useEffect(() => { 
+    console.log('[Jobs] useEffect triggered, user:', user?.id)
+    if (user) fetchJobs() 
+  }, [user])
 
   const fetchJobs = async () => {
-    setLoading(true)
-    const { data } = await db.from('jobs').select('*').order('created_at', { ascending: false })
-    setJobs(data || [])
-    setLoading(false)
+    try {
+      setLoading(true)
+      console.log('[Jobs] Fetching jobs for user:', user?.id)
+      const { data, error } = await db.from('jobs').select('*').order('created_at', { ascending: false })
+      console.log('[Jobs] Fetch response:', { data, error })
+      if (error) {
+        console.error('[Jobs] Fetch error:', error)
+      }
+      setJobs(data || [])
+      console.log('[Jobs] Jobs set:', data?.length || 0, 'items')
+      setLoading(false)
+    } catch (err) {
+      console.error('[Jobs] Exception:', err)
+      setLoading(false)
+    }
   }
 
   const showToast = (msg, type = 'success') => {

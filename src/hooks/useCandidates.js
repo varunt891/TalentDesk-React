@@ -8,16 +8,33 @@ export function useCandidates() {
   const [loading, setLoading] = useState(true)
 
   const fetch = async () => {
-    setLoading(true)
-    const { data, error } = await db
-      .from('candidates')
-      .select('*')
-      .order('created_at', { ascending: false })
-    if (!error) setCandidates(data || [])
-    setLoading(false)
+    try {
+      setLoading(true)
+      console.log('[useCandidates] Fetching candidates for user:', user?.id)
+      const { data, error } = await db
+        .from('candidates')
+        .select('*')
+        .order('created_at', { ascending: false })
+      
+      console.log('[useCandidates] Fetch response:', { data, error })
+      
+      if (!error) {
+        setCandidates(data || [])
+        console.log('[useCandidates] Candidates set:', data?.length || 0, 'items')
+      } else {
+        console.error('[useCandidates] Fetch error:', error)
+      }
+      setLoading(false)
+    } catch (err) {
+      console.error('[useCandidates] Exception:', err)
+      setLoading(false)
+    }
   }
 
-  useEffect(() => { if (user) fetch() }, [user])
+  useEffect(() => { 
+    console.log('[useCandidates] useEffect triggered, user:', user?.id)
+    if (user) fetch() 
+  }, [user])
 
   const cleanDates = (data) => {
     const dateFields = ['submission_date', 'interview_date', 'followup_date']

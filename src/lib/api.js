@@ -1,21 +1,35 @@
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
 export async function apiRequest(path, options = {}) {
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: options.method || 'GET',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-  })
+  const url = `${API_BASE}${path}`
+  console.log('[apiRequest] Fetching:', url, 'Method:', options.method || 'GET')
+  
+  try {
+    const response = await fetch(url, {
+      method: options.method || 'GET',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+      },
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    })
 
-  const payload = await response.json().catch(() => ({}))
-  if (!response.ok) {
-    throw new Error(payload.error || `Request failed with status ${response.status}`)
+    console.log('[apiRequest] Response status:', response.status, 'for', path)
+    
+    const payload = await response.json().catch(() => ({}))
+    
+    if (!response.ok) {
+      console.error('[apiRequest] Error response:', response.status, payload)
+      throw new Error(payload.error || `Request failed with status ${response.status}`)
+    }
+    
+    console.log('[apiRequest] Success response:', path, 'Data items:', Array.isArray(payload.data) ? payload.data.length : 'N/A')
+    return payload
+  } catch (err) {
+    console.error('[apiRequest] Exception on', path, ':', err.message)
+    throw err
   }
-  return payload
 }
 
 export const authApi = {
