@@ -2,6 +2,12 @@ import jwt from 'jsonwebtoken'
 import { prisma } from './prisma.js'
 
 const cookieName = 'td_session'
+const isSecureCookie = process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === 'true'
+const cookieBaseOptions = {
+  httpOnly: true,
+  secure: isSecureCookie,
+  sameSite: isSecureCookie ? 'none' : 'lax',
+}
 
 export function signSession(user) {
   return jwt.sign(
@@ -13,19 +19,13 @@ export function signSession(user) {
 
 export function setSessionCookie(res, token) {
   res.cookie(cookieName, token, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'none',
+    ...cookieBaseOptions,
     maxAge: 7 * 24 * 60 * 60 * 1000,
   })
 }
 
 export function clearSessionCookie(res) {
-  res.clearCookie(cookieName, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'none',
-  })
+  res.clearCookie(cookieName, cookieBaseOptions)
 }
 
 export function getTenantKey(req) {
