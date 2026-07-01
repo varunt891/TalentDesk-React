@@ -4213,6 +4213,9 @@ input, select, textarea, button {
     transform: translateX(-105%) !important;
     visibility: hidden !important;
     opacity: 0 !important;
+    background: var(--surface) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
     transition: transform 220ms ease, opacity 220ms ease, visibility 220ms ease !important;
     z-index: 60 !important;
   }
@@ -4221,6 +4224,9 @@ input, select, textarea, button {
     transform: translateX(0) !important;
     visibility: visible !important;
     opacity: 1 !important;
+    background: var(--surface) !important;
+    border-right: 1px solid var(--border) !important;
+    box-shadow: 28px 0 70px rgba(0, 0, 0, 0.42) !important;
   }
 
   .sidebar-open .app-sidebar.collapsed {
