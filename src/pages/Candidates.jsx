@@ -694,7 +694,6 @@ function Field({ label, children }) {
 }
 
 const inputStyle = { width: '100%', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '9px 13px', color: 'var(--text)', fontSize: '13.5px', outline: 'none', fontFamily: 'DM Sans, sans-serif', transition: 'border-color 0.15s' }
-const grid2 = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }
 const thStyle = { textAlign: 'left', fontSize: '10.5px', fontWeight: '700', letterSpacing: '0.8px', textTransform: 'uppercase', color: 'var(--text3)', padding: '10px 14px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }
 const tdStyle = { padding: '11px 14px', fontSize: '13px', color: 'var(--text2)', borderBottom: '1px solid rgba(44,49,72,0.5)', whiteSpace: 'nowrap', verticalAlign: 'middle' }
 const btnPrimary = { background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', display: 'inline-flex', alignItems: 'center', gap: '6px' }

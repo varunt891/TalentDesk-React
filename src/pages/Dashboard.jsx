@@ -450,15 +450,6 @@ function Panel({ title, subtitle, children, wide }) {
   )
 }
 
-function WorkItem({ title, meta, tone }) {
-  return (
-    <div className={`dashboard-work-item ${tone}`}>
-      <strong>{title || 'Untitled'}</strong>
-      <small>{meta}</small>
-    </div>
-  )
-}
-
 function EmptyLine({ text }) {
   return <div className="dashboard-empty-line">{text}</div>
 }

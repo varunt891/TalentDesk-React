@@ -12,7 +12,21 @@ if (!process.env.JWT_SECRET) {
 
 const app = express()
 const port = Number(process.env.PORT || 4000)
-const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173'
+app.set('trust proxy', 1)
+
+function envList(name) {
+  return (process.env[name] || '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean)
+}
+
+const configuredOrigins = [
+  ...envList('CLIENT_ORIGIN'),
+  ...envList('CLIENT_ORIGINS'),
+  ...envList('FRONTEND_URL'),
+  ...envList('FRONTEND_URLS'),
+]
 
 // Allow multiple origins for development and production deployments
 const allowedOrigins = [
@@ -20,9 +34,9 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:5173',
   'http://127.0.0.1:3000',
-  clientOrigin,
   'https://talent-desk-react.vercel.app',
   'https://talentdesk-react-production.up.railway.app',
+  ...configuredOrigins,
 ]
 
 const corsOptions = {
@@ -31,6 +45,8 @@ const corsOptions = {
     if (!origin) return callback(null, true)
     
     if (allowedOrigins.includes(origin)) {
+      callback(null, true)
+    } else if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)) {
       callback(null, true)
     } else if (process.env.NODE_ENV !== 'production') {
       // In development, allow any origin

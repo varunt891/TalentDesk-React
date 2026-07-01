@@ -64,7 +64,9 @@ export async function findTenantOrganization(req) {
 
 export async function requireAuth(req, res, next) {
   try {
-    const token = req.cookies[cookieName]
+    const authHeader = req.headers.authorization || ''
+    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : ''
+    const token = req.cookies[cookieName] || bearerToken
 
     if (!token) {
       return res.status(401).json({ error: 'Not authenticated' })

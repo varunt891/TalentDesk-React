@@ -79,9 +79,11 @@ router.post('/signup', async (req, res, next) => {
     })
 
     const user = { id: profile.id, email: profile.email }
-    setSessionCookie(res, signSession(user))
+    const token = signSession(user)
+    setSessionCookie(res, token)
     res.status(201).json({
       user,
+      token,
       profile: {
         ...profile,
         organizations: profile.organization,
@@ -109,9 +111,11 @@ router.post('/login', async (req, res, next) => {
     if (profile.is_active === false) return res.status(403).json({ error: 'Account is inactive' })
 
     const user = { id: profile.id, email: profile.email }
-    setSessionCookie(res, signSession(user))
+    const token = signSession(user)
+    setSessionCookie(res, token)
     res.json({
       user,
+      token,
       profile: {
         ...profile,
         organizations: profile.organization,

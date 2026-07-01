@@ -1,8 +1,27 @@
-const API_BASE = import.meta.env.VITE_API_URL || '/api'
+const API_BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '')
+const TOKEN_KEY = 'td_session_token'
+
+export function getAuthToken() {
+  try {
+    return window.localStorage.getItem(TOKEN_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function setAuthToken(token) {
+  try {
+    if (token) window.localStorage.setItem(TOKEN_KEY, token)
+    else window.localStorage.removeItem(TOKEN_KEY)
+  } catch {
+    // localStorage can be unavailable in private modes; cookies still work.
+  }
+}
 
 export async function apiRequest(path, options = {}) {
   const url = `${API_BASE}${path}`
   console.log('[apiRequest] Fetching:', url, 'Method:', options.method || 'GET')
+  const token = getAuthToken()
   
   try {
     const response = await fetch(url, {
@@ -10,6 +29,7 @@ export async function apiRequest(path, options = {}) {
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(options.headers || {}),
       },
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
@@ -21,6 +41,7 @@ export async function apiRequest(path, options = {}) {
     
     if (!response.ok) {
       console.error('[apiRequest] Error response:', response.status, payload)
+      if (response.status === 401) setAuthToken(null)
       throw new Error(payload.error || `Request failed with status ${response.status}`)
     }
     
@@ -38,19 +59,27 @@ export const authApi = {
   },
   async signUp(email, password, metadata = {}) {
     const fullName = metadata.full_name || metadata.data?.full_name || metadata.name
-    return apiRequest('/auth/signup', {
+    const session = await apiRequest('/auth/signup', {
       method: 'POST',
       body: { email, password, full_name: fullName },
     })
+    setAuthToken(session.token)
+    return session
   },
   async signIn(email, password) {
-    return apiRequest('/auth/login', {
+    const session = await apiRequest('/auth/login', {
       method: 'POST',
       body: { email, password },
     })
+    setAuthToken(session.token)
+    return session
   },
   async signOut() {
-    return apiRequest('/auth/logout', { method: 'POST' })
+    try {
+      return await apiRequest('/auth/logout', { method: 'POST' })
+    } finally {
+      setAuthToken(null)
+    }
   },
 }
 
