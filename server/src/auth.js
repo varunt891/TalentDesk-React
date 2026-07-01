@@ -2,11 +2,15 @@ import jwt from 'jsonwebtoken'
 import { prisma } from './prisma.js'
 
 const cookieName = 'td_session'
-const isSecureCookie = process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === 'true'
+const isProduction = process.env.NODE_ENV === 'production'
+const isSecureCookie = isProduction || process.env.COOKIE_SECURE === 'true'
+
 const cookieBaseOptions = {
   httpOnly: true,
   secure: isSecureCookie,
   sameSite: isSecureCookie ? 'none' : 'lax',
+  // Don't set domain in development (localhost), but allow it to be cross-subdomain in production
+  ...(isProduction ? { path: '/' } : {}),
 }
 
 export function signSession(user) {
