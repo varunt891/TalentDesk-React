@@ -4151,6 +4151,10 @@ input, select, textarea, button {
     min-width: 0 !important;
     position: relative !important;
     z-index: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    height: calc(100vh - 0px) !important;
+    overflow-y: auto !important;
   }
 
   .mobile-topbar {
@@ -4622,19 +4626,23 @@ input, select, textarea, button {
 @media (max-width: 760px) {
   .candidates-page {
     overflow-y: auto !important;
-    height: 100% !important;
+    overflow-x: hidden !important;
+    height: auto !important;
+    min-height: 100% !important;
   }
   .candidates-content {
     overflow-y: visible !important;
-    flex: none !important;
+    flex: 1 !important;
   }
   .jobs-page {
     overflow-y: auto !important;
-    height: 100% !important;
+    overflow-x: hidden !important;
+    height: auto !important;
+    min-height: 100% !important;
   }
   .jobs-content {
     overflow-y: visible !important;
-    flex: none !important;
+    flex: 1 !important;
   }
 
   .directory-card {
