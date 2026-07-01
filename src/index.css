@@ -43,6 +43,7 @@ body {
 
 input, select, textarea, button {
   font-family: 'DM Sans', sans-serif;
+  min-width: 0;
 }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -59,6 +60,7 @@ input, select, textarea, button {
 .app-main {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -4214,6 +4216,20 @@ input, select, textarea, button {
     transform: translateX(0) !important;
   }
 
+  .sidebar-open .app-sidebar.collapsed {
+    width: min(84vw, 292px) !important;
+  }
+
+  .sidebar-open .app-sidebar.collapsed .sidebar-nav-item {
+    justify-content: flex-start !important;
+    padding: 9px 12px !important;
+    width: 100% !important;
+  }
+
+  .sidebar-open .app-sidebar.collapsed .sidebar-nav-label {
+    display: inline !important;
+  }
+
   .mobile-sidebar-backdrop {
     position: fixed !important;
     inset: 0 !important;
@@ -4517,6 +4533,9 @@ input, select, textarea, button {
   .jobs-content {
     padding: 14px !important;
   }
+  .jobs-list-header {
+    display: none !important;
+  }
   .jobs-row {
     display: flex !important;
     flex-direction: column !important;
@@ -4526,6 +4545,7 @@ input, select, textarea, button {
     padding: 16px !important;
     gap: 12px !important;
     background: var(--surface) !important;
+    min-width: 0 !important;
   }
   .jobs-row-details {
     display: flex !important;
@@ -4537,6 +4557,7 @@ input, select, textarea, button {
   .jobs-cell {
     font-size: 13px !important;
     color: var(--text2) !important;
+    white-space: normal !important;
   }
   .jobs-mobile-label {
     display: inline !important;
@@ -4550,6 +4571,16 @@ input, select, textarea, button {
   .jobs-row-actions {
     justify-content: flex-start !important;
     margin-top: 4px !important;
+    width: 100% !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+  .admin-table {
+    min-width: 0 !important;
+  }
+  .admin-table th,
+  .admin-table td {
+    white-space: normal !important;
   }
 }
 
@@ -4588,6 +4619,41 @@ input, select, textarea, button {
   .jobs-content {
     overflow-y: visible !important;
     flex: none !important;
+  }
+
+  .directory-card {
+    grid-template-columns: 1fr !important;
+    padding: 18px !important;
+  }
+
+  .directory-card-actions {
+    width: 100% !important;
+    justify-content: flex-start !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  .directory-card-copy strong,
+  .directory-card-copy > span {
+    white-space: normal !important;
+  }
+
+  .directory-card-meta {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+
+  .directory-avatar {
+    width: 44px !important;
+    height: 44px !important;
+  }
+
+  .directory-search,
+  .directory-actions input,
+  .directory-actions select,
+  .directory-actions button,
+  .directory-member-count {
+    min-width: 0 !important;
   }
 }
 

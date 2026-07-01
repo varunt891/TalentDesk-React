@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 
 const navItems = [
@@ -22,6 +23,7 @@ const ROLE_COLORS = {
 
 export default function Sidebar({ currentPage, onNavigate, theme, onToggleTheme, isCollapsed, onToggleCollapse, onClose }) {
   const { user, profile, profileError, signOut } = useAuth()
+  const navigate = useNavigate()
 
   const role = profile?.role || 'recruiter'
   const roleStyle = ROLE_COLORS[role] || ROLE_COLORS.recruiter
@@ -100,7 +102,7 @@ export default function Sidebar({ currentPage, onNavigate, theme, onToggleTheme,
             <div className="sidebar-avatar" title={`${profile?.full_name || user?.email} (${roleStyle.label})`}>
               {(profile?.full_name || user?.email || 'U').substring(0, 1).toUpperCase()}
             </div>
-            <button className="sidebar-signout" onClick={signOut} title="Sign out" type="button">
+            <button className="sidebar-signout" onClick={async () => { await signOut(); navigate('/login', { replace: true }) }} title="Sign out" type="button">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
                 <polyline points="16 17 21 12 16 7"></polyline>
@@ -133,7 +135,7 @@ export default function Sidebar({ currentPage, onNavigate, theme, onToggleTheme,
               >
                 {roleStyle.label}
               </span>
-              <button className="sidebar-signout" onClick={signOut} title="Sign out" type="button">
+              <button className="sidebar-signout" onClick={async () => { await signOut(); navigate('/login', { replace: true }) }} title="Sign out" type="button">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
                   <polyline points="16 17 21 12 16 7"></polyline>

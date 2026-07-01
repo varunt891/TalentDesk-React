@@ -17,6 +17,12 @@ import AppLayout from './components/layout/AppLayout'
 import { db } from './lib/api'
 
 function ProtectedRoute({ children }) {
+  const { user } = useAuth()
+
+  if (!user) {
+    return <Navigate to="/login" replace />
+  }
+
   return children
 }
 
