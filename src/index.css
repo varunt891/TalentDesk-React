@@ -4141,7 +4141,7 @@ input, select, textarea, button {
 }
 
 /* Unified Media Queries defined at the end of stylesheet to ensure priority overrides */
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   .app-shell {
     position: relative !important;
   }
@@ -4149,6 +4149,8 @@ input, select, textarea, button {
   .app-main {
     width: 100% !important;
     min-width: 0 !important;
+    position: relative !important;
+    z-index: 1 !important;
   }
 
   .mobile-topbar {
@@ -4209,11 +4211,16 @@ input, select, textarea, button {
     max-width: 292px !important;
     box-shadow: 28px 0 70px rgba(0, 0, 0, 0.28) !important;
     transform: translateX(-105%) !important;
-    transition: transform 220ms ease !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    transition: transform 220ms ease, opacity 220ms ease, visibility 220ms ease !important;
+    z-index: 60 !important;
   }
 
   .sidebar-open .app-sidebar {
     transform: translateX(0) !important;
+    visibility: visible !important;
+    opacity: 1 !important;
   }
 
   .sidebar-open .app-sidebar.collapsed {
@@ -4238,7 +4245,7 @@ input, select, textarea, button {
     opacity: 0 !important;
     pointer-events: none !important;
     transition: opacity 220ms ease !important;
-    z-index: 35 !important;
+    z-index: 50 !important;
   }
 
   .sidebar-open .mobile-sidebar-backdrop {
@@ -4262,6 +4269,9 @@ input, select, textarea, button {
     font-size: 14px !important;
     font-weight: 800 !important;
   }
+}
+
+@media (max-width: 760px) {
 
   .sidebar-logo {
     padding: 16px !important;

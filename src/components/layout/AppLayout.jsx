@@ -49,8 +49,8 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
           <button
             className="mobile-menu-button"
             type="button"
-            onClick={() => setSidebarOpen(true)}
-            aria-label="Open navigation"
+            onClick={() => setSidebarOpen(prev => !prev)}
+            aria-label={sidebarOpen ? 'Close navigation' : 'Open navigation'}
             aria-expanded={sidebarOpen}
           >
             <span />
