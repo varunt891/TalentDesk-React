@@ -1014,6 +1014,10 @@ input, select, textarea, button {
   min-width: 0;
 }
 
+.candidates-mobile-toolbar-spacer {
+  display: none;
+}
+
 .candidates-search {
   width: 330px !important;
   height: 36px !important;
@@ -4875,8 +4879,13 @@ input, select, textarea, button {
   }
 
   .candidates-topbar {
-    margin-bottom: 54px !important;
     overflow: visible !important;
+  }
+
+  .candidates-mobile-toolbar-spacer {
+    display: block !important;
+    height: 58px !important;
+    flex: 0 0 58px !important;
   }
 
   .candidates-title-block p,

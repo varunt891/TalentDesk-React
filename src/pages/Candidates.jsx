@@ -320,6 +320,7 @@ export default function Candidates() {
           <button className="candidate-btn primary" onClick={openAdd}>Add Candidate</button>
         </div>
       </div>
+      <div className="candidates-mobile-toolbar-spacer" aria-hidden="true" />
 
       <div className="candidates-stat-grid">
         {candidateStats.map(stat => (
