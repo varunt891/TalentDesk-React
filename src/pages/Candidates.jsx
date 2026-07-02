@@ -298,6 +298,7 @@ export default function Candidates() {
     { label: 'Interviews', value: candidates.filter(c => ['Interview Scheduled', 'Interview Done'].includes(c.external_status)).length, helper: 'client stage', tone: 'purple' },
     { label: 'Positive Feedback', value: candidates.filter(c => c.feedback_status === 'Positive').length, helper: 'good signal', tone: 'yellow' },
     { label: 'High Priority', value: candidates.filter(c => c.priority === 'High').length, helper: 'needs attention', tone: 'red' },
+    { label: 'Rejected', value: candidates.filter(c => c.external_status === 'Rejected').length, helper: 'client declined', tone: 'orange' },
   ]
 
   return (

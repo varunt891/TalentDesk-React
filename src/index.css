@@ -1104,6 +1104,7 @@ input, select, textarea, button {
 .candidate-stat.purple::before { background: var(--accent2); }
 .candidate-stat.yellow::before { background: var(--yellow); }
 .candidate-stat.red::before { background: var(--red); }
+.candidate-stat.orange::before { background: var(--orange); }
 
 .candidate-stat span,
 .candidate-stat small {
@@ -4854,5 +4855,128 @@ input, select, textarea, button {
     max-width: calc(100vw - 20px) !important;
     margin-left: 10px !important;
     margin-right: 10px !important;
+  }
+}
+
+/* Compact phone layouts for production mobile browsers. */
+@media (max-width: 600px) {
+  .candidates-page,
+  .jobs-page {
+    background: var(--bg) !important;
+  }
+
+  .candidates-topbar,
+  .jobs-topbar {
+    display: block !important;
+    border-radius: 0 !important;
+    min-height: 0 !important;
+    margin-top: 0 !important;
+    padding: 12px 10px 10px !important;
+  }
+
+  .candidates-title-block p,
+  .jobs-title-block p {
+    font-size: 11px !important;
+    line-height: 1.1 !important;
+    margin: 0 0 6px !important;
+  }
+
+  .candidates-title-block h1,
+  .jobs-title-block h1 {
+    font-size: 28px !important;
+    line-height: 1 !important;
+    margin: 0 0 7px !important;
+  }
+
+  .candidates-title-block span,
+  .jobs-title-block span {
+    display: block !important;
+    max-width: 100% !important;
+    color: var(--text2) !important;
+    font-size: 13px !important;
+    line-height: 1.35 !important;
+    margin: 0 !important;
+    white-space: normal !important;
+  }
+
+  .candidates-toolbar,
+  .jobs-toolbar {
+    margin-top: 10px !important;
+    gap: 8px !important;
+  }
+
+  .candidates-stat-grid,
+  .jobs-summary {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    max-width: calc(100vw - 20px) !important;
+    margin: 10px 10px 0 !important;
+    padding: 0 !important;
+  }
+
+  .candidate-stat,
+  .jobs-summary-card {
+    min-height: 82px !important;
+    border-radius: 8px !important;
+    padding: 11px 12px 10px !important;
+    box-shadow: none !important;
+  }
+
+  .candidate-stat::before {
+    height: 3px !important;
+  }
+
+  .candidate-stat span,
+  .candidate-stat small,
+  .jobs-summary-card span {
+    font-size: 11px !important;
+    line-height: 1.25 !important;
+  }
+
+  .candidate-stat strong,
+  .jobs-summary-card strong {
+    font-size: 24px !important;
+    line-height: 1 !important;
+    margin: 7px 0 3px !important;
+  }
+
+  .candidates-filters,
+  .jobs-filterbar {
+    max-width: calc(100vw - 20px) !important;
+    margin: 10px 10px 0 !important;
+    padding: 8px !important;
+  }
+
+  .candidate-filter-button {
+    min-width: 132px !important;
+    min-height: 38px !important;
+    padding: 0 11px !important;
+    font-size: 13px !important;
+  }
+
+  .jobs-status-tabs {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .jobs-status-tabs button {
+    min-height: 38px !important;
+    padding: 0 10px !important;
+    border-radius: 8px !important;
+  }
+
+  .jobs-content,
+  .candidates-content {
+    max-width: calc(100vw - 20px) !important;
+    margin: 10px 10px 0 !important;
+    padding: 0 !important;
+  }
+
+  .jobs-empty {
+    min-height: 220px !important;
+    padding: 28px 18px !important;
+    border-radius: 10px !important;
   }
 }
