@@ -317,10 +317,12 @@ export default function Candidates() {
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name, job, client, skill..." />
           </div>
           <button className="candidate-btn ghost" onClick={exportAll}>Export XLSX</button>
-          <button className="candidate-btn primary" onClick={openAdd}>Add Candidate</button>
+          <button className="candidate-btn primary candidates-desktop-add" onClick={openAdd}>Add Candidate</button>
         </div>
       </div>
-      <div className="candidates-mobile-toolbar-spacer" aria-hidden="true" />
+      <div className="candidates-mobile-actions">
+        <button className="candidate-btn primary" onClick={openAdd}>Add Candidate</button>
+      </div>
 
       <div className="candidates-stat-grid">
         {candidateStats.map(stat => (

@@ -1014,7 +1014,7 @@ input, select, textarea, button {
   min-width: 0;
 }
 
-.candidates-mobile-toolbar-spacer {
+.candidates-mobile-actions {
   display: none;
 }
 
@@ -4882,12 +4882,6 @@ input, select, textarea, button {
     overflow: visible !important;
   }
 
-  .candidates-mobile-toolbar-spacer {
-    display: block !important;
-    height: 58px !important;
-    flex: 0 0 58px !important;
-  }
-
   .candidates-title-block p,
   .jobs-title-block p {
     font-size: 11px !important;
@@ -4938,6 +4932,27 @@ input, select, textarea, button {
 
   .candidate-btn.primary {
     margin-bottom: 0 !important;
+  }
+
+  .candidates-desktop-add {
+    display: none !important;
+  }
+
+  .candidates-mobile-actions {
+    display: block !important;
+    width: auto !important;
+    max-width: calc(100vw - 20px) !important;
+    margin: 10px 10px 0 !important;
+    padding: 0 !important;
+    position: static !important;
+    z-index: auto !important;
+  }
+
+  .candidates-mobile-actions .candidate-btn {
+    width: 100% !important;
+    min-height: 48px !important;
+    position: static !important;
+    transform: none !important;
   }
 
   .candidates-stat-grid,
