@@ -316,7 +316,7 @@ export default function Jobs() {
               </div>
             </div>
             <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button onClick={() => openEdit(showDetail)} style={{ ...btnGhost, flex: 1 }}>Edit</button>
+              <button onClick={() => { const job = showDetail; setShowDetail(null); openEdit(job) }} style={{ ...btnGhost, flex: 1 }}>Edit</button>
               <button onClick={() => { setShowDetail(null); setDeleteId(showDetail.id) }} style={{ ...btnPrimary, background: 'var(--red)' }}>Delete</button>
             </div>
           </div>

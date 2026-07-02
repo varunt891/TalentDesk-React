@@ -4871,7 +4871,7 @@ input, select, textarea, button {
     border-radius: 0 !important;
     min-height: 0 !important;
     margin-top: 0 !important;
-    padding: 12px 10px 10px !important;
+    padding: 12px 10px 14px !important;
   }
 
   .candidates-title-block p,
@@ -4901,8 +4901,24 @@ input, select, textarea, button {
 
   .candidates-toolbar,
   .jobs-toolbar {
-    margin-top: 10px !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    margin-top: 12px !important;
     gap: 8px !important;
+    position: relative !important;
+    z-index: 2 !important;
+  }
+
+  .candidates-search,
+  .jobs-search,
+  .candidate-btn,
+  .jobs-primary-btn {
+    width: 100% !important;
+    min-height: 44px !important;
+  }
+
+  .candidate-btn.primary {
+    margin-bottom: 10px !important;
   }
 
   .candidates-stat-grid,
@@ -4911,8 +4927,10 @@ input, select, textarea, button {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 8px !important;
     max-width: calc(100vw - 20px) !important;
-    margin: 10px 10px 0 !important;
+    margin: 12px 10px 0 !important;
     padding: 0 !important;
+    position: relative !important;
+    z-index: 1 !important;
   }
 
   .candidate-stat,
