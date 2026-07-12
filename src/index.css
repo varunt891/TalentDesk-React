@@ -4951,7 +4951,7 @@ input, select, textarea, button {
     gap: 8px !important;
     width: auto !important;
     max-width: calc(100vw - 20px) !important;
-    margin: 10px 10px 0 !important;
+    margin: 10px 10px 14px !important;
     padding: 0 !important;
     position: static !important;
     z-index: auto !important;
@@ -5011,15 +5011,48 @@ input, select, textarea, button {
   .candidates-filters,
   .jobs-filterbar {
     max-width: calc(100vw - 20px) !important;
-    margin: 10px 10px 0 !important;
-    padding: 8px !important;
+    margin: 12px 10px 0 !important;
+    padding: 0 !important;
+  }
+
+  .candidates-filters {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    border: 0 !important;
+    background: transparent !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+  }
+
+  .candidate-filter {
+    width: 100% !important;
+    min-width: 0 !important;
   }
 
   .candidate-filter-button {
-    min-width: 132px !important;
-    min-height: 38px !important;
-    padding: 0 11px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 46px !important;
+    padding: 0 13px !important;
     font-size: 13px !important;
+    background: var(--surface) !important;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04) !important;
+  }
+
+  .candidates-filters > button {
+    grid-column: 1 / -1 !important;
+    min-height: 42px !important;
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  .candidates-filters > span:last-child {
+    grid-column: 1 / -1 !important;
+    justify-self: end !important;
+    margin: 0 !important;
+    padding: 2px 4px 0 !important;
+    font-size: 12px !important;
   }
 
   .jobs-status-tabs {
