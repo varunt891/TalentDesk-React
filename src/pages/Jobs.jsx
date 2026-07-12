@@ -120,6 +120,13 @@ export default function Jobs() {
           <button onClick={openAdd} className="jobs-primary-btn">New Job</button>
         </div>
       </div>
+      <div className="jobs-mobile-actions">
+        <div className="jobs-search">
+          <span>Search</span>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Title, client, ID, location..." />
+        </div>
+        <button onClick={openAdd} className="jobs-primary-btn">New Job</button>
+      </div>
 
       <div className="jobs-summary">
         {jobStats.map(stat => (

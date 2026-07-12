@@ -1014,7 +1014,8 @@ input, select, textarea, button {
   min-width: 0;
 }
 
-.candidates-mobile-actions {
+.candidates-mobile-actions,
+.jobs-mobile-actions {
   display: none;
 }
 
@@ -4922,6 +4923,10 @@ input, select, textarea, button {
     overflow: visible !important;
   }
 
+  .jobs-toolbar {
+    display: none !important;
+  }
+
   .candidates-search,
   .jobs-search,
   .candidate-btn,
@@ -4934,12 +4939,16 @@ input, select, textarea, button {
     margin-bottom: 0 !important;
   }
 
-  .candidates-desktop-add {
+  .candidates-desktop-add,
+  .candidates-desktop-export {
     display: none !important;
   }
 
-  .candidates-mobile-actions {
-    display: block !important;
+  .candidates-mobile-actions,
+  .jobs-mobile-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
     width: auto !important;
     max-width: calc(100vw - 20px) !important;
     margin: 10px 10px 0 !important;
@@ -4948,7 +4957,9 @@ input, select, textarea, button {
     z-index: auto !important;
   }
 
-  .candidates-mobile-actions .candidate-btn {
+  .candidates-mobile-actions .candidate-btn,
+  .jobs-mobile-actions .jobs-primary-btn,
+  .jobs-mobile-actions .jobs-search {
     width: 100% !important;
     min-height: 48px !important;
     position: static !important;

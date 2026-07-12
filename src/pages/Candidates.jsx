@@ -316,11 +316,12 @@ export default function Candidates() {
             <span>Search</span>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name, job, client, skill..." />
           </div>
-          <button className="candidate-btn ghost" onClick={exportAll}>Export XLSX</button>
+          <button className="candidate-btn ghost candidates-desktop-export" onClick={exportAll}>Export XLSX</button>
           <button className="candidate-btn primary candidates-desktop-add" onClick={openAdd}>Add Candidate</button>
         </div>
       </div>
       <div className="candidates-mobile-actions">
+        <button className="candidate-btn ghost" onClick={exportAll}>Export XLSX</button>
         <button className="candidate-btn primary" onClick={openAdd}>Add Candidate</button>
       </div>
 
