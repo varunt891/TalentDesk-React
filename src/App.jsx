@@ -13,6 +13,7 @@ import Postings from './pages/Postings'
 import Directory from './pages/Directory'
 import Resubmit from './pages/Resubmit'
 import Admin from './pages/Admin'
+import Reports from './pages/Reports'
 import AppLayout from './components/layout/AppLayout'
 import { db } from './lib/api'
 
@@ -75,6 +76,7 @@ function MainApp() {
       case 'pipeline': return <Pipeline />
       case 'callbacks': return <Callbacks />
       case 'followups': return <Followups />
+      case 'reports': return <Reports />
       case 'postings': return <Postings />
       case 'directory': return <Directory />
       case 'resubmit': return <Resubmit />

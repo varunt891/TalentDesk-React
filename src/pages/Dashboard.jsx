@@ -219,10 +219,11 @@ export default function Dashboard({ onNavigate }) {
       <section className="dashboard-quick-actions">
         <div className="quick-actions-grid">
           {[
-            { id: 'candidates', label: 'Candidates', desc: 'Browse & search profiles', icon: '👥', tone: 'blue' },
-            { id: 'pipeline', label: 'Pipeline', desc: 'Manage hiring stages', icon: '🚦', tone: 'purple' },
-            { id: 'jobs', label: 'Jobs Requisitions', desc: 'Track active job openings', icon: '💼', tone: 'green' },
-            { id: 'callbacks', label: 'Callbacks Center', desc: 'Manage callbacks log', icon: '📞', tone: 'orange' },
+            { id: 'candidates', label: 'Candidates', desc: 'Browse and search profiles', icon: 'CA', tone: 'blue' },
+            { id: 'pipeline', label: 'Pipeline', desc: 'Manage hiring stages', icon: 'PI', tone: 'purple' },
+            { id: 'jobs', label: 'Job Requisitions', desc: 'Track active openings', icon: 'JO', tone: 'green' },
+            { id: 'reports', label: 'Reports', desc: 'Daily and weekly insights', icon: 'RE', tone: 'yellow' },
+            { id: 'callbacks', label: 'Callbacks', desc: 'Manage callback log', icon: 'CB', tone: 'orange' },
           ].map(action => (
             <button
               key={action.id}
