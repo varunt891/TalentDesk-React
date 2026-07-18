@@ -4137,15 +4137,24 @@ input, select, textarea, button {
 }
 
 .reports-mode-toggle button,
-.reports-export-btn {
+.reports-export-btn,
+.reports-actions select {
   min-height: 36px;
-  border: 0;
   border-radius: 8px;
+  border: 0;
   cursor: pointer;
   font: inherit;
   font-size: 13px;
   font-weight: 800;
   padding: 0 14px;
+}
+
+.reports-actions select {
+  min-width: 150px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text2);
+  outline: none;
 }
 
 .reports-mode-toggle button {
@@ -5407,7 +5416,8 @@ input, select, textarea, button {
   }
 
   .reports-mode-toggle,
-  .reports-export-btn {
+  .reports-export-btn,
+  .reports-actions select {
     width: 100% !important;
   }
 
