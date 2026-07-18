@@ -856,6 +856,243 @@ input, select, textarea, button {
   border-radius: 999px;
 }
 
+.admin-v2 {
+  background: linear-gradient(180deg, rgba(79, 124, 255, 0.06), transparent 360px), var(--bg);
+}
+
+.admin-v2 .admin-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(79, 124, 255, 0.12), rgba(46, 204, 143, 0.08)), var(--surface);
+  padding: 22px;
+  margin-bottom: 16px;
+}
+
+.admin-v2 .admin-hero p {
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+}
+
+.admin-v2 .admin-hero h1 {
+  color: var(--text);
+  font-size: 28px;
+  line-height: 1.15;
+  margin: 6px 0 8px;
+}
+
+.admin-v2 .admin-hero span {
+  color: var(--text2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.admin-v2 .admin-hero-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 10px;
+}
+
+.admin-command-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.admin-command-layout,
+.admin-people-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  gap: 18px;
+}
+
+.admin-check-list,
+.admin-team-health,
+.admin-member-directory,
+.admin-member-list,
+.admin-leaderboard {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-check-row,
+.admin-health-row,
+.admin-member-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface2);
+  padding: 12px;
+}
+
+.admin-check-row {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.admin-check-row > span {
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(255, 140, 66, 0.12);
+  color: var(--orange);
+  font-size: 10px;
+  font-weight: 800;
+  padding: 5px 8px;
+}
+
+.admin-check-row.done > span {
+  background: rgba(46, 204, 143, 0.12);
+  color: var(--green);
+}
+
+.admin-check-row strong,
+.admin-health-row strong,
+.admin-member-card strong {
+  display: block;
+  color: var(--text);
+}
+
+.admin-check-row small,
+.admin-health-row span,
+.admin-member-card span {
+  display: block;
+  color: var(--text3);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.admin-health-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-health-row b {
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 22px;
+}
+
+.admin-panel-headline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.admin-panel-headline .admin-panel-title {
+  margin-bottom: 4px;
+}
+
+.admin-panel-headline p {
+  color: var(--text3);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.admin-search {
+  width: min(320px, 100%);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--text);
+  font: inherit;
+  padding: 10px 12px;
+}
+
+.admin-member-card {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr) auto;
+  gap: 14px;
+  align-items: start;
+}
+
+.admin-member-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.admin-member-avatar {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent), var(--green));
+  color: #fff;
+  font-weight: 800;
+}
+
+.admin-member-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-member-controls label,
+.admin-form-grid.single label {
+  display: grid;
+  gap: 5px;
+  color: var(--text3);
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 0;
+}
+
+.admin-team-grid-v2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.admin-team-card-v2 {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.admin-team-head span {
+  color: var(--green);
+  font-family: var(--mono);
+  font-weight: 800;
+}
+
+.admin-manager-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-manager-strip strong,
+.admin-manager-strip em {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface2);
+  color: var(--text2);
+  font-size: 12px;
+  font-style: normal;
+  padding: 6px 10px;
+}
+
+.admin-form-grid.single {
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
 .admin-leaderboard {
   display: grid;
   gap: 10px;
@@ -4440,6 +4677,37 @@ input, select, textarea, button {
 
 /* Unified Media Queries defined at the end of stylesheet to ensure priority overrides */
 @media (max-width: 900px) {
+  .admin-v2 {
+    padding: 14px !important;
+  }
+
+  .admin-v2 .admin-hero,
+  .admin-v2 .admin-panel-headline {
+    flex-direction: column !important;
+  }
+
+  .admin-v2 .admin-hero-actions,
+  .admin-v2 .admin-refresh,
+  .admin-v2 .admin-primary,
+  .admin-v2 .admin-search {
+    width: 100% !important;
+  }
+
+  .admin-command-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .admin-command-layout,
+  .admin-people-layout,
+  .admin-team-grid-v2,
+  .admin-member-card {
+    grid-template-columns: 1fr !important;
+  }
+
+  .admin-member-controls {
+    grid-template-columns: 1fr !important;
+  }
+
   .app-shell {
     position: relative !important;
   }
