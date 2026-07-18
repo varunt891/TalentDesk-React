@@ -4872,15 +4872,34 @@ input, select, textarea, button {
 
   .candidates-topbar,
   .jobs-topbar {
-    display: block !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
     border-radius: 0 !important;
-    min-height: 0 !important;
-    margin-top: 0 !important;
-    padding: 12px 10px 14px !important;
+    height: auto !important;
+    margin: 0 10px !important;
+    max-width: calc(100vw - 20px) !important;
+    padding: 18px 18px 20px !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
   }
 
   .candidates-topbar {
-    overflow: visible !important;
+    min-height: 156px !important;
+  }
+
+  .jobs-topbar {
+    min-height: 134px !important;
+  }
+
+  .candidates-title-block,
+  .jobs-title-block {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    position: static !important;
+    transform: none !important;
   }
 
   .candidates-title-block p,
