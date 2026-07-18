@@ -20,6 +20,7 @@ const ROLE_COLORS = {
   admin: { bg: 'rgba(79,124,255,0.15)', color: '#4f7cff', label: 'Admin' },
   manager: { bg: 'rgba(245,200,66,0.15)', color: '#f5c842', label: 'Manager' },
   recruiter: { bg: 'rgba(46,204,143,0.15)', color: '#2ecc8f', label: 'Recruiter' },
+  employee: { bg: 'rgba(100,116,139,0.15)', color: '#64748b', label: 'Employee' },
 }
 
 export default function Sidebar({ currentPage, onNavigate, theme, onToggleTheme, isCollapsed, onToggleCollapse, onClose }) {

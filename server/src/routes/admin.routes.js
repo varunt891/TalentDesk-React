@@ -135,7 +135,7 @@ router.post('/seed-demo-profiles', async (req, res, next) => {
             org_id: orgId,
             email,
             full_name: memberName,
-            role: 'recruiter',
+            role: group.department === 'Recruiting' ? 'recruiter' : 'employee',
             team: group.team,
             department: group.department,
             manager_id: manager.id,

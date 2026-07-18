@@ -49,6 +49,8 @@ function coerce(value) {
 }
 
 async function visibleOwnerIds(req) {
+  if (['admin', 'superadmin'].includes(req.profile.role)) return null
+
   if (req.profile.role === 'manager') {
     const reports = await prisma.profile.findMany({
       where: { org_id: req.profile.org_id, OR: [{ manager_id: req.user.id }, { id: req.user.id }] },
@@ -58,7 +60,7 @@ async function visibleOwnerIds(req) {
   }
 
   if (req.profile.role === 'recruiter') return [req.user.id]
-  return null
+  return [req.user.id]
 }
 
 async function buildWhere(req, table, config) {
@@ -82,7 +84,7 @@ async function buildWhere(req, table, config) {
     if (req.profile.role === 'manager') {
       where.OR = [{ manager_id: req.user.id }, { id: req.user.id }]
     }
-    if (req.profile.role === 'recruiter') {
+    if (!['admin', 'superadmin', 'manager'].includes(req.profile.role)) {
       where.id = req.user.id
     }
   }

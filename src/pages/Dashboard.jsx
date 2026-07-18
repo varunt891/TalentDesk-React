@@ -27,7 +27,11 @@ export default function Dashboard({ onNavigate }) {
   const [callbacks, setCallbacks] = useState([])
   const [followups, setFollowups] = useState([])
   const [activity, setActivity] = useState([])
+  const [profiles, setProfiles] = useState([])
   const [timeRange, setTimeRange] = useState('all')
+  const [stageFilter, setStageFilter] = useState('All')
+  const [ownerFilter, setOwnerFilter] = useState('All')
+  const [jobStatusFilter, setJobStatusFilter] = useState('All')
   const [scratchpad, setScratchpad] = useState(() => localStorage.getItem('td_scratchpad') || '')
 
   const handleScratchpadChange = (e) => {
@@ -55,11 +59,13 @@ export default function Dashboard({ onNavigate }) {
       db.from('callbacks').select('*').order('date', { ascending: true }),
       db.from('followups').select('*').order('date', { ascending: true }),
       db.from('activity_logs').select('*').order('created_at', { ascending: false }),
-    ]).then(([jobsRes, callbacksRes, followupsRes, activityRes]) => {
+      db.from('profiles').select('*').order('full_name'),
+    ]).then(([jobsRes, callbacksRes, followupsRes, activityRes, profilesRes]) => {
       setJobs(jobsRes.data || [])
       setCallbacks(callbacksRes.data || [])
       setFollowups(followupsRes.data || [])
       setActivity((activityRes.data || []).slice(0, 12))
+      setProfiles(profilesRes.data || [])
     })
   }
 
@@ -95,15 +101,53 @@ export default function Dashboard({ onNavigate }) {
 
   // Time-range filtered data
   const filteredCandidates = useMemo(() => {
-    if (timeRange === 'all') return candidates
-    const cutoff = new Date()
-    if (timeRange === '7d') cutoff.setDate(cutoff.getDate() - 7)
-    else if (timeRange === '30d') cutoff.setDate(cutoff.getDate() - 30)
-    else if (timeRange === '90d') cutoff.setDate(cutoff.getDate() - 90)
+    let list = candidates
+    if (timeRange !== 'all') {
+      const cutoff = new Date()
+      if (timeRange === '7d') cutoff.setDate(cutoff.getDate() - 7)
+      else if (timeRange === '30d') cutoff.setDate(cutoff.getDate() - 30)
+      else if (timeRange === '90d') cutoff.setDate(cutoff.getDate() - 90)
 
-    const cutoffStr = cutoff.toISOString().slice(0, 10)
-    return candidates.filter(c => c.submission_date && c.submission_date >= cutoffStr)
-  }, [candidates, timeRange])
+      const cutoffStr = cutoff.toISOString().slice(0, 10)
+      list = list.filter(c => c.submission_date && c.submission_date >= cutoffStr)
+    }
+    if (stageFilter !== 'All') list = list.filter(c => (c.external_status || c.internal_status || 'Unassigned') === stageFilter)
+    if (ownerFilter !== 'All') list = list.filter(c => (c.recruiter_id || c.user_id || c.recruiter_name || c.fe_name || 'Unassigned') === ownerFilter)
+    return list
+  }, [candidates, ownerFilter, stageFilter, timeRange])
+
+  const filteredJobs = useMemo(() => {
+    if (jobStatusFilter === 'All') return jobs
+    return jobs.filter(job => (job.status || 'Unassigned') === jobStatusFilter)
+  }, [jobStatusFilter, jobs])
+
+  const ownerOptions = useMemo(() => {
+    const owners = new Map()
+    profiles
+      .filter(user => user.role === 'recruiter' && user.department === 'Recruiting')
+      .forEach(user => owners.set(user.id, user.full_name || user.email))
+    candidates.forEach(candidate => {
+      const key = candidate.recruiter_id || candidate.user_id || candidate.recruiter_name || candidate.fe_name
+      const label = candidate.recruiter_name || candidate.fe_name || owners.get(key)
+      if (key && label) owners.set(key, label)
+    })
+    return [...owners.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+  }, [candidates, profiles])
+
+  const stageOptions = useMemo(() => {
+    const stages = new Set(['All', ...STAGES])
+    candidates.forEach(candidate => {
+      if (candidate.external_status) stages.add(candidate.external_status)
+      else if (candidate.internal_status) stages.add(candidate.internal_status)
+    })
+    return [...stages]
+  }, [candidates])
+
+  const jobStatusOptions = useMemo(() => {
+    const statuses = new Set(['All'])
+    jobs.forEach(job => statuses.add(job.status || 'Unassigned'))
+    return [...statuses]
+  }, [jobs])
 
   const filteredFollowups = useMemo(() => {
     if (timeRange === 'all') return followups
@@ -158,27 +202,31 @@ export default function Dashboard({ onNavigate }) {
 
   const sourceData = useMemo(() => {
     return [
-      { name: 'Open', value: jobs.filter(j => j.status === 'Open').length },
-      { name: 'On Hold', value: jobs.filter(j => j.status === 'On Hold').length },
-      { name: 'Filled', value: jobs.filter(j => j.status === 'Filled').length },
-      { name: 'Closed', value: jobs.filter(j => j.status === 'Closed').length },
+      { name: 'Open', value: filteredJobs.filter(j => j.status === 'Open').length },
+      { name: 'On Hold', value: filteredJobs.filter(j => j.status === 'On Hold').length },
+      { name: 'Filled', value: filteredJobs.filter(j => j.status === 'Filled').length },
+      { name: 'Closed', value: filteredJobs.filter(j => j.status === 'Closed').length },
     ].filter(item => item.value > 0)
-  }, [jobs])
+  }, [filteredJobs])
 
   const pendingCallbacks = callbacks.filter(c => c.status === 'pending')
   const dueFollowups = followups.filter(f => f.status !== 'done')
   const todaysCallbacks = pendingCallbacks.filter(c => c.date === today)
   const overdueFollowups = dueFollowups.filter(f => f.date && f.date < today)
 
-  const activeJobsCount = useMemo(() => jobs.filter(j => j.status === 'Open').length, [jobs])
+  const activeJobsCount = useMemo(() => filteredJobs.filter(j => j.status === 'Open').length, [filteredJobs])
+  const qualifiedCount = filteredCandidates.filter(c => ['Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired'].includes(c.external_status || c.internal_status)).length
+  const offerCount = filteredCandidates.filter(c => c.external_status === 'Offer Extended' || c.internal_status === 'Offer Extended').length
+  const rejectedCount = filteredCandidates.filter(c => c.external_status === 'Rejected' || c.internal_status === 'Rejected').length
+  const conversionRate = Math.round((filteredCandidates.filter(c => c.external_status === 'Hired' || c.internal_status === 'Hired').length / Math.max(filteredCandidates.length, 1)) * 100)
 
   const stats = [
     { label: 'Candidates', value: filteredCandidates.length, helper: `${filteredCandidates.filter(c => c.submission_date?.startsWith(month)).length} this month`, tone: 'blue' },
-    { label: 'Open jobs', value: activeJobsCount, helper: `${jobs.length} total jobs`, tone: 'green' },
-    { label: 'Interviews', value: filteredCandidates.filter(c => ['Interview Scheduled', 'Interview Done'].includes(c.internal_status)).length, helper: 'scheduled or completed', tone: 'purple' },
-    { label: 'Hires', value: filteredCandidates.filter(c => c.internal_status === 'Hired').length, helper: 'all-time placements', tone: 'yellow' },
-    { label: 'Callbacks', value: pendingCallbacks.length, helper: `${todaysCallbacks.length} today`, tone: 'orange' },
-    { label: 'Follow-ups', value: dueFollowups.length, helper: `${overdueFollowups.length} overdue`, tone: 'red' },
+    { label: 'Qualified', value: qualifiedCount, helper: 'client-stage movement', tone: 'purple' },
+    { label: 'Offers', value: offerCount, helper: `${conversionRate}% hire rate`, tone: 'yellow' },
+    { label: 'Open Jobs', value: activeJobsCount, helper: `${filteredJobs.length} filtered`, tone: 'green' },
+    { label: 'Rejected', value: rejectedCount, helper: 'client declined', tone: 'red' },
+    { label: 'Pending Work', value: pendingCallbacks.length + dueFollowups.length, helper: `${todaysCallbacks.length} calls today`, tone: 'orange' },
   ]
 
   return (
@@ -190,55 +238,49 @@ export default function Dashboard({ onNavigate }) {
             <h1>Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {profile?.full_name?.split(' ')[0] || 'there'}</h1>
             <p>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} · <span>{role}</span></p>
           </div>
-          <div className="time-range-selector">
-            {[
-              { id: '7d', label: '7 Days' },
-              { id: '30d', label: '30 Days' },
-              { id: '90d', label: '90 Days' },
-              { id: 'all', label: 'All Time' },
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setTimeRange(tab.id)}
-                className={`time-range-tab ${timeRange === tab.id ? 'active' : ''}`}
-                type="button"
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
         </div>
         <div className="dashboard-hero-panel">
           <span>Pipeline health</span>
-          <strong>{Math.round((filteredCandidates.filter(c => ['Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired'].includes(c.internal_status)).length / Math.max(filteredCandidates.length, 1)) * 100)}%</strong>
+          <strong>{Math.round((qualifiedCount / Math.max(filteredCandidates.length, 1)) * 100)}%</strong>
           <small>qualified progress rate</small>
         </div>
       </header>
 
-      {/* Quick Action Navigation Center */}
-      <section className="dashboard-quick-actions">
-        <div className="quick-actions-grid">
+      <section className="dashboard-control-bar">
+        <div className="time-range-selector">
           {[
-            { id: 'candidates', label: 'Candidates', desc: 'Browse and search profiles', icon: 'CA', tone: 'blue' },
-            { id: 'pipeline', label: 'Pipeline', desc: 'Manage hiring stages', icon: 'PI', tone: 'purple' },
-            { id: 'jobs', label: 'Job Requisitions', desc: 'Track active openings', icon: 'JO', tone: 'green' },
-            { id: 'reports', label: 'Reports', desc: 'Daily and weekly insights', icon: 'RE', tone: 'yellow' },
-            { id: 'callbacks', label: 'Callbacks', desc: 'Manage callback log', icon: 'CB', tone: 'orange' },
-          ].map(action => (
-            <button
-              key={action.id}
-              onClick={() => onNavigate(action.id)}
-              className={`quick-action-card ${action.tone}`}
-              type="button"
-            >
-              <span className="quick-action-icon">{action.icon}</span>
-              <div className="quick-action-copy">
-                <strong>{action.label}</strong>
-                <small>{action.desc}</small>
-              </div>
+            { id: '7d', label: '7 Days' },
+            { id: '30d', label: '30 Days' },
+            { id: '90d', label: '90 Days' },
+            { id: 'all', label: 'All Time' },
+          ].map(tab => (
+            <button key={tab.id} onClick={() => setTimeRange(tab.id)} className={`time-range-tab ${timeRange === tab.id ? 'active' : ''}`} type="button">
+              {tab.label}
             </button>
           ))}
         </div>
+        <label>
+          Recruiter
+          <select value={ownerFilter} onChange={e => setOwnerFilter(e.target.value)}>
+            <option value="All">All recruiters</option>
+            {ownerOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select>
+        </label>
+        <label>
+          Candidate Stage
+          <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}>
+            {stageOptions.map(stage => <option key={stage}>{stage}</option>)}
+          </select>
+        </label>
+        <label>
+          Job Status
+          <select value={jobStatusFilter} onChange={e => setJobStatusFilter(e.target.value)}>
+            {jobStatusOptions.map(status => <option key={status}>{status}</option>)}
+          </select>
+        </label>
+        <button className="dashboard-reset-btn" type="button" onClick={() => { setTimeRange('all'); setOwnerFilter('All'); setStageFilter('All'); setJobStatusFilter('All') }}>
+          Reset
+        </button>
       </section>
 
       <section className="dashboard-stat-grid">
@@ -252,6 +294,26 @@ export default function Dashboard({ onNavigate }) {
             <div className="stat-decorator" aria-hidden="true" />
           </article>
         ))}
+      </section>
+
+      <section className="dashboard-quick-actions">
+        <div className="quick-actions-grid">
+          {[
+            { id: 'candidates', label: 'Candidates', desc: 'Profiles', icon: 'CA', tone: 'blue' },
+            { id: 'pipeline', label: 'Pipeline', desc: 'Stages', icon: 'PI', tone: 'purple' },
+            { id: 'jobs', label: 'Jobs', desc: 'Roles', icon: 'JO', tone: 'green' },
+            { id: 'reports', label: 'Reports', desc: 'Exports', icon: 'RE', tone: 'yellow' },
+            { id: 'callbacks', label: 'Callbacks', desc: 'Tasks', icon: 'CB', tone: 'orange' },
+          ].map(action => (
+            <button key={action.id} onClick={() => onNavigate(action.id)} className={`quick-action-card ${action.tone}`} type="button">
+              <span className="quick-action-icon">{action.icon}</span>
+              <div className="quick-action-copy">
+                <strong>{action.label}</strong>
+                <small>{action.desc}</small>
+              </div>
+            </button>
+          ))}
+        </div>
       </section>
 
       <section className="dashboard-grid">

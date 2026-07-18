@@ -2,13 +2,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiRequest, db } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
-const TABS = ['Command Center', 'People', 'Teams', 'Organization', 'Analytics']
-const ROLES = ['recruiter', 'manager', 'admin', 'superadmin']
+const TABS = ['Overview', 'Org Chart', 'Members', 'Access', 'Company']
+const ROLES = ['employee', 'recruiter', 'manager', 'admin', 'superadmin']
 const DEPARTMENTS = ['Recruiting', 'Managers', 'PMO', 'E-care', 'Onboarding', 'Operations']
+
+const isSubmissionRecruiter = user => user.role === 'recruiter' && user.department === 'Recruiting'
 
 export default function Admin() {
   const { profile } = useAuth()
-  const [activeTab, setActiveTab] = useState('Command Center')
+  const [activeTab, setActiveTab] = useState('Overview')
   const [users, setUsers] = useState([])
   const [candidates, setCandidates] = useState([])
   const [jobs, setJobs] = useState([])
@@ -17,6 +19,7 @@ export default function Admin() {
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState(null)
   const [search, setSearch] = useState('')
+  const [memberFilters, setMemberFilters] = useState({ department: 'All', role: 'All' })
   const [invite, setInvite] = useState({ email: '', role: 'recruiter', team: '', manager_id: '', department: 'Recruiting' })
   const [orgForm, setOrgForm] = useState({ name: '', slug: '', subdomain: '', email_domain: '', primary_color: '#4f7cff', logo_url: '', timezone: 'America/New_York' })
 
@@ -76,30 +79,83 @@ export default function Admin() {
   const teams = useMemo(() => [...new Set(users.map(user => user.team).filter(Boolean))].sort(), [users])
   const managers = useMemo(() => users.filter(user => ['manager', 'admin', 'superadmin'].includes(user.role)), [users])
 
-  const teamGroups = useMemo(() => {
-    return teams.map(team => {
-      const members = users.filter(user => user.team === team)
-      const memberIds = new Set(members.map(user => user.id))
-      const memberNames = new Set(members.map(user => user.full_name || user.email).filter(Boolean))
+  const userStats = useMemo(() => {
+    const stats = new Map()
+    users.forEach(user => {
       const owned = candidates.filter(candidate => (
-        memberIds.has(candidate.user_id) ||
-        memberIds.has(candidate.recruiter_id) ||
-        memberNames.has(candidate.recruiter_name) ||
-        memberNames.has(candidate.fe_name)
+        candidate.user_id === user.id ||
+        candidate.recruiter_id === user.id ||
+        candidate.recruiter_name === user.full_name ||
+        candidate.fe_name === user.full_name
       ))
-
-      return {
-        team,
-        department: members.find(member => member.department)?.department || 'Unassigned',
-        managers: members.filter(member => ['manager', 'admin', 'superadmin'].includes(member.role)),
-        recruiters: members.filter(member => member.role === 'recruiter'),
-        members,
+      stats.set(user.id, {
         submissions: owned.length,
         interviews: owned.filter(candidate => ['Interview Scheduled', 'Interview Done'].includes(candidate.external_status || candidate.internal_status)).length,
         hires: owned.filter(candidate => candidate.external_status === 'Hired' || candidate.internal_status === 'Hired').length,
-      }
+      })
     })
-  }, [candidates, teams, users])
+    return stats
+  }, [candidates, users])
+
+  const teamGroups = useMemo(() => {
+    const managerLedUnits = users
+      .filter(user => user.role === 'manager')
+      .map(manager => {
+        const reports = users.filter(user => user.manager_id === manager.id)
+        const recruiters = reports.filter(isSubmissionRecruiter)
+        const supportMembers = reports.filter(member => !['manager', 'admin', 'superadmin'].includes(member.role) && !isSubmissionRecruiter(member))
+        const candidateOwners = manager.department === 'Recruiting' ? recruiters : []
+        const ownerIds = new Set(candidateOwners.map(user => user.id))
+        const ownerNames = new Set(candidateOwners.map(user => user.full_name || user.email).filter(Boolean))
+        const owned = candidates.filter(candidate => (
+          ownerIds.has(candidate.user_id) ||
+          ownerIds.has(candidate.recruiter_id) ||
+          ownerNames.has(candidate.recruiter_name) ||
+          ownerNames.has(candidate.fe_name)
+        ))
+
+        return {
+          key: manager.id,
+          team: manager.team || `${manager.full_name} Team`,
+          title: manager.department === 'Recruiting' ? `${manager.full_name} Account Manager` : `${manager.department || manager.team || 'Department'} Manager`,
+          department: manager.department || 'Unassigned',
+          managers: [manager],
+          manager,
+          recruiters,
+          supportMembers,
+          admins: [],
+          members: [manager, ...reports],
+          submissions: owned.length,
+          interviews: owned.filter(candidate => ['Interview Scheduled', 'Interview Done'].includes(candidate.external_status || candidate.internal_status)).length,
+          hires: owned.filter(candidate => candidate.external_status === 'Hired' || candidate.internal_status === 'Hired').length,
+        }
+      })
+
+    const assignedIds = new Set(managerLedUnits.flatMap(unit => unit.members.map(member => member.id)))
+    const unassigned = users.filter(user => !assignedIds.has(user.id) && !['admin', 'superadmin'].includes(user.role))
+    if (unassigned.length === 0) return managerLedUnits
+
+    return [
+      ...managerLedUnits,
+      {
+        key: 'unassigned',
+        team: 'Unassigned',
+        title: 'Unassigned Members',
+        department: 'Unassigned',
+        managers: [],
+        manager: null,
+        recruiters: unassigned.filter(isSubmissionRecruiter),
+        supportMembers: unassigned.filter(member => !isSubmissionRecruiter(member)),
+        admins: [],
+        members: unassigned,
+        submissions: 0,
+        interviews: 0,
+        hires: 0,
+      },
+    ]
+  }, [candidates, users])
+
+  const adminUsers = useMemo(() => users.filter(user => ['admin', 'superadmin'].includes(user.role)), [users])
 
   const analytics = useMemo(() => {
     const activeUsers = users.filter(user => user.is_active !== false)
@@ -126,20 +182,24 @@ export default function Admin() {
       activeUsers: activeUsers.length,
       admins: users.filter(user => ['admin', 'superadmin'].includes(user.role)).length,
       managers: users.filter(user => user.role === 'manager').length,
-      recruiters: users.filter(user => user.role === 'recruiter').length,
-      teams: teams.length,
+      recruiters: users.filter(isSubmissionRecruiter).length,
+      teams: teamGroups.filter(group => group.key !== 'unassigned').length,
       candidates: candidates.length,
       openJobs: jobs.filter(job => job.status === 'Open').length,
       hires: candidates.filter(candidate => candidate.internal_status === 'Hired' || candidate.external_status === 'Hired').length,
       byRecruiter,
     }
-  }, [candidates, jobs, teams.length, users])
+  }, [candidates, jobs, teamGroups, users])
 
   const filteredUsers = useMemo(() => {
     const q = search.toLowerCase().trim()
-    if (!q) return users
-    return users.filter(user => `${user.full_name} ${user.email} ${user.role} ${user.team} ${user.department}`.toLowerCase().includes(q))
-  }, [search, users])
+    return users.filter(user => {
+      const matchesQuery = !q || `${user.full_name} ${user.email} ${displayRole(user)} ${user.team} ${user.department}`.toLowerCase().includes(q)
+      const matchesDepartment = memberFilters.department === 'All' || (user.department || 'Unassigned') === memberFilters.department
+      const matchesRole = memberFilters.role === 'All' || displayRole(user) === memberFilters.role
+      return matchesQuery && matchesDepartment && matchesRole
+    })
+  }, [memberFilters, search, users])
 
   const updateUser = async (id, updates) => {
     setSaving(true)
@@ -149,6 +209,24 @@ export default function Admin() {
     if (error) return showToast(error.message, 'error')
     setUsers(prev => prev.map(user => user.id === id ? { ...user, ...updates } : user))
     showToast('Member updated')
+  }
+
+  const moveMemberToTeam = async (member, unitKey) => {
+    const targetTeam = teamGroups.find(group => group.key === unitKey)
+    await updateUser(member.id, {
+      team: targetTeam?.team || null,
+      department: targetTeam?.department || member.department || null,
+      manager_id: targetTeam?.manager?.id || null,
+    })
+  }
+
+  const assignManager = async (member, managerId) => {
+    const manager = users.find(user => user.id === managerId)
+    await updateUser(member.id, {
+      manager_id: managerId || null,
+      team: manager?.team || member.team || null,
+      department: manager?.department || member.department || null,
+    })
   }
 
   const sendInvite = async () => {
@@ -229,8 +307,8 @@ export default function Admin() {
 
       <section className="admin-command-grid">
         <Stat label="Active Members" value={analytics.activeUsers} helper={`${analytics.totalUsers} total`} />
-        <Stat label="Teams" value={analytics.teams} helper={`${analytics.managers} managers`} />
-        <Stat label="Recruiters" value={analytics.recruiters} helper={`${analytics.admins} admins`} />
+        <Stat label="Manager Groups" value={analytics.teams} helper={`${analytics.managers} managers`} />
+        <Stat label="Submission Recruiters" value={analytics.recruiters} helper="Recruiting only" />
         <Stat label="Open Jobs" value={analytics.openJobs} helper={`${analytics.candidates} candidates`} />
         <Stat label="Hires" value={analytics.hires} helper="org-wide" />
       </section>
@@ -247,19 +325,23 @@ export default function Admin() {
         <EmptyState title="Loading admin workspace" body="Pulling members, teams, organization settings, and analytics." />
       ) : (
         <>
-          {activeTab === 'Command Center' && (
+          {activeTab === 'Overview' && (
             <CommandCenter
-              analytics={analytics}
+              adminUsers={adminUsers}
               onSeed={seedDemoProfiles}
               saving={saving}
               teamGroups={teamGroups}
+              userStats={userStats}
             />
           )}
-          {activeTab === 'People' && (
+          {activeTab === 'Members' && (
             <PeopleTab
               filteredUsers={filteredUsers}
               invite={invite}
+              memberFilters={memberFilters}
               managers={managers}
+              onAssignManager={assignManager}
+              onFilterChange={setMemberFilters}
               onInviteChange={setInvite}
               onSearch={setSearch}
               onSendInvite={sendInvite}
@@ -269,9 +351,9 @@ export default function Admin() {
               teams={teams}
             />
           )}
-          {activeTab === 'Teams' && <TeamsTab saving={saving} teamGroups={teamGroups} users={users} onUpdateUser={updateUser} />}
-          {activeTab === 'Organization' && <OrgSettingsTab form={orgForm} onChange={setOrgForm} onSave={saveOrgSettings} saving={saving} />}
-          {activeTab === 'Analytics' && <AnalyticsTab analytics={analytics} teamGroups={teamGroups} />}
+          {activeTab === 'Org Chart' && <TeamsTab onAssignManager={assignManager} onMoveMember={moveMemberToTeam} saving={saving} teamGroups={teamGroups} userStats={userStats} users={users} />}
+          {activeTab === 'Access' && <PermissionsTab onUpdateUser={updateUser} saving={saving} users={users} />}
+          {activeTab === 'Company' && <OrgSettingsTab form={orgForm} onChange={setOrgForm} onSave={saveOrgSettings} saving={saving} />}
         </>
       )}
 
@@ -280,46 +362,86 @@ export default function Admin() {
   )
 }
 
-function CommandCenter({ analytics, onSeed, saving, teamGroups }) {
+function CommandCenter({ adminUsers, onSeed, saving, teamGroups, userStats }) {
   const needsTeamSetup = teamGroups.length === 0
+  const topTeams = [...teamGroups].sort((a, b) => b.submissions - a.submissions).slice(0, 4)
+  const topRecruiters = [...userStats.entries()]
+    .map(([id, stats]) => ({ user: teamGroups.flatMap(group => group.members).find(member => member.id === id), stats }))
+    .filter(row => row.user && isSubmissionRecruiter(row.user))
+    .sort((a, b) => b.stats.submissions - a.stats.submissions)
+    .slice(0, 6)
+
   return (
-    <div className="admin-command-layout">
-      <section className="admin-panel admin-playbook">
-        <div className="admin-panel-title">Setup Playbook</div>
-        <div className="admin-check-list">
-          <CheckRow done={analytics.teams > 0} title="Create teams" body="Group recruiters into delivery teams, PMO, E-care, onboarding, or managers." />
-          <CheckRow done={analytics.managers > 0} title="Assign managers" body="Managers become reporting owners for recruiter visibility and reports." />
-          <CheckRow done={analytics.admins > 0} title="Protect admin access" body="Keep superadmin/admin users separate from recruiting teams." />
-          <CheckRow done={analytics.recruiters > 0} title="Add recruiters" body="Recruiters should sit under a team and manager for scoped reporting." />
+    <div className="admin-overview-layout">
+      <section className="admin-panel admin-executive-card">
+        <div className="admin-panel-title">How This Workspace Is Organized</div>
+        <div className="admin-org-legend">
+          <RolePill role="superadmin" />
+          <RolePill role="admin" />
+          <RolePill role="manager" />
+          <RolePill role="recruiter" />
+          <RolePill role="employee" />
         </div>
+        <p className="admin-note">Admins control the workspace. Recruiting Account Managers own recruiter groups and submissions. PMO, E-care, Onboarding, and Operations managers own employees only.</p>
         {needsTeamSetup && (
           <button className="admin-primary" onClick={onSeed} disabled={saving}>Create demo profiles</button>
         )}
       </section>
 
       <section className="admin-panel">
-        <div className="admin-panel-title">Team Health</div>
+        <div className="admin-panel-title">Admin Owners</div>
+        <div className="admin-owner-list">
+          {adminUsers.map(user => (
+            <PersonMini key={user.id} stats={userStats.get(user.id)} user={user} />
+          ))}
+        </div>
+      </section>
+
+      <section className="admin-panel admin-span-2">
+        <div className="admin-panel-title">Manager Groups at a Glance</div>
         <div className="admin-team-health">
-          {teamGroups.length === 0 ? <EmptyState title="No team structure yet" body="Use Add Demo Profiles or assign team names in People." /> : teamGroups.slice(0, 8).map(group => (
-            <div className="admin-health-row" key={group.team}>
+          {teamGroups.length === 0 ? <EmptyState title="No team structure yet" body="Use Add Demo Profiles or assign team names in Members." /> : teamGroups.slice(0, 8).map(group => (
+            <div className="admin-health-row" key={group.key}>
               <div>
-                <strong>{group.team}</strong>
-                <span>{group.department} - {group.members.length} members - {group.managers.length} managers</span>
+                <strong>{group.title}</strong>
+                <span>{group.department} - {group.recruiters.length} recruiters - {group.supportMembers.length} employees</span>
               </div>
-              <b>{group.submissions}</b>
+              <b>{group.submissions} sub</b>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className="admin-panel">
+        <div className="admin-panel-title">Highest Activity Account Managers</div>
+        <div className="admin-owner-list">
+          {topTeams.map(group => (
+            <div className="admin-performance-row" key={group.key}>
+              <div>
+                <strong>{group.title}</strong>
+                <span>{group.members.length} people</span>
+              </div>
+              <MetricStrip stats={group} />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="admin-panel">
+        <div className="admin-panel-title">Submission Recruiters to Review</div>
+        <div className="admin-owner-list">
+          {topRecruiters.map(row => <PersonMini key={row.user.id} stats={row.stats} user={row.user} />)}
         </div>
       </section>
     </div>
   )
 }
 
-function PeopleTab({ filteredUsers, invite, managers, onInviteChange, onSearch, onSendInvite, onUpdateUser, saving, search, teams }) {
+function PeopleTab({ filteredUsers, invite, managers, memberFilters, onAssignManager, onFilterChange, onInviteChange, onSearch, onSendInvite, onUpdateUser, saving, search, teams }) {
   return (
     <div className="admin-people-layout">
       <section className="admin-panel admin-invite-panel">
-        <div className="admin-panel-title">Invite / Add Member</div>
+        <div className="admin-panel-title">Invite Member</div>
         <div className="admin-form-grid single">
           <label>Email<input value={invite.email} onChange={e => onInviteChange({ ...invite, email: e.target.value })} placeholder="name@company.com" /></label>
           <label>Role<select value={invite.role} onChange={e => onInviteChange({ ...invite, role: e.target.value })}>{ROLES.filter(r => r !== 'superadmin').map(role => <option key={role}>{role}</option>)}</select></label>
@@ -334,14 +456,24 @@ function PeopleTab({ filteredUsers, invite, managers, onInviteChange, onSearch, 
       <section className="admin-panel">
         <div className="admin-panel-headline">
           <div>
-            <div className="admin-panel-title">People Directory</div>
-            <p>Update roles, reporting managers, team, department, extension, and active status.</p>
+            <div className="admin-panel-title">Member Directory</div>
+            <p>{filteredUsers.length} visible members. Use filters first, then edit the row you need.</p>
           </div>
-          <input className="admin-search" value={search} onChange={e => onSearch(e.target.value)} placeholder="Search people, team, role..." />
+          <div className="admin-directory-tools">
+            <input className="admin-search" value={search} onChange={e => onSearch(e.target.value)} placeholder="Search people, manager, role..." />
+            <select value={memberFilters.department} onChange={e => onFilterChange(prev => ({ ...prev, department: e.target.value }))}>
+              <option>All</option>
+              {[...DEPARTMENTS, 'Unassigned'].map(department => <option key={department}>{department}</option>)}
+            </select>
+            <select value={memberFilters.role} onChange={e => onFilterChange(prev => ({ ...prev, role: e.target.value }))}>
+              <option>All</option>
+              {['superadmin', 'admin', 'manager', 'recruiter', 'employee', 'member'].map(role => <option key={role}>{role}</option>)}
+            </select>
+          </div>
         </div>
-        <div className="admin-member-directory">
+        <div className="admin-member-directory compact">
           {filteredUsers.map(user => (
-            <MemberCard key={user.id} managers={managers} onUpdateUser={onUpdateUser} saving={saving} user={user} />
+            <MemberCard key={user.id} managers={managers} onAssignManager={onAssignManager} onUpdateUser={onUpdateUser} saving={saving} user={user} />
           ))}
         </div>
       </section>
@@ -349,7 +481,8 @@ function PeopleTab({ filteredUsers, invite, managers, onInviteChange, onSearch, 
   )
 }
 
-function MemberCard({ managers, onUpdateUser, saving, user }) {
+function MemberCard({ managers, onAssignManager, onUpdateUser, saving, user }) {
+  const [expanded, setExpanded] = useState(false)
   const [draft, setDraft] = useState({
     team: user.team || '',
     department: user.department || '',
@@ -389,59 +522,171 @@ function MemberCard({ managers, onUpdateUser, saving, user }) {
         <div>
           <strong>{user.full_name || 'Unnamed member'}</strong>
           <span>{user.email}</span>
+          <div className="admin-compact-meta">
+            <RolePill role={displayRole(user)} />
+            <small>{user.department || 'Unassigned'}</small>
+            <small>{user.team || 'No group'}</small>
+          </div>
         </div>
-      </div>
-      <div className="admin-member-controls">
-        <label>Role<select value={user.role || 'recruiter'} disabled={saving} onChange={e => onUpdateUser(user.id, { role: e.target.value })}>{ROLES.map(role => <option key={role}>{role}</option>)}</select></label>
-        <label>Team<input {...editProps('team', 'Team')} /></label>
-        <label>Department<input {...editProps('department', 'Department')} list="admin-department-list" /></label>
-        <label>Manager<select value={user.manager_id || ''} disabled={saving} onChange={e => onUpdateUser(user.id, { manager_id: e.target.value || null })}><option value="">Unassigned</option>{managers.filter(manager => manager.id !== user.id).map(manager => <option key={manager.id} value={manager.id}>{manager.full_name || manager.email}</option>)}</select></label>
-        <label>Phone<input {...editProps('phone', 'Phone')} /></label>
-        <label>Ext.<input {...editProps('extension', 'Ext.')} /></label>
       </div>
       <button className={user.is_active === false ? 'admin-status inactive' : 'admin-status active'} onClick={() => onUpdateUser(user.id, { is_active: user.is_active === false })} type="button">
         {user.is_active === false ? 'Inactive' : 'Active'}
       </button>
+      <button className="admin-row-toggle" type="button" onClick={() => setExpanded(prev => !prev)}>
+        {expanded ? 'Close' : 'Edit'}
+      </button>
+      {expanded && <div className="admin-member-controls">
+        <label>Role<select value={user.role || 'recruiter'} disabled={saving} onChange={e => onUpdateUser(user.id, { role: e.target.value })}>{ROLES.map(role => <option key={role}>{role}</option>)}</select></label>
+        <label>Team<input {...editProps('team', 'Team')} /></label>
+        <label>Department<input {...editProps('department', 'Department')} list="admin-department-list" /></label>
+        <label>Manager<select value={user.manager_id || ''} disabled={saving} onChange={e => onAssignManager(user, e.target.value)}><option value="">Unassigned</option>{managers.filter(manager => manager.id !== user.id).map(manager => <option key={manager.id} value={manager.id}>{manager.full_name || manager.email}</option>)}</select></label>
+        <label>Phone<input {...editProps('phone', 'Phone')} /></label>
+        <label>Ext.<input {...editProps('extension', 'Ext.')} /></label>
+      </div>}
       <datalist id="admin-department-list">{DEPARTMENTS.map(department => <option key={department} value={department} />)}</datalist>
     </article>
   )
 }
 
-function TeamsTab({ saving, teamGroups, users, onUpdateUser }) {
+function TeamsTab({ onAssignManager, onMoveMember, saving, teamGroups, userStats, users }) {
+  const [query, setQuery] = useState('')
+  const [openGroups, setOpenGroups] = useState(() => new Set(teamGroups.slice(0, 2).map(group => group.key)))
+  const managerOptions = users.filter(user => ['manager', 'admin', 'superadmin'].includes(user.role))
+  const filteredGroups = teamGroups.filter(group => `${group.title} ${group.department} ${group.members.map(member => member.full_name || member.email).join(' ')}`.toLowerCase().includes(query.toLowerCase()))
+
+  useEffect(() => {
+    if (openGroups.size === 0 && teamGroups.length > 0) {
+      setOpenGroups(new Set(teamGroups.slice(0, 2).map(group => group.key)))
+    }
+  }, [openGroups.size, teamGroups])
+
+  const toggleGroup = key => {
+    setOpenGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
   return (
-    <div className="admin-team-grid-v2">
-      {teamGroups.length === 0 ? (
-        <EmptyState title="No teams yet" body="Seed demo profiles or assign teams in People to build the org chart." />
-      ) : teamGroups.map(group => (
-        <section className="admin-panel admin-team-card-v2" key={group.team}>
-          <div className="admin-team-head">
+    <div className="admin-org-chart">
+      <div className="admin-panel admin-org-toolbar">
+        <div>
+          <div className="admin-panel-title">Manager Groups</div>
+          <p>{filteredGroups.length} groups. Expand only the manager group you want to work on.</p>
+        </div>
+        <input className="admin-search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search manager, department, member..." />
+      </div>
+      {filteredGroups.length === 0 ? (
+        <EmptyState title="No manager groups yet" body="Seed demo profiles or assign managers in Members to build the org chart." />
+      ) : filteredGroups.map(group => {
+        const isOpen = openGroups.has(group.key)
+        return (
+        <section className={`admin-panel admin-org-team ${isOpen ? 'open' : 'collapsed'}`} key={group.key}>
+          <div className="admin-org-team-head">
             <div>
-              <div className="admin-panel-title">{group.team}</div>
-              <p>{group.department} - {group.members.length} members - {group.submissions} submissions</p>
+              <span>{group.department}</span>
+              <h3>{group.title}</h3>
+              <p>
+                {group.department === 'Recruiting'
+                  ? `${group.recruiters.length} recruiters under this Account Manager, ${group.submissions} candidate submissions`
+                  : `${group.supportMembers.length} employees under this department manager, no recruiting submissions`}
+              </p>
             </div>
-            <span>{group.hires} hires</span>
+            <MetricStrip stats={group} />
+            <button className="admin-row-toggle" type="button" onClick={() => toggleGroup(group.key)}>
+              {isOpen ? 'Collapse' : 'Expand'}
+            </button>
           </div>
-          <div className="admin-manager-strip">
-            {group.managers.length === 0 ? <em>No manager assigned</em> : group.managers.map(manager => <strong key={manager.id}>{manager.full_name || manager.email}</strong>)}
-          </div>
-          <div className="admin-member-list">
-            {group.members.map(member => (
-              <div className="admin-member" key={member.id}>
-                <div>
-                  <strong>{member.full_name || member.email}</strong>
-                  <span>{member.role} - {member.extension || 'no ext.'}</span>
+
+          {isOpen && <div className="admin-org-section">
+            <div className="admin-section-label">Managers</div>
+            <div className="admin-person-grid managers">
+              {group.managers.length === 0 ? (
+                <div className="admin-empty-inline">No manager assigned</div>
+              ) : group.managers.map(manager => (
+                <OrgPersonCard key={manager.id} stats={userStats.get(manager.id)} user={manager} />
+              ))}
+            </div>
+          </div>}
+
+          {isOpen && <div className="admin-org-section">
+            <div className="admin-section-label">{group.department === 'Recruiting' ? 'Recruiters Under This Account Manager' : 'Employees Under This Manager'}</div>
+            <div className="admin-recruiter-list">
+              {[...group.recruiters, ...group.supportMembers].map(member => (
+                <div className="admin-recruiter-row" key={member.id}>
+                  <OrgPersonCard stats={userStats.get(member.id)} user={member} />
+                  <div className="admin-team-actions">
+                    <select value={group.key} disabled={saving} onChange={e => onMoveMember(member, e.target.value)}>
+                      <option value="">No manager group</option>
+                      {teamGroups.filter(unit => unit.key !== 'unassigned').map(unit => <option key={unit.key} value={unit.key}>{unit.title}</option>)}
+                    </select>
+                    <select value={member.manager_id || ''} disabled={saving} onChange={e => onAssignManager(member, e.target.value)}>
+                      <option value="">No manager</option>
+                      {managerOptions.filter(manager => manager.id !== member.id).map(manager => (
+                        <option key={manager.id} value={manager.id}>{manager.full_name || manager.email}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-                <select value={member.manager_id || ''} disabled={saving} onChange={e => onUpdateUser(member.id, { manager_id: e.target.value || null })}>
-                  <option value="">Manager</option>
-                  {users.filter(user => ['manager', 'admin', 'superadmin'].includes(user.role) && user.id !== member.id).map(manager => (
-                    <option key={manager.id} value={manager.id}>{manager.full_name || manager.email}</option>
-                  ))}
-                </select>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </div>}
         </section>
-      ))}
+      )})}
+    </div>
+  )
+}
+
+function PermissionsTab({ onUpdateUser, saving, users }) {
+  const admins = users.filter(user => ['admin', 'superadmin'].includes(user.role))
+  const staff = users.filter(user => !['admin', 'superadmin'].includes(user.role))
+
+  return (
+    <div className="admin-permission-layout">
+      <section className="admin-panel">
+        <div className="admin-panel-title">Admin Access</div>
+        <p className="admin-note">Keep system access separate from team membership. Superadmin should stay limited to ownership-level users.</p>
+        <div className="admin-member-list">
+          {admins.map(user => (
+            <div className="admin-member" key={user.id}>
+              <div>
+                <strong>{user.full_name || user.email}</strong>
+                <span>{user.email}</span>
+              </div>
+              <select value={user.role || 'admin'} disabled={saving || user.role === 'superadmin'} onChange={e => onUpdateUser(user.id, { role: e.target.value })}>
+                <option>admin</option>
+                <option>manager</option>
+                <option>employee</option>
+                <option>recruiter</option>
+                {user.role === 'superadmin' && <option>superadmin</option>}
+              </select>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="admin-panel">
+        <div className="admin-panel-title">Promote Staff</div>
+        <p className="admin-note">Managers see their team data. Recruiters see their own data. Admins see the company workspace.</p>
+        <div className="admin-member-list">
+          {staff.slice(0, 20).map(user => (
+            <div className="admin-member" key={user.id}>
+              <div>
+                <strong>{user.full_name || user.email}</strong>
+                <span>{user.team || 'No team'} - {user.department || 'No department'}</span>
+              </div>
+              <select value={user.role || 'employee'} disabled={saving} onChange={e => onUpdateUser(user.id, { role: e.target.value })}>
+                <option>employee</option>
+                <option>recruiter</option>
+                <option>manager</option>
+                <option>admin</option>
+              </select>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   )
 }
@@ -465,56 +710,65 @@ function OrgSettingsTab({ form, onChange, onSave, saving }) {
   )
 }
 
-function AnalyticsTab({ analytics, teamGroups }) {
+function OrgPersonCard({ stats, user }) {
   return (
-    <div className="admin-analytics">
-      <section className="admin-panel">
-        <div className="admin-panel-title">Team Leaderboard</div>
-        <div className="admin-leaderboard">
-          {teamGroups.map((row, index) => (
-            <div className="admin-rank" key={row.team}>
-              <span>{index + 1}</span>
-              <div>
-                <strong>{row.team}</strong>
-                <em>{row.members.length} members</em>
-              </div>
-              <b>{row.hires} hires</b>
-              <small>{row.submissions} submissions</small>
-            </div>
-          ))}
+    <article className="admin-org-person">
+      <div className="admin-member-main">
+        <div className="admin-member-avatar">{initials(user.full_name || user.email)}</div>
+        <div>
+          <strong>{user.full_name || 'Unnamed member'}</strong>
+          <span>{user.email}</span>
         </div>
-      </section>
+      </div>
+      <div className="admin-person-meta">
+        <RolePill role={displayRole(user)} />
+        <span>{user.extension || 'no ext.'}</span>
+      </div>
+      <MetricStrip stats={stats || { submissions: 0, interviews: 0, hires: 0 }} />
+    </article>
+  )
+}
 
-      <section className="admin-panel">
-        <div className="admin-panel-title">Recruiter Performance</div>
-        <div className="admin-leaderboard">
-          {analytics.byRecruiter.slice(0, 12).map((row, index) => (
-            <div className="admin-rank" key={row.id}>
-              <span>{index + 1}</span>
-              <div>
-                <strong>{row.name}</strong>
-                <em>{row.team} - {row.role}</em>
-              </div>
-              <b>{row.hires} hires</b>
-              <small>{row.submissions} submissions</small>
-            </div>
-          ))}
+function PersonMini({ stats, user }) {
+  return (
+    <div className="admin-person-mini">
+      <div className="admin-member-main">
+        <div className="admin-member-avatar">{initials(user.full_name || user.email)}</div>
+        <div>
+          <strong>{user.full_name || user.email}</strong>
+          <span>{user.team || user.role}</span>
         </div>
-      </section>
+      </div>
+      <RolePill role={displayRole(user)} />
+      <MetricStrip stats={stats || { submissions: 0, interviews: 0, hires: 0 }} />
     </div>
   )
 }
 
-function CheckRow({ body, done, title }) {
+function MetricStrip({ stats }) {
   return (
-    <div className={done ? 'admin-check-row done' : 'admin-check-row'}>
-      <span>{done ? 'OK' : 'TO DO'}</span>
-      <div>
-        <strong>{title}</strong>
-        <small>{body}</small>
-      </div>
+    <div className="admin-metric-strip">
+      <span><b>{stats.submissions || 0}</b> Sub</span>
+      <span><b>{stats.interviews || 0}</b> Int</span>
+      <span><b>{stats.hires || 0}</b> Hires</span>
     </div>
   )
+}
+
+function RolePill({ role }) {
+  return <span className={`admin-role-pill ${role || 'recruiter'}`}>{role || 'recruiter'}</span>
+}
+
+function displayRole(user) {
+  if (user.role === 'employee') return 'employee'
+  if (user.role === 'recruiter' && user.department !== 'Recruiting') return 'member'
+  return user.role || 'recruiter'
+}
+
+function initials(value = '') {
+  const parts = value.trim().split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
+  return value.slice(0, 2).toUpperCase()
 }
 
 function Stat({ label, value, helper }) {
