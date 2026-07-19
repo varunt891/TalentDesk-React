@@ -5635,13 +5635,13 @@ input, select, textarea, button {
 
 @media (max-width: 480px) {
   .dashboard-stat-grid {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
   .candidates-stat-grid {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
   .quick-actions-grid {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   }
 }
 
@@ -5858,33 +5858,141 @@ input, select, textarea, button {
     padding-right: 0 !important;
   }
 
+  /* ── Dashboard hero: stack vertically, compact ── */
+  .dashboard-hero {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+    padding-top: 12px !important;
+    padding-bottom: 10px !important;
+  }
+
+  .dashboard-welcome-panel {
+    padding: 14px 16px !important;
+    min-height: 0 !important;
+  }
+
+  .dashboard-welcome-panel h1 {
+    font-size: 20px !important;
+  }
+
+  /* Hero stat panel: horizontal strip instead of tall box */
+  .dashboard-hero-panel {
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 12px 16px !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    gap: 10px !important;
+  }
+
+  .dashboard-hero-panel strong {
+    font-size: 26px !important;
+  }
+
+  /* ── Control bar: 2-col grid for the selects ── */
+  .dashboard-control-bar {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    padding: 10px 12px !important;
+  }
+
+  /* Time-range selector spans full width */
+  .dashboard-control-bar .time-range-selector {
+    grid-column: 1 / -1 !important;
+    display: flex !important;
+    justify-content: space-between !important;
+  }
+
+  .dashboard-control-bar .time-range-tab {
+    flex: 1 !important;
+    text-align: center !important;
+    padding: 6px 4px !important;
+  }
+
+  /* Reset button spans full width */
+  .dashboard-reset-btn {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+  }
+
+  /* ── Stat grid: 2 columns (compact) ── */
+  .dashboard-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-stat {
+    min-height: 82px !important;
+    padding: 11px 12px !important;
+  }
+
+  .stat-content strong {
+    font-size: 22px !important;
+  }
+
+  .stat-content span {
+    font-size: 10px !important;
+  }
+
+  .dashboard-insight-strip,
+  .candidates-stat-grid,
+  .jobs-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  /* ── Quick actions: 3 columns ── */
+  .quick-actions-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .quick-action-card {
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    gap: 6px !important;
+    padding: 10px 8px !important;
+    min-height: 72px !important;
+  }
+
+  .quick-action-copy strong {
+    font-size: 11px !important;
+  }
+
+  .quick-action-copy small {
+    display: none !important;
+  }
+
+  /* ── Dashboard panels: single column, tight padding ── */
+  .dashboard-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .dashboard-panel-head {
+    padding: 12px 14px 0 !important;
+  }
+
+  .dashboard-chart,
+  .dashboard-donut {
+    height: 160px !important;
+  }
+
+  .dashboard-quick-actions {
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+  }
+
   .dashboard-hero,
   .dashboard-quick-actions,
   .candidates-topbar,
   .jobs-topbar,
   .directory-topbar {
-    padding-top: 14px !important;
-    padding-bottom: 14px !important;
-  }
-
-  .dashboard-stat-grid,
-  .dashboard-insight-strip,
-  .candidates-stat-grid,
-  .jobs-summary {
-    grid-template-columns: 1fr !important;
-    gap: 12px !important;
-  }
-
-  .dashboard-control-bar {
-    grid-template-columns: 1fr !important;
-    gap: 10px !important;
-  }
-
-  .quick-actions-grid,
-  .dashboard-grid,
-  .directory-grid {
-    grid-template-columns: 1fr !important;
-    gap: 12px !important;
+    padding-top: 12px !important;
+    padding-bottom: 12px !important;
   }
 
   .quick-action-card,
