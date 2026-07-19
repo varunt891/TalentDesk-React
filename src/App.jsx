@@ -18,7 +18,18 @@ import AppLayout from './components/layout/AppLayout'
 import { db } from './lib/api'
 
 function ProtectedRoute({ children }) {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg)' }}>
+        <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+          <div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'login-spin 0.7s linear infinite' }} />
+          <span style={{ color: 'var(--text2)', fontSize: 13, fontWeight: 600 }}>Restoring session...</span>
+        </div>
+      </div>
+    )
+  }
 
   if (!user) {
     return <Navigate to="/login" replace />

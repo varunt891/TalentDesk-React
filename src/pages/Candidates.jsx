@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useCandidates } from '../hooks/useCandidates'
+import { useAuth } from '../context/AuthContext'
 import * as XLSX from 'xlsx'
 
 const STATUSES = ['Pending', 'Submitted', 'Shortlisted', 'Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired', 'Rejected', 'On Hold', 'Withdrew']
@@ -140,6 +141,8 @@ function computeScore(c) {
 
 export default function Candidates() {
   const { candidates, loading, addCandidate, updateCandidate, deleteCandidate } = useCandidates()
+  const { profile } = useAuth()
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'superadmin'
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({ status: [], fe: [], job: [], location: [], feedback: [] })
   const [showModal, setShowModal] = useState(false)
@@ -301,6 +304,21 @@ export default function Candidates() {
     { label: 'Rejected', value: candidates.filter(c => c.external_status === 'Rejected').length, helper: 'client declined', tone: 'orange' },
   ]
 
+  const tableHeaders = [
+    { field: 'last_name', label: 'Candidate', sortable: true },
+    { field: 'submission_date', label: 'Date', sortable: true },
+    { field: 'job_id', label: 'Job ID', sortable: true },
+    { field: 'job_title', label: 'Job Title', sortable: false },
+    { field: 'location', label: 'Location', sortable: true },
+    { field: 'internal_status', label: 'Int. Status', sortable: true },
+    { field: 'external_status', label: 'Ext. Status', sortable: true },
+    { field: 'fe_name', label: 'Front End', sortable: true }
+  ]
+  if (isAdmin) {
+    tableHeaders.push({ field: 'recruiter_name', label: 'Recruiter', sortable: true })
+  }
+  tableHeaders.push({ field: 'actions', label: '', sortable: false })
+
   return (
     <div className="candidates-page">
 
@@ -383,18 +401,16 @@ export default function Candidates() {
                     <th style={{ ...thStyle, width: '40px', padding: '10px 8px 10px 16px' }}>
                       <input type="checkbox" checked={allSelected} ref={el => { if (el) el.indeterminate = someSelected && !allSelected }} onChange={e => toggleSelectAll(e.target.checked)} style={{ accentColor: 'var(--accent)', width: '15px', height: '15px', cursor: 'pointer' }} />
                     </th>
-                    {[['last_name', 'Candidate'], ['submission_date', 'Date'], ['job_id', 'Job ID'], null, ['location', 'Location'], ['internal_status', 'Int. Status'], ['external_status', 'Ext. Status'], ['fe_name', 'Front End'], null].map((col, i) => {
-                      if (col === null) {
-                        const labels = ['Job Title', '']
-                        const idx = [3, 8].indexOf(i)
-                        return <th key={i} style={thStyle}>{labels[idx] || ''}</th>
+                    {tableHeaders.map(col => {
+                      if (!col.sortable) {
+                        return <th key={col.field} style={thStyle}>{col.label}</th>
                       }
                       return (
-                        <th key={col[0]} style={{ ...thStyle, cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort(col[0])}>
+                        <th key={col.field} style={{ ...thStyle, cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort(col.field)}>
                           <span className="candidate-th-label">
-                            {col[1]}
+                            {col.label}
                             <span
-                              className={`candidate-sort ${sortField === col[0] ? (sortDir === -1 ? 'desc' : 'asc') : ''}`}
+                              className={`candidate-sort ${sortField === col.field ? (sortDir === -1 ? 'desc' : 'asc') : ''}`}
                               aria-hidden="true"
                             />
                           </span>
@@ -449,6 +465,11 @@ export default function Candidates() {
                             <span style={{ color: 'var(--text3)', fontSize: '12px' }}>—</span>
                           )}
                         </td>
+                        {isAdmin && (
+                          <td style={{ ...tdStyle, fontSize: '12px', color: 'var(--text2)', fontWeight: '500' }}>
+                            {c.recruiter_name || 'System'}
+                          </td>
+                        )}
                         <td style={tdStyle}>
                           <div className="candidate-row-actions">
                             <button onClick={() => setShowDetail(c)} title="View details">View</button>

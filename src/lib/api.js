@@ -91,6 +91,7 @@ class QueryBuilder {
     this.orderBy = null
     this.payload = undefined
     this.singleMode = false
+    this.extraParams = {}
   }
 
   select() {
@@ -99,6 +100,11 @@ class QueryBuilder {
 
   eq(column, value) {
     this.filters.push({ op: 'eq', column, value })
+    return this
+  }
+
+  param(key, value) {
+    this.extraParams[key] = value
     return this
   }
 
@@ -139,6 +145,7 @@ class QueryBuilder {
       const params = new URLSearchParams()
       if (this.filters.length) params.set('filter', JSON.stringify(this.filters))
       if (this.orderBy) params.set('order', JSON.stringify(this.orderBy))
+      for (const [k, v] of Object.entries(this.extraParams)) params.set(k, v)
       const query = params.toString() ? `?${params.toString()}` : ''
 
       if (this.action === 'select') {

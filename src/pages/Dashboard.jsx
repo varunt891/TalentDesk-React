@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import {
   Area,
   AreaChart,
@@ -37,8 +37,29 @@ export default function Dashboard({ onNavigate }) {
   const [profiles, setProfiles] = useState([])
   const [timeRange, setTimeRange] = useState('all')
   const [stageFilter, setStageFilter] = useState('All')
-  const [ownerFilter, setOwnerFilter] = useState('All')
+  const [selectedOwners, setSelectedOwners] = useState([])
+  const [showOwnerDropdown, setShowOwnerDropdown] = useState(false)
+  const [recruiterSearch, setRecruiterSearch] = useState('')
+  const dropdownRef = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowOwnerDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  useEffect(() => {
+    if (!showOwnerDropdown) {
+      setRecruiterSearch('')
+    }
+  }, [showOwnerDropdown])
+
   const [jobStatusFilter, setJobStatusFilter] = useState('All')
+  const [searchQuery, setSearchQuery] = useState('')
   const [scratchpad, setScratchpad] = useState(() => localStorage.getItem('td_scratchpad') || '')
 
   const handleScratchpadChange = (e) => {
@@ -119,14 +140,39 @@ export default function Dashboard({ onNavigate }) {
       list = list.filter(c => c.submission_date && c.submission_date >= cutoffStr)
     }
     if (stageFilter !== 'All') list = list.filter(c => (c.external_status || c.internal_status || 'Unassigned') === stageFilter)
-    if (ownerFilter !== 'All') list = list.filter(c => (c.recruiter_id || c.user_id || c.recruiter_name || c.fe_name || 'Unassigned') === ownerFilter)
+    if (selectedOwners.length > 0) {
+      list = list.filter(c => {
+        const key = c.recruiter_id || c.user_id || c.recruiter_name || c.fe_name || 'Unassigned'
+        return selectedOwners.includes(key)
+      })
+    }
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      list = list.filter(c => 
+        `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase().includes(q) ||
+        (c.email && c.email.toLowerCase().includes(q)) ||
+        (c.job_title && c.job_title.toLowerCase().includes(q)) ||
+        (c.client && c.client.toLowerCase().includes(q)) ||
+        (c.recruiter_name && c.recruiter_name.toLowerCase().includes(q)) ||
+        (c.fe_name && c.fe_name.toLowerCase().includes(q))
+      )
+    }
     return list
-  }, [candidates, ownerFilter, stageFilter, timeRange])
+  }, [candidates, selectedOwners, stageFilter, timeRange, searchQuery])
 
   const filteredJobs = useMemo(() => {
-    if (jobStatusFilter === 'All') return jobs
-    return jobs.filter(job => (job.status || 'Unassigned') === jobStatusFilter)
-  }, [jobStatusFilter, jobs])
+    let list = jobs
+    if (jobStatusFilter !== 'All') list = list.filter(job => (job.status || 'Unassigned') === jobStatusFilter)
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      list = list.filter(j => 
+        (j.title && j.title.toLowerCase().includes(q)) ||
+        (j.client && j.client.toLowerCase().includes(q)) ||
+        (j.job_id && j.job_id.toLowerCase().includes(q))
+      )
+    }
+    return list
+  }, [jobStatusFilter, jobs, searchQuery])
 
   const ownerOptions = useMemo(() => {
     const owners = new Map()
@@ -140,6 +186,12 @@ export default function Dashboard({ onNavigate }) {
     })
     return [...owners.entries()].sort((a, b) => a[1].localeCompare(b[1]))
   }, [candidates, profiles])
+
+  const filteredRecruiterOptions = useMemo(() => {
+    if (!recruiterSearch) return ownerOptions
+    const q = recruiterSearch.toLowerCase()
+    return ownerOptions.filter(opt => opt[1].toLowerCase().includes(q))
+  }, [ownerOptions, recruiterSearch])
 
   const stageOptions = useMemo(() => {
     const stages = new Set(['All', ...STAGES])
@@ -183,25 +235,6 @@ export default function Dashboard({ onNavigate }) {
     ).length
   }, [candidates])
 
-  const thisWeekHires = useMemo(() => {
-    const from = new Date(); from.setDate(from.getDate() - 7)
-    return candidates.filter(c =>
-      (c.internal_status === 'Hired' || c.external_status === 'Hired') &&
-      c.submission_date >= from.toISOString().slice(0, 10)
-    ).length
-  }, [candidates])
-
-  const lastWeekHires = useMemo(() => {
-    const now = new Date()
-    const from = new Date(now); from.setDate(now.getDate() - 14)
-    const to = new Date(now); to.setDate(now.getDate() - 7)
-    return candidates.filter(c =>
-      (c.internal_status === 'Hired' || c.external_status === 'Hired') &&
-      c.submission_date >= from.toISOString().slice(0, 10) &&
-      c.submission_date < to.toISOString().slice(0, 10)
-    ).length
-  }, [candidates])
-
   const pipelineData = useMemo(() => {
     return STAGES.map((stage, index) => ({
       stage: stage.replace('Interview ', ''),
@@ -220,8 +253,12 @@ export default function Dashboard({ onNavigate }) {
       if (['Interview Scheduled', 'Interview Done'].includes(candidate.internal_status)) current.interviews += 1
       byName.set(name, current)
     })
-    const sortedList = [...byName.values()].sort((a, b) => b.submissions - a.submissions).slice(0, 6)
-    const maxSubmissions = sortedList.length > 0 ? sortedList[0].submissions : 1
+    const sortedList = [...byName.values()].sort((a, b) => {
+      if (b.hires !== a.hires) return b.hires - a.hires
+      if (b.submissions !== a.submissions) return b.submissions - a.submissions
+      return b.interviews - a.interviews
+    }).slice(0, 6)
+    const maxSubmissions = sortedList.length > 0 ? Math.max(...sortedList.map(s => s.submissions)) : 1
     return sortedList.map(item => ({
       ...item,
       percentage: Math.round((item.submissions / maxSubmissions) * 100),
@@ -319,6 +356,19 @@ export default function Dashboard({ onNavigate }) {
       </header>
 
       <section className="dashboard-control-bar">
+        <div className="dashboard-search-container">
+          <span className="search-icon">🔍</span>
+          <input 
+            type="text" 
+            placeholder="Search candidates, emails, jobs..." 
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="dashboard-search-input"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} className="search-clear-btn" type="button">×</button>
+          )}
+        </div>
         <div className="time-range-selector">
           {[
             { id: '7d', label: '7 Days' },
@@ -331,13 +381,65 @@ export default function Dashboard({ onNavigate }) {
             </button>
           ))}
         </div>
-        <label>
-          Recruiter
-          <select value={ownerFilter} onChange={e => setOwnerFilter(e.target.value)}>
-            <option value="All">All recruiters</option>
-            {ownerOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-          </select>
-        </label>
+        <div className="custom-multiselect-container" ref={dropdownRef}>
+          <span className="multiselect-label">Recruiter</span>
+          <button 
+            type="button" 
+            className="multiselect-trigger" 
+            onClick={() => setShowOwnerDropdown(prev => !prev)}
+          >
+            <span className="multiselect-trigger-text">
+              {selectedOwners.length === 0 
+                ? 'All recruiters' 
+                : selectedOwners.length === 1 
+                  ? ownerOptions.find(([id]) => id === selectedOwners[0])?.[1] || selectedOwners[0]
+                  : `${selectedOwners.length} recruiters selected`}
+            </span>
+            <span className="multiselect-arrow">▼</span>
+          </button>
+          
+          {showOwnerDropdown && (
+            <div className="multiselect-dropdown-panel" onClick={e => e.stopPropagation()}>
+              <input 
+                type="text" 
+                placeholder="Search recruiters..." 
+                className="multiselect-search-input"
+                value={recruiterSearch}
+                onChange={e => setRecruiterSearch(e.target.value)}
+              />
+              <div className="multiselect-options-list">
+                <label className="multiselect-option-all">
+                  <input 
+                    type="checkbox" 
+                    checked={selectedOwners.length === 0} 
+                    onChange={() => setSelectedOwners([])}
+                  />
+                  <span>All recruiters</span>
+                </label>
+                <div className="multiselect-options-divider" />
+                {filteredRecruiterOptions.map(([id, name]) => {
+                  const isChecked = selectedOwners.includes(id)
+                  return (
+                    <label key={id} className="multiselect-option">
+                      <input 
+                        type="checkbox" 
+                        checked={isChecked} 
+                        onChange={() => {
+                          setSelectedOwners(prev => 
+                            isChecked 
+                              ? prev.filter(item => item !== id) 
+                              : [...prev, id]
+                          )
+                        }}
+                      />
+                      <span>{name}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
         <label>
           Candidate Stage
           <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}>
@@ -350,7 +452,7 @@ export default function Dashboard({ onNavigate }) {
             {jobStatusOptions.map(status => <option key={status}>{status}</option>)}
           </select>
         </label>
-        <button className="dashboard-reset-btn" type="button" onClick={() => { setTimeRange('all'); setOwnerFilter('All'); setStageFilter('All'); setJobStatusFilter('All') }}>
+        <button className="dashboard-reset-btn" type="button" onClick={() => { setTimeRange('all'); setSelectedOwners([]); setStageFilter('All'); setJobStatusFilter('All'); setSearchQuery('') }}>
           Reset
         </button>
       </section>
@@ -432,41 +534,101 @@ export default function Dashboard({ onNavigate }) {
             </div>
           </Panel>
 
-          <Panel title="Recruiter Leaderboard" subtitle="Top performers by submission rate">
-            <div className="dashboard-report-list">
-              {recruiterData.length === 0 ? <EmptyLine text="No recruiter submissions in this period" /> : recruiterData.map((row, index) => {
-                const medals = ['🥇', '🥈', '🥉']
-                const rankDisplay = index < 3 ? medals[index] : `#${index + 1}`
-                return (
-                  <div className="dashboard-report-row visual-leaderboard" key={row.name}>
-                    <div className="leaderboard-rank">{rankDisplay}</div>
-                    <div className="leaderboard-details">
-                      <div className="leaderboard-meta">
-                        <strong>{row.name}</strong>
-                        <small>{row.interviews} interviews · {row.hires} hires</small>
-                      </div>
-                      <div className="leaderboard-progress-container">
-                        <div className="leaderboard-progress-bar" style={{ width: `${row.percentage}%` }} />
+          <Panel title="Recruiter Leaderboard" subtitle="Top performers by hires and submissions">
+            <div className="leaderboard-container">
+              {recruiterData.length === 0 ? (
+                <EmptyLine text="No recruiter submissions in this period" />
+              ) : (
+                recruiterData.map((row, index) => {
+                  const medals = ['🥇', '🥈', '🥉']
+                  const rankDisplay = index < 3 ? medals[index] : `#${index + 1}`
+                  const initials = row.name
+                    .split(' ')
+                    .map(n => n[0])
+                    .join('')
+                    .toUpperCase()
+                    .slice(0, 2)
+                  const conversionPct = row.submissions > 0 ? Math.round((row.hires / row.submissions) * 100) : 0
+                  return (
+                    <div className={`leaderboard-card rank-${index + 1}`} key={row.name}>
+                      <div className="leaderboard-rank-badge">{rankDisplay}</div>
+                      <div className="leaderboard-avatar-circle">{initials}</div>
+                      <div className="leaderboard-info">
+                        <div className="leaderboard-name-row">
+                          <strong>{row.name}</strong>
+                          <span className="leaderboard-conv-badge" title="Hire conversion rate">{conversionPct}% conv</span>
+                        </div>
+                        <div className="leaderboard-stats-row">
+                          <span className="leaderboard-stat-pill sub" title="Submissions">💼 {row.submissions} subs</span>
+                          <span className="leaderboard-stat-pill int" title="Interviews">📅 {row.interviews} ints</span>
+                          <span className="leaderboard-stat-pill hire" title="Hires">🎉 {row.hires} hires</span>
+                        </div>
+                        <div className="leaderboard-progress-bg">
+                          <div className="leaderboard-progress-fill" style={{ width: `${row.percentage}%` }} />
+                        </div>
                       </div>
                     </div>
-                    <b className="leaderboard-value">{row.submissions}</b>
-                  </div>
-                )
-              })}
+                  )
+                })
+              )}
             </div>
           </Panel>
 
           <Panel title="Activity Feed" subtitle="Latest changes across your visible workspace">
-            <div className="dashboard-activity">
-              {activity.length === 0 ? <EmptyLine text="No activity yet" /> : activity.map(item => (
-                <div className="dashboard-activity-row" key={item.id}>
-                  <span>{item.action?.[0]?.toUpperCase()}</span>
-                  <div>
-                    <strong>{item.summary || item.entity}</strong>
-                    <small>{item.actor_name || 'System'} {item.action} {item.entity?.replace('_', ' ')} · {formatTime(item.created_at)}</small>
-                  </div>
-                </div>
-              ))}
+            <div className="activity-timeline">
+              {activity.length === 0 ? (
+                <EmptyLine text="No activity yet" />
+              ) : (
+                activity.map(item => {
+                  const actionLower = (item.action || '').toLowerCase()
+                  
+                  let icon = '📝'
+                  let typeClass = 'update'
+                  
+                  if (actionLower.includes('create') || actionLower.includes('add') || actionLower.includes('submit')) {
+                    icon = '✨'
+                    typeClass = 'create'
+                  } else if (actionLower.includes('delete') || actionLower.includes('remove')) {
+                    icon = '🗑️'
+                    typeClass = 'delete'
+                  } else if (actionLower.includes('schedule') || actionLower.includes('interview')) {
+                    icon = '📅'
+                    typeClass = 'interview'
+                  } else if (actionLower.includes('call') || actionLower.includes('phone')) {
+                    icon = '📞'
+                    typeClass = 'call'
+                  } else if (actionLower.includes('hire') || actionLower.includes('offer')) {
+                    icon = '🎉'
+                    typeClass = 'success'
+                  }
+
+                  const actorInitials = (item.actor_name || 'System')
+                    .split(' ')
+                    .map(n => n[0])
+                    .join('')
+                    .toUpperCase()
+                    .slice(0, 2)
+
+                  return (
+                    <div className={`activity-timeline-item ${typeClass}`} key={item.id}>
+                      <div className="activity-item-left">
+                        <div className="activity-action-icon">{icon}</div>
+                        <div className="activity-timeline-line" />
+                      </div>
+                      <div className="activity-item-content">
+                        <div className="activity-item-meta">
+                          <span className="activity-actor" title={item.actor_name || 'System'}>
+                            <span className="activity-actor-avatar">{actorInitials}</span>
+                            {item.actor_name || 'System'}
+                          </span>
+                          <span className="activity-time">{formatTime(item.created_at)}</span>
+                        </div>
+                        <p className="activity-summary">{item.summary || `${item.action} ${item.entity}`}</p>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
             </div>
           </Panel>
         </div>

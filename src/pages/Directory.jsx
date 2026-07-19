@@ -2,7 +2,17 @@ import { useEffect, useState } from 'react'
 import { db } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
-const DEPARTMENTS = ['Front-End Team', 'Ecare Team', 'Recruiters', 'Managers', 'PMO', 'Onboarding', 'Operations']
+const DEPARTMENTS = [
+  'Recruitment Managers',
+  'Account Managers',
+  'Healthcare',
+  'IT',
+  'PMO Team',
+  'Ecare Team',
+  'HR Onboarding',
+  'Helpdesk Team',
+  'Operations'
+]
 
 const emptyForm = {
   full_name: '',
@@ -10,7 +20,7 @@ const emptyForm = {
   phone: '',
   extension: '',
   role: 'recruiter',
-  department: 'Front-End Team',
+  department: 'Healthcare',
   team: '',
 }
 
@@ -19,7 +29,7 @@ export default function Directory() {
   const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [activeDepartment, setActiveDepartment] = useState('Front-End Team')
+  const [activeDepartment, setActiveDepartment] = useState('Recruitment Managers')
   const [showAdd, setShowAdd] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(emptyForm)
@@ -38,6 +48,7 @@ export default function Directory() {
       .from('profiles')
       .select('*')
       .eq('is_active', true)
+      .param('full_org', 'true')
       .order('full_name')
     setMembers(data || [])
     setLoading(false)
@@ -55,17 +66,14 @@ export default function Directory() {
     return !q || text.includes(q)
   })
 
-  const admins = searchFiltered.filter(member => ['admin', 'superadmin'].includes(member.role))
-  const staff = searchFiltered.filter(member => !['admin', 'superadmin'].includes(member.role))
-
-  const visibleStaff = staff.filter(member => normalizeDepartment(member) === activeDepartment)
+  const visibleStaff = searchFiltered.filter(member => normalizeDepartment(member) === activeDepartment)
   const departmentCounts = DEPARTMENTS.map(department => ({
     department,
-    count: staff.filter(member => normalizeDepartment(member) === department).length,
+    count: members.filter(member => normalizeDepartment(member) === department).length,
   }))
 
   const openAdd = (department = activeDepartment) => {
-    setForm({ ...emptyForm, department: department || 'Front-End Team' })
+    setForm({ ...emptyForm, department: department || 'Healthcare' })
     setEditingId(null)
     setShowAdd(true)
   }
@@ -135,7 +143,7 @@ export default function Directory() {
             <span>Search</span>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, email, extension..." />
           </div>
-          <div className="directory-member-count">{staff.length} members</div>
+          <div className="directory-member-count">{searchFiltered.length} members</div>
           {isAdmin && <button onClick={() => openAdd()} type="button">Add member</button>}
         </div>
       </header>
@@ -152,54 +160,28 @@ export default function Directory() {
             <strong>{item.count}</strong>
           </button>
         ))}
-        <button
-          className={activeDepartment === 'Admins' ? 'admin-tab active' : 'admin-tab'}
-          onClick={() => setActiveDepartment('Admins')}
-          type="button"
-        >
-          <span>Admins</span>
-          <strong>{admins.length}</strong>
-        </button>
       </div>
 
       <main className="directory-content">
         {loading ? (
           <EmptyState title="Loading directory" body="Pulling company contacts." />
         ) : (
-          <>
-            {activeDepartment !== 'Admins' ? (
-              <section className="directory-section">
-                <div className="directory-section-head">
-                  <div>
-                    <h2>{activeDepartment}</h2>
-                    <span>{visibleStaff.length} contacts</span>
-                  </div>
-                  {isAdmin && <button onClick={() => openAdd(activeDepartment)} type="button">Add to {activeDepartment}</button>}
-                </div>
-                {visibleStaff.length === 0 ? (
-                  <EmptyState title="No contacts in this department" body="Add a member to this department from the button above." />
-                ) : (
-                  <div className="directory-grid">
-                    {visibleStaff.map((member, index) => <MemberCard key={member.id} member={member} index={index} canEdit={isAdmin} onEdit={openEdit} showToast={showToast} />)}
-                  </div>
-                )}
-              </section>
+          <section className="directory-section">
+            <div className="directory-section-head">
+              <div>
+                <h2>{activeDepartment}</h2>
+                <span>{visibleStaff.length} contacts</span>
+              </div>
+              {isAdmin && <button onClick={() => openAdd(activeDepartment)} type="button">Add to {activeDepartment}</button>}
+            </div>
+            {visibleStaff.length === 0 ? (
+              <EmptyState title="No contacts in this department" body="Add a member to this department from the button above." />
             ) : (
-              <section className="directory-section admins">
-                <div className="directory-section-head">
-                  <div>
-                    <h2>Admins and Superadmins</h2>
-                    <span>{admins.length} users</span>
-                  </div>
-                </div>
-                {admins.length === 0 ? <EmptyState title="No admins visible" body="Admin users are separated from staff contacts." compact /> : (
-                  <div className="directory-grid">
-                    {admins.map((member, index) => <MemberCard key={member.id} member={member} index={index} admin canEdit={isAdmin} onEdit={openEdit} showToast={showToast} />)}
-                  </div>
-                )}
-              </section>
+              <div className="directory-grid">
+                {visibleStaff.map((member, index) => <MemberCard key={member.id} member={member} index={index} canEdit={isAdmin} onEdit={openEdit} showToast={showToast} />)}
+              </div>
             )}
-          </>
+          </section>
         )}
       </main>
 
@@ -285,14 +267,28 @@ const TeamIcon = () => (
 )
 
 function normalizeDepartment(member) {
-  if (member.department === 'Recruiters') return 'Front-End Team'
-  if (member.department === 'E-care') return 'Ecare Team'
-  if (member.department) return member.department
-  if (member.role === 'manager') return 'Managers'
-  return 'Front-End Team'
+  if (['admin', 'superadmin'].includes(member.role)) return 'Operations'
+  
+  const dept = (member.department || '').toLowerCase()
+  const isRecruitmentBranch = dept.includes('healthcare') || dept.includes('it')
+  
+  if (member.role === 'manager' && isRecruitmentBranch) {
+    if (!member.manager_id) return 'Recruitment Managers'
+    return 'Account Managers'
+  }
+  
+  if (dept.includes('healthcare')) return 'Healthcare'
+  if (dept.includes('it')) return 'IT'
+  if (dept.includes('pmo')) return 'PMO Team'
+  if (dept.includes('ecare') || dept.includes('e-care')) return 'Ecare Team'
+  if (dept.includes('onboarding')) return 'HR Onboarding'
+  if (dept.includes('helpdesk')) return 'Helpdesk Team'
+  if (dept.includes('operations')) return 'Operations'
+  
+  return 'Healthcare'
 }
 
-function MemberCard({ member, index, admin, canEdit, onEdit, showToast }) {
+function MemberCard({ member, index, canEdit, onEdit, showToast }) {
   const initials = (member.full_name || member.email || '?').split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase()
   const copyMember = async (event) => {
     event.stopPropagation()
@@ -302,24 +298,14 @@ function MemberCard({ member, index, admin, canEdit, onEdit, showToast }) {
     }
   }
   return (
-    <article className={`directory-card ${admin ? 'admin' : ''}`}>
+    <article className="directory-card">
       <div className="directory-avatar" style={{ background: avatarGradients[index % avatarGradients.length] }}>{initials}</div>
       <div className="directory-card-copy">
         <strong>{member.full_name || 'Unnamed contact'}</strong>
         <div className="directory-card-meta">
-          {member.extension ? (
-            <>
-              <span className="directory-meta-ext">x{member.extension}</span>
-              {member.phone && <span className="directory-meta-sep"> · </span>}
-              <span className="directory-meta-phone">{member.phone}</span>
-            </>
-          ) : (
-            <>
-              <span className="directory-meta-dept">{admin ? member.role : normalizeDepartment(member)}</span>
-              {member.phone && <span className="directory-meta-sep"> · </span>}
-              <span className="directory-meta-phone">{member.phone}</span>
-            </>
-          )}
+          {member.extension && <span className="directory-meta-ext">{member.extension}</span>}
+          {member.extension && member.phone && <span className="directory-meta-sep"> · </span>}
+          {member.phone && <span className="directory-meta-phone">{member.phone}</span>}
         </div>
       </div>
       <div className="directory-card-actions">

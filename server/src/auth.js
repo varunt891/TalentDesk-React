@@ -85,12 +85,13 @@ export async function requireAuth(req, res, next) {
 
     const tenantOrg = await findTenantOrganization(req)
 
-    if (tenantOrg && profile.org_id !== tenantOrg.id) {
+    if (tenantOrg && profile.org_id !== tenantOrg.id && profile.role !== 'superadmin') {
       return res.status(403).json({
         error: 'This account does not belong to this company workspace',
       })
     }
 
+    req.tenantOrg = tenantOrg
     req.user = {
       id: profile.id,
       email: profile.email,

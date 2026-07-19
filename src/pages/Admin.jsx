@@ -4,9 +4,9 @@ import { useAuth } from '../context/AuthContext'
 
 const TABS = ['Overview', 'Org Chart', 'Members', 'Access', 'Company']
 const ROLES = ['employee', 'recruiter', 'manager', 'admin', 'superadmin']
-const DEPARTMENTS = ['Recruiting', 'Managers', 'PMO', 'E-care', 'Onboarding', 'Operations']
+const DEPARTMENTS = ['Healthcare', 'IT', 'Operations']
 
-const isSubmissionRecruiter = user => user.role === 'recruiter' && user.department === 'Recruiting'
+const isSubmissionRecruiter = user => user.role === 'recruiter'
 
 export default function Admin() {
   const { profile } = useAuth()
@@ -23,8 +23,13 @@ export default function Admin() {
   const [invite, setInvite] = useState({ email: '', role: 'recruiter', team: '', manager_id: '', department: 'Recruiting' })
   const [orgForm, setOrgForm] = useState({ name: '', slug: '', subdomain: '', email_domain: '', primary_color: '#4f7cff', logo_url: '', timezone: 'America/New_York' })
 
-  const isAdmin = profile?.role === 'admin' || profile?.role === 'superadmin'
+  const isSuperAdmin = profile?.role === 'superadmin'
+  const isAdmin = profile?.role === 'admin' || isSuperAdmin
   const orgId = profile?.org_id
+
+  // Superadmin org switching
+  const [allOrgs, setAllOrgs] = useState([])
+  const [selectedOrgId, setSelectedOrgId] = useState(null)
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type })
@@ -32,14 +37,15 @@ export default function Admin() {
   }
 
   const fetchAdminData = useCallback(async () => {
-    if (!orgId) return
+    const activeOrgId = selectedOrgId || orgId
+    if (!activeOrgId) return
     setLoading(true)
     try {
       const [profilesRes, candidatesRes, jobsRes, orgRes] = await Promise.all([
-        db.from('profiles').select('*').eq('org_id', orgId).order('full_name'),
-        db.from('candidates').select('*').eq('org_id', orgId),
+        db.from('profiles').select('*').eq('org_id', activeOrgId).param('full_org', 'true').order('full_name'),
+        db.from('candidates').select('*').eq('org_id', activeOrgId),
         db.from('jobs').select('*'),
-        db.from('organizations').select('*').eq('id', orgId).single(),
+        db.from('organizations').select('*').eq('id', activeOrgId).single(),
       ])
 
       if (profilesRes.error) throw profilesRes.error
@@ -49,7 +55,7 @@ export default function Admin() {
 
       setUsers(profilesRes.data || [])
       setCandidates(candidatesRes.data || [])
-      setJobs((jobsRes.data || []).filter(job => !job.org_id || job.org_id === orgId))
+      setJobs((jobsRes.data || []).filter(job => !job.org_id || job.org_id === activeOrgId))
 
       if (orgRes.data) {
         setOrg(orgRes.data)
@@ -69,12 +75,24 @@ export default function Admin() {
     } finally {
       setLoading(false)
     }
-  }, [orgId])
+  }, [orgId, selectedOrgId])
+
+  // Fetch all orgs for superadmin org switcher
+  useEffect(() => {
+    if (!isSuperAdmin) return
+    db.from('organizations').select('*').order('name').then(({ data }) => {
+      if (data && data.length > 0) {
+        setAllOrgs(data)
+        // Default to the superadmin's own org
+        if (!selectedOrgId) setSelectedOrgId(orgId)
+      }
+    })
+  }, [isSuperAdmin, orgId])
 
   useEffect(() => {
     if (!orgId || !isAdmin) return
     fetchAdminData()
-  }, [fetchAdminData, isAdmin, orgId])
+  }, [fetchAdminData, isAdmin, orgId, selectedOrgId])
 
   const teams = useMemo(() => [...new Set(users.map(user => user.team).filter(Boolean))].sort(), [users])
   const managers = useMemo(() => users.filter(user => ['manager', 'admin', 'superadmin'].includes(user.role)), [users])
@@ -104,7 +122,7 @@ export default function Admin() {
         const reports = users.filter(user => user.manager_id === manager.id)
         const recruiters = reports.filter(isSubmissionRecruiter)
         const supportMembers = reports.filter(member => !['manager', 'admin', 'superadmin'].includes(member.role) && !isSubmissionRecruiter(member))
-        const candidateOwners = manager.department === 'Recruiting' ? recruiters : []
+        const candidateOwners = recruiters
         const ownerIds = new Set(candidateOwners.map(user => user.id))
         const ownerNames = new Set(candidateOwners.map(user => user.full_name || user.email).filter(Boolean))
         const owned = candidates.filter(candidate => (
@@ -117,7 +135,9 @@ export default function Admin() {
         return {
           key: manager.id,
           team: manager.team || `${manager.full_name} Team`,
-          title: manager.department === 'Recruiting' ? `${manager.full_name} Account Manager` : `${manager.department || manager.team || 'Department'} Manager`,
+          title: manager.manager_id 
+            ? `${manager.full_name} (${manager.department} Account Manager)` 
+            : `${manager.full_name} (${manager.department} Recruitment Manager)`,
           department: manager.department || 'Unassigned',
           managers: [manager],
           manager,
@@ -305,6 +325,63 @@ export default function Admin() {
         </div>
       </header>
 
+      {/* Superadmin Org Switcher */}
+      {isSuperAdmin && allOrgs.length > 1 && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          padding: '0 2rem 0',
+          borderBottom: '1px solid var(--border)',
+          background: 'var(--surface)',
+          overflowX: 'auto',
+        }}>
+          <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '1px', whiteSpace: 'nowrap', paddingRight: 12, borderRight: '1px solid var(--border)', marginRight: 4 }}>
+            🏢 Platform Orgs
+          </span>
+          {allOrgs.map(o => {
+            const isActive = (selectedOrgId || orgId) === o.id
+            return (
+              <button
+                key={o.id}
+                onClick={() => setSelectedOrgId(o.id)}
+                type="button"
+                style={{
+                  position: 'relative',
+                  padding: '14px 20px',
+                  fontSize: 13,
+                  fontWeight: isActive ? 700 : 500,
+                  color: isActive ? '#ff5c87' : 'var(--text2)',
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: isActive ? '2px solid #ff5c87' : '2px solid transparent',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  whiteSpace: 'nowrap',
+                  transition: 'color 0.15s, border-color 0.15s',
+                  marginBottom: -1,
+                }}
+                onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = 'var(--text)' }}
+                onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = 'var(--text2)' }}
+              >
+                {o.name}
+                {isActive && (
+                  <span style={{
+                    position: 'absolute',
+                    top: 10,
+                    right: 8,
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: '#ff5c87',
+                  }} />
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       <section className="admin-command-grid">
         <Stat label="Active Members" value={analytics.activeUsers} helper={`${analytics.totalUsers} total`} />
         <Stat label="Manager Groups" value={analytics.teams} helper={`${analytics.managers} managers`} />
@@ -382,7 +459,7 @@ function CommandCenter({ adminUsers, onSeed, saving, teamGroups, userStats }) {
           <RolePill role="recruiter" />
           <RolePill role="employee" />
         </div>
-        <p className="admin-note">Admins control the workspace. Recruiting Account Managers own recruiter groups and submissions. PMO, E-care, Onboarding, and Operations managers own employees only.</p>
+        <p className="admin-note">Admins control the workspace. Recruitment Managers supervise Account Managers. Account Managers manage recruiters and their submissions.</p>
         {needsTeamSetup && (
           <button className="admin-primary" onClick={onSeed} disabled={saving}>Create demo profiles</button>
         )}
@@ -404,7 +481,7 @@ function CommandCenter({ adminUsers, onSeed, saving, teamGroups, userStats }) {
             <div className="admin-health-row" key={group.key}>
               <div>
                 <strong>{group.title}</strong>
-                <span>{group.department} - {group.recruiters.length} recruiters - {group.supportMembers.length} employees</span>
+                <span>{group.department} Department - {group.recruiters.length} recruiters</span>
               </div>
               <b>{group.submissions} sub</b>
             </div>
@@ -548,93 +625,215 @@ function MemberCard({ managers, onAssignManager, onUpdateUser, saving, user }) {
   )
 }
 
-function TeamsTab({ onAssignManager, onMoveMember, saving, teamGroups, userStats, users }) {
+function TeamsTab({ onAssignManager, saving, userStats, users }) {
   const [query, setQuery] = useState('')
-  const [openGroups, setOpenGroups] = useState(() => new Set(teamGroups.slice(0, 2).map(group => group.key)))
-  const managerOptions = users.filter(user => ['manager', 'admin', 'superadmin'].includes(user.role))
-  const filteredGroups = teamGroups.filter(group => `${group.title} ${group.department} ${group.members.map(member => member.full_name || member.email).join(' ')}`.toLowerCase().includes(query.toLowerCase()))
+  const [expandedNodes, setExpandedNodes] = useState(new Set())
 
-  useEffect(() => {
-    if (openGroups.size === 0 && teamGroups.length > 0) {
-      setOpenGroups(new Set(teamGroups.slice(0, 2).map(group => group.key)))
+  const hierarchyUsers = useMemo(() => {
+    return users.filter(u => !['admin', 'superadmin'].includes(u.role))
+  }, [users])
+
+  const treeRoots = useMemo(() => {
+    return hierarchyUsers.filter(u => !u.manager_id || !hierarchyUsers.some(parent => parent.id === u.manager_id))
+  }, [hierarchyUsers])
+
+  const getDescendantsMatch = useCallback((userId, q) => {
+    if (!q) return false
+    const term = q.toLowerCase()
+    const children = hierarchyUsers.filter(u => u.manager_id === userId)
+    for (const child of children) {
+      const match = (child.full_name || '').toLowerCase().includes(term) || (child.email || '').toLowerCase().includes(term)
+      if (match) return true
+      if (getDescendantsMatch(child.id, q)) return true
     }
-  }, [openGroups.size, teamGroups])
+    return false
+  }, [hierarchyUsers])
 
-  const toggleGroup = key => {
-    setOpenGroups(prev => {
+  const toggleExpand = (id) => {
+    setExpandedNodes(prev => {
       const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
   }
 
+  const expandAll = () => {
+    const allIds = hierarchyUsers.filter(u => hierarchyUsers.some(child => child.manager_id === u.id)).map(u => u.id)
+    setExpandedNodes(new Set(allIds))
+  }
+
+  const collapseAll = () => {
+    setExpandedNodes(new Set())
+  }
+
+  useEffect(() => {
+    if (query.trim()) {
+      const toExpand = new Set()
+      hierarchyUsers.forEach(u => {
+        if (getDescendantsMatch(u.id, query)) {
+          toExpand.add(u.id)
+        }
+      })
+      setExpandedNodes(toExpand)
+    } else {
+      const defaultExpand = new Set(treeRoots.map(r => r.id))
+      setExpandedNodes(defaultExpand)
+    }
+  }, [query, treeRoots, hierarchyUsers, getDescendantsMatch])
+
   return (
-    <div className="admin-org-chart">
-      <div className="admin-panel admin-org-toolbar">
+    <div className="org-chart-tree-container">
+      <div className="org-chart-toolbar">
         <div>
-          <div className="admin-panel-title">Manager Groups</div>
-          <p>{filteredGroups.length} groups. Expand only the manager group you want to work on.</p>
+          <div className="admin-panel-title">Hierarchical Organization Chart</div>
+          <p>Collapsible tree showing reporting lines and performance statistics.</p>
         </div>
-        <input className="admin-search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search manager, department, member..." />
+        <div className="org-chart-toolbar-actions">
+          <input className="admin-search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search name or email..." style={{ width: 220, marginBottom: 0 }} />
+          <button onClick={expandAll} type="button">Expand All</button>
+          <button onClick={collapseAll} type="button">Collapse All</button>
+        </div>
       </div>
-      {filteredGroups.length === 0 ? (
-        <EmptyState title="No manager groups yet" body="Seed demo profiles or assign managers in Members to build the org chart." />
-      ) : filteredGroups.map(group => {
-        const isOpen = openGroups.has(group.key)
-        return (
-        <section className={`admin-panel admin-org-team ${isOpen ? 'open' : 'collapsed'}`} key={group.key}>
-          <div className="admin-org-team-head">
-            <div>
-              <span>{group.department}</span>
-              <h3>{group.title}</h3>
-              <p>
-                {group.department === 'Recruiting'
-                  ? `${group.recruiters.length} recruiters under this Account Manager, ${group.submissions} candidate submissions`
-                  : `${group.supportMembers.length} employees under this department manager, no recruiting submissions`}
-              </p>
-            </div>
-            <MetricStrip stats={group} />
-            <button className="admin-row-toggle" type="button" onClick={() => toggleGroup(group.key)}>
-              {isOpen ? 'Collapse' : 'Expand'}
-            </button>
-          </div>
+      
+      {treeRoots.length === 0 ? (
+        <EmptyState title="No tree structure available" body="Assign managers under the Members tab to begin building the hierarchy." />
+      ) : (
+        <div className="org-tree-roots-list">
+          {treeRoots.map(root => (
+            <TreeNode 
+              key={root.id}
+              user={root}
+              allUsers={hierarchyUsers}
+              userStats={userStats}
+              onAssignManager={onAssignManager}
+              query={query}
+              level={0}
+              expandedNodes={expandedNodes}
+              toggleExpand={toggleExpand}
+              getDescendantsMatch={getDescendantsMatch}
+              saving={saving}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
-          {isOpen && <div className="admin-org-section">
-            <div className="admin-section-label">Managers</div>
-            <div className="admin-person-grid managers">
-              {group.managers.length === 0 ? (
-                <div className="admin-empty-inline">No manager assigned</div>
-              ) : group.managers.map(manager => (
-                <OrgPersonCard key={manager.id} stats={userStats.get(manager.id)} user={manager} />
-              ))}
-            </div>
-          </div>}
+function TreeNode({ user, allUsers, userStats, onAssignManager, query, level, expandedNodes, toggleExpand, getDescendantsMatch, saving }) {
+  const children = useMemo(() => allUsers.filter(u => u.manager_id === user.id), [allUsers, user.id])
+  const term = query.toLowerCase().trim()
+  
+  const isMatch = !term || (user.full_name || '').toLowerCase().includes(term) || (user.email || '').toLowerCase().includes(term)
+  const hasMatchingDescendant = getDescendantsMatch(user.id, term)
+  
+  if (term && !isMatch && !hasMatchingDescendant) return null
+  
+  const isOpen = expandedNodes.has(user.id)
+  const hasChildren = children.length > 0
+  
+  const stats = userStats.get(user.id) || { submissions: 0, interviews: 0, hires: 0 }
+  const initials = (user.full_name || user.email || 'U').split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()
+  
+  const countReports = (uid) => {
+    const direct = allUsers.filter(u => u.manager_id === uid)
+    let total = direct.length
+    direct.forEach(d => {
+      total += countReports(d.id)
+    })
+    return total
+  }
+  
+  const reportsCount = countReports(user.id)
+  
+  const avatarGradients = [
+    'linear-gradient(135deg, #4f7cff, #7c5cff)',
+    'linear-gradient(135deg, #7c5cff, #a47fff)',
+    'linear-gradient(135deg, #2ecc8f, #15d1bb)',
+    'linear-gradient(135deg, #ff8c42, #ffb342)'
+  ]
+  const avatarBg = avatarGradients[(user.full_name || '').charCodeAt(0) % avatarGradients.length]
+  
+  const managerOptions = allUsers.filter(u => ['manager', 'admin', 'superadmin'].includes(u.role) && u.id !== user.id)
 
-          {isOpen && <div className="admin-org-section">
-            <div className="admin-section-label">{group.department === 'Recruiting' ? 'Recruiters Under This Account Manager' : 'Employees Under This Manager'}</div>
-            <div className="admin-recruiter-list">
-              {[...group.recruiters, ...group.supportMembers].map(member => (
-                <div className="admin-recruiter-row" key={member.id}>
-                  <OrgPersonCard stats={userStats.get(member.id)} user={member} />
-                  <div className="admin-team-actions">
-                    <select value={group.key} disabled={saving} onChange={e => onMoveMember(member, e.target.value)}>
-                      <option value="">No manager group</option>
-                      {teamGroups.filter(unit => unit.key !== 'unassigned').map(unit => <option key={unit.key} value={unit.key}>{unit.title}</option>)}
-                    </select>
-                    <select value={member.manager_id || ''} disabled={saving} onChange={e => onAssignManager(member, e.target.value)}>
-                      <option value="">No manager</option>
-                      {managerOptions.filter(manager => manager.id !== member.id).map(manager => (
-                        <option key={manager.id} value={manager.id}>{manager.full_name || manager.email}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>}
-        </section>
-      )})}
+  return (
+    <div className="org-tree-node-wrapper">
+      <div className={`org-tree-node-row level-${level}`}>
+        {hasChildren ? (
+          <button 
+            className={`org-tree-node-toggle ${isOpen ? 'expanded' : ''}`}
+            onClick={() => toggleExpand(user.id)}
+            type="button"
+          >
+            ▶
+          </button>
+        ) : (
+          <span style={{ width: 20 }} />
+        )}
+        
+        <div className="org-tree-node-avatar" style={{ background: avatarBg }}>
+          {initials}
+        </div>
+        
+        <div className="org-tree-node-info">
+          <span className="org-tree-node-name">{user.full_name}</span>
+          <span className={`org-tree-node-role-badge ${user.department?.toLowerCase() || 'operations'}`}>
+            {user.role === 'recruiter' 
+              ? `${user.department} Recruiter` 
+              : user.role === 'manager'
+                ? (user.manager_id ? `${user.department} Account Manager` : `${user.department} Recruitment Manager`)
+                : `${user.department} ${user.role}`}
+          </span>
+          <span className="org-tree-node-email">{user.email}</span>
+          {reportsCount > 0 && (
+            <span className="org-tree-node-reports-count">
+              ({reportsCount} {reportsCount === 1 ? 'report' : 'reports'})
+            </span>
+          )}
+        </div>
+        
+        <div className="org-tree-node-metrics">
+          <span className="org-tree-node-metric-item"><b>{stats.submissions}</b> sub</span>
+          <span className="org-tree-node-metric-item"><b>{stats.interviews}</b> int</span>
+          <span className="org-tree-node-metric-item"><b>{stats.hires}</b> hires</span>
+        </div>
+        
+        <div className="org-tree-node-actions">
+          <select 
+            value={user.manager_id || ''} 
+            disabled={saving} 
+            onChange={e => onAssignManager(user, e.target.value)}
+          >
+            <option value="">No manager (Root)</option>
+            {managerOptions.map(mgr => (
+              <option key={mgr.id} value={mgr.id}>
+                Reports to: {mgr.full_name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      
+      {hasChildren && isOpen && (
+        <div className="org-tree-children-container">
+          {children.map(child => (
+            <TreeNode 
+              key={child.id}
+              user={child}
+              allUsers={allUsers}
+              userStats={userStats}
+              onAssignManager={onAssignManager}
+              query={query}
+              level={Math.min(level + 1, 2)}
+              expandedNodes={expandedNodes}
+              toggleExpand={toggleExpand}
+              getDescendantsMatch={getDescendantsMatch}
+              saving={saving}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -707,25 +906,6 @@ function OrgSettingsTab({ form, onChange, onSave, saving }) {
       </div>
       <button className="admin-primary" onClick={onSave} disabled={saving}>{saving ? 'Saving...' : 'Save Organization'}</button>
     </section>
-  )
-}
-
-function OrgPersonCard({ stats, user }) {
-  return (
-    <article className="admin-org-person">
-      <div className="admin-member-main">
-        <div className="admin-member-avatar">{initials(user.full_name || user.email)}</div>
-        <div>
-          <strong>{user.full_name || 'Unnamed member'}</strong>
-          <span>{user.email}</span>
-        </div>
-      </div>
-      <div className="admin-person-meta">
-        <RolePill role={displayRole(user)} />
-        <span>{user.extension || 'no ext.'}</span>
-      </div>
-      <MetricStrip stats={stats || { submissions: 0, interviews: 0, hires: 0 }} />
-    </article>
   )
 }
 

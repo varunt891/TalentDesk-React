@@ -72,7 +72,11 @@ async function buildWhere(req, table, config) {
   }
 
   if (config.orgScoped) {
-    where.org_id = req.profile.org_id
+    if (req.tenantOrg) {
+      where.org_id = req.tenantOrg.id
+    } else if (req.profile.role !== 'superadmin') {
+      where.org_id = req.profile.org_id
+    }
   }
 
   if (ownedTables.includes(table)) {
@@ -81,10 +85,12 @@ async function buildWhere(req, table, config) {
   }
 
   if (table === 'profiles') {
-    if (req.profile.role === 'manager') {
+    // full_org=true: used by Team Directory — any authenticated user can see all org profiles
+    if (req.query.full_org === 'true') {
+      // already scoped to org_id above, no extra restriction
+    } else if (req.profile.role === 'manager') {
       where.OR = [{ manager_id: req.user.id }, { id: req.user.id }]
-    }
-    if (!['admin', 'superadmin', 'manager'].includes(req.profile.role)) {
+    } else if (!['admin', 'superadmin'].includes(req.profile.role)) {
       where.id = req.user.id
     }
   }
@@ -96,7 +102,11 @@ async function scopedRowWhere(req, table, config, id) {
   const where = { id }
 
   if (config.orgScoped) {
-    where.org_id = req.profile.org_id
+    if (req.tenantOrg) {
+      where.org_id = req.tenantOrg.id
+    } else if (req.profile.role !== 'superadmin') {
+      where.org_id = req.profile.org_id
+    }
   }
 
   if (ownedTables.includes(table)) {
@@ -119,9 +129,21 @@ function withOwnership(req, table, body) {
   delete data.created_at
   delete data.updated_at
 
+  // Strictly bind orgScoped models to the active tenant workspace or the logged-in user's organization
+  if (tables[table]?.orgScoped) {
+    if (req.tenantOrg) {
+      data.org_id = req.tenantOrg.id
+    } else if (req.profile.role === 'superadmin' && body.org_id) {
+      data.org_id = body.org_id
+    } else {
+      data.org_id = req.profile.org_id
+    }
+  } else {
+    delete data.org_id
+  }
+
   if (ownedTables.includes(table)) {
     data.user_id ||= req.user.id
-    data.org_id ||= req.profile.org_id
   }
 
   if (table === 'profiles') delete data.passwordHash
@@ -142,7 +164,7 @@ async function logActivity(req, action, table, row, details = {}) {
   if (table === 'activity_logs' || table === 'admin_audit_log') return
   await prisma.activityLog.create({
     data: {
-      org_id: req.profile.org_id,
+      org_id: req.tenantOrg?.id || req.profile.org_id,
       actor_id: req.user.id,
       actor_name: req.profile.full_name || req.user.email,
       action,

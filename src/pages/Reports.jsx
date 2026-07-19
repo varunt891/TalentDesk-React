@@ -14,6 +14,7 @@ import {
 import * as XLSX from 'xlsx'
 import { db } from '../lib/api'
 import { useCandidates } from '../hooks/useCandidates'
+import { useAuth } from '../context/AuthContext'
 
 const COLORS = ['#4f7cff', '#2ecc8f', '#7c5cff', '#f5c842', '#ff8c42', '#ff4d6a']
 const STAGES = ['Submitted', 'Shortlisted', 'Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired', 'Rejected']
@@ -35,6 +36,15 @@ function isInRange(value, days) {
 }
 
 export default function Reports() {
+  const { profile } = useAuth()
+  const role = profile?.role || 'recruiter'
+  // Recruitment Managers (no manager_id) → full org view
+  // Account Managers (has manager_id) → locked to own team
+  const isRM = role === 'manager' && !profile?.manager_id
+  const isAM = role === 'manager' && !!profile?.manager_id
+  const isAdminLike = ['admin', 'superadmin'].includes(role)
+  const canSeeFullOrg = isAdminLike || isRM
+
   const { candidates } = useCandidates()
   const [mode, setMode] = useState('weekly')
   const [callbacks, setCallbacks] = useState([])
@@ -46,7 +56,7 @@ export default function Reports() {
     Promise.all([
       db.from('callbacks').select('*').order('date', { ascending: false }),
       db.from('followups').select('*').order('date', { ascending: false }),
-      db.from('profiles').select('*').order('full_name'),
+      db.from('profiles').select('*').param('full_org', 'true').order('full_name'),
     ]).then(([callbacksRes, followupsRes, usersRes]) => {
       setCallbacks(callbacksRes.data || [])
       setFollowups(followupsRes.data || [])
@@ -54,11 +64,27 @@ export default function Reports() {
     })
   }, [])
 
+  // When users are loaded, auto-lock AM to their own team
+  useEffect(() => {
+    if (isAM && profile?.team && users.length > 0) {
+      setScope({ team: profile.team, user: 'all' })
+    }
+  }, [isAM, profile?.team, users.length])
+
   const rangeDays = mode === 'daily' ? 1 : 7
-  const teams = useMemo(() => [...new Set(users.map(user => user.team).filter(Boolean))].sort(), [users])
+
+  // For AMs: only their own team; for RMs/admins: all teams
+  const teams = useMemo(() => {
+    const allTeams = [...new Set(users.map(u => u.team).filter(Boolean))].sort()
+    if (isAM && profile?.team) return [profile.team]
+    return allTeams
+  }, [users, isAM, profile?.team])
+
   const scopeUsers = useMemo(() => {
-    return users.filter(user => scope.team === 'all' || user.team === scope.team)
-  }, [scope.team, users])
+    // AMs are always locked to their team
+    const effectiveTeam = isAM ? (profile?.team || 'all') : scope.team
+    return users.filter(u => effectiveTeam === 'all' || u.team === effectiveTeam)
+  }, [scope.team, users, isAM, profile?.team])
 
   const reportCandidates = useMemo(() => {
     return candidates.filter(candidate => {
@@ -182,21 +208,36 @@ export default function Reports() {
         <div>
           <p>Reports Studio</p>
           <h1>{mode === 'daily' ? 'Daily' : 'Weekly'} performance report</h1>
-          <span>Generate leadership-ready hiring reports by organization, team, manager, or individual recruiter.</span>
+          <span>
+            {canSeeFullOrg
+              ? 'Org-wide hiring analytics — filter by team or individual recruiter.'
+              : isAM
+              ? `Showing your team: ${profile?.team || 'your team'}`
+              : 'Your personal performance summary.'}
+          </span>
         </div>
         <div className="reports-actions">
           <div className="reports-mode-toggle">
             <button className={mode === 'daily' ? 'active' : ''} onClick={() => setMode('daily')} type="button">Daily</button>
             <button className={mode === 'weekly' ? 'active' : ''} onClick={() => setMode('weekly')} type="button">Weekly</button>
           </div>
-          <select value={scope.team} onChange={e => setScope({ team: e.target.value, user: 'all' })}>
-            <option value="all">All Teams</option>
-            {teams.map(team => <option key={team} value={team}>{team}</option>)}
-          </select>
-          <select value={scope.user} onChange={e => setScope(current => ({ ...current, user: e.target.value }))}>
-            <option value="all">All Users</option>
-            {scopeUsers.map(user => <option key={user.id} value={user.id}>{user.full_name || user.email}</option>)}
-          </select>
+          {canSeeFullOrg && (
+            <select value={scope.team} onChange={e => setScope({ team: e.target.value, user: 'all' })}>
+              <option value="all">All Teams</option>
+              {teams.map(team => <option key={team} value={team}>{team}</option>)}
+            </select>
+          )}
+          {canSeeFullOrg && (
+            <select value={scope.user} onChange={e => setScope(current => ({ ...current, user: e.target.value }))}>
+              <option value="all">All Users</option>
+              {scopeUsers.map(user => <option key={user.id} value={user.id}>{user.full_name || user.email}</option>)}
+            </select>
+          )}
+          {isAM && (
+            <span style={{ background: 'rgba(245,200,66,0.15)', color: '#f5c842', border: '1px solid rgba(245,200,66,0.3)', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 700, letterSpacing: '0.3px' }}>
+              🔒 {profile?.team}
+            </span>
+          )}
           <button className="reports-export-btn" onClick={exportReport} type="button">Export XLSX</button>
         </div>
       </header>
