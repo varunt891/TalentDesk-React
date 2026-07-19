@@ -20,6 +20,13 @@ import { useCandidates } from '../hooks/useCandidates'
 const STAGES = ['Submitted', 'Shortlisted', 'Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired', 'Rejected']
 const COLORS = ['#4f7cff', '#ff8c42', '#7c5cff', '#60a5fa', '#f5c842', '#2ecc8f', '#ff4d6a']
 
+const getTrend = (curr, prev) => {
+  if (prev === 0 && curr === 0) return null
+  if (prev === 0) return curr > 0 ? { dir: 'up', pct: null } : null
+  const pct = Math.round(((curr - prev) / prev) * 100)
+  return { dir: pct >= 0 ? 'up' : 'down', pct: Math.abs(pct) }
+}
+
 export default function Dashboard({ onNavigate }) {
   const { profile } = useAuth()
   const { candidates } = useCandidates()
@@ -160,6 +167,41 @@ export default function Dashboard({ onNavigate }) {
     return followups.filter(f => f.date && f.date >= cutoffStr)
   }, [followups, timeRange])
 
+  // Week-over-week comparison for trends
+  const thisWeekCount = useMemo(() => {
+    const from = new Date(); from.setDate(from.getDate() - 7)
+    return candidates.filter(c => c.submission_date >= from.toISOString().slice(0, 10)).length
+  }, [candidates])
+
+  const lastWeekCount = useMemo(() => {
+    const now = new Date()
+    const from = new Date(now); from.setDate(now.getDate() - 14)
+    const to = new Date(now); to.setDate(now.getDate() - 7)
+    return candidates.filter(c =>
+      c.submission_date >= from.toISOString().slice(0, 10) &&
+      c.submission_date < to.toISOString().slice(0, 10)
+    ).length
+  }, [candidates])
+
+  const thisWeekHires = useMemo(() => {
+    const from = new Date(); from.setDate(from.getDate() - 7)
+    return candidates.filter(c =>
+      (c.internal_status === 'Hired' || c.external_status === 'Hired') &&
+      c.submission_date >= from.toISOString().slice(0, 10)
+    ).length
+  }, [candidates])
+
+  const lastWeekHires = useMemo(() => {
+    const now = new Date()
+    const from = new Date(now); from.setDate(now.getDate() - 14)
+    const to = new Date(now); to.setDate(now.getDate() - 7)
+    return candidates.filter(c =>
+      (c.internal_status === 'Hired' || c.external_status === 'Hired') &&
+      c.submission_date >= from.toISOString().slice(0, 10) &&
+      c.submission_date < to.toISOString().slice(0, 10)
+    ).length
+  }, [candidates])
+
   const pipelineData = useMemo(() => {
     return STAGES.map((stage, index) => ({
       stage: stage.replace('Interview ', ''),
@@ -218,31 +260,61 @@ export default function Dashboard({ onNavigate }) {
   const qualifiedCount = filteredCandidates.filter(c => ['Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired'].includes(c.external_status || c.internal_status)).length
   const offerCount = filteredCandidates.filter(c => c.external_status === 'Offer Extended' || c.internal_status === 'Offer Extended').length
   const rejectedCount = filteredCandidates.filter(c => c.external_status === 'Rejected' || c.internal_status === 'Rejected').length
-  const conversionRate = Math.round((filteredCandidates.filter(c => c.external_status === 'Hired' || c.internal_status === 'Hired').length / Math.max(filteredCandidates.length, 1)) * 100)
+  const hiredCount = filteredCandidates.filter(c => c.external_status === 'Hired' || c.internal_status === 'Hired').length
+  const conversionRate = Math.round((hiredCount / Math.max(filteredCandidates.length, 1)) * 100)
+  const pipelineHealthPct = Math.round((qualifiedCount / Math.max(filteredCandidates.length, 1)) * 100)
 
   const stats = [
-    { label: 'Candidates', value: filteredCandidates.length, helper: `${filteredCandidates.filter(c => c.submission_date?.startsWith(month)).length} this month`, tone: 'blue' },
-    { label: 'Qualified', value: qualifiedCount, helper: 'client-stage movement', tone: 'purple' },
-    { label: 'Offers', value: offerCount, helper: `${conversionRate}% hire rate`, tone: 'yellow' },
-    { label: 'Open Jobs', value: activeJobsCount, helper: `${filteredJobs.length} filtered`, tone: 'green' },
-    { label: 'Rejected', value: rejectedCount, helper: 'client declined', tone: 'red' },
-    { label: 'Pending Work', value: pendingCallbacks.length + dueFollowups.length, helper: `${todaysCallbacks.length} calls today`, tone: 'orange' },
+    { label: 'Candidates', value: filteredCandidates.length, helper: `${filteredCandidates.filter(c => c.submission_date?.startsWith(month)).length} this month`, tone: 'blue', trend: getTrend(thisWeekCount, lastWeekCount) },
+    { label: 'Qualified', value: qualifiedCount, helper: 'client-stage movement', tone: 'purple', trend: null },
+    { label: 'Offers', value: offerCount, helper: `${conversionRate}% hire rate`, tone: 'yellow', trend: null },
+    { label: 'Open Jobs', value: activeJobsCount, helper: `${filteredJobs.length} filtered`, tone: 'green', trend: null },
+    { label: 'Rejected', value: rejectedCount, helper: 'client declined', tone: 'red', trend: null },
+    { label: 'Pending Work', value: pendingCallbacks.length + dueFollowups.length, helper: `${todaysCallbacks.length} calls today`, tone: 'orange', trend: null },
   ]
+
+  const todayFocus = [
+    { id: 'calls',      icon: '📞', label: 'Calls today',    value: todaysCallbacks.length,  urgent: todaysCallbacks.length > 0,  page: 'callbacks' },
+    { id: 'overdue',   icon: '⚠️',  label: 'Overdue tasks',  value: overdueFollowups.length, urgent: overdueFollowups.length > 0, page: 'followups' },
+    { id: 'interview', icon: '📅', label: 'Interviews',      value: upcomingInterviews.length, urgent: false,                      page: 'candidates' },
+    { id: 'new',       icon: '✨', label: 'Added today',     value: candidates.filter(c => c.submission_date === today).length, urgent: false, page: 'candidates' },
+  ]
+
+  const firstName = profile?.full_name?.split(' ')[0] || 'there'
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'
+  const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+  const avatarInitial = (profile?.full_name || 'U').charAt(0).toUpperCase()
 
   return (
     <div className="dashboard-page">
       <header className="dashboard-hero">
         <div className="dashboard-welcome-panel">
-          <div>
+          <div className="dashboard-welcome-avatar">{avatarInitial}</div>
+          <div className="dashboard-welcome-copy">
             <p className="dashboard-kicker">{profile?.organizations?.name || 'TalentDesk'} workspace</p>
-            <h1>Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {profile?.full_name?.split(' ')[0] || 'there'}</h1>
-            <p>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} · <span>{role}</span></p>
+            <h1>Good {greeting}, {firstName}!</h1>
+            <p className="dashboard-welcome-date">{dateStr} · <span>{role}</span></p>
           </div>
         </div>
-        <div className="dashboard-hero-panel">
-          <span>Pipeline health</span>
-          <strong>{Math.round((qualifiedCount / Math.max(filteredCandidates.length, 1)) * 100)}%</strong>
-          <small>qualified progress rate</small>
+        <div className="dashboard-hero-metrics">
+          <div className="hero-metric">
+            <span>Pipeline</span>
+            <strong>{pipelineHealthPct}%</strong>
+            <small>health</small>
+          </div>
+          <div className="hero-metric-divider" />
+          <div className="hero-metric">
+            <span>Hired</span>
+            <strong>{hiredCount}</strong>
+            <small>placed</small>
+          </div>
+          <div className="hero-metric-divider" />
+          <div className="hero-metric">
+            <span>Open</span>
+            <strong>{activeJobsCount}</strong>
+            <small>jobs</small>
+          </div>
         </div>
       </header>
 
@@ -289,7 +361,15 @@ export default function Dashboard({ onNavigate }) {
             <div className="stat-content">
               <span>{stat.label}</span>
               <strong>{stat.value}</strong>
-              <small>{stat.helper}</small>
+              <div className="stat-foot">
+                <small>{stat.helper}</small>
+                {stat.trend && (
+                  <span className={`stat-trend ${stat.trend.dir}`}>
+                    {stat.trend.dir === 'up' ? '↑' : '↓'}
+                    {stat.trend.pct !== null ? ` ${stat.trend.pct > 999 ? '999+' : stat.trend.pct}%` : ''}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="stat-decorator" aria-hidden="true" />
           </article>
@@ -299,18 +379,36 @@ export default function Dashboard({ onNavigate }) {
       <section className="dashboard-quick-actions">
         <div className="quick-actions-grid">
           {[
-            { id: 'candidates', label: 'Candidates', desc: 'Profiles', icon: 'CA', tone: 'blue' },
-            { id: 'pipeline', label: 'Pipeline', desc: 'Stages', icon: 'PI', tone: 'purple' },
-            { id: 'jobs', label: 'Jobs', desc: 'Roles', icon: 'JO', tone: 'green' },
-            { id: 'reports', label: 'Reports', desc: 'Exports', icon: 'RE', tone: 'yellow' },
-            { id: 'callbacks', label: 'Callbacks', desc: 'Tasks', icon: 'CB', tone: 'orange' },
+            { id: 'candidates', label: 'Candidates', desc: 'Profiles', icon: 'CA', tone: 'blue',   badge: filteredCandidates.length },
+            { id: 'pipeline',   label: 'Pipeline',   desc: 'Stages',   icon: 'PI', tone: 'purple', badge: filteredCandidates.filter(c => ['Interview Scheduled','Interview Done','Shortlisted'].includes(c.internal_status)).length },
+            { id: 'jobs',       label: 'Jobs',       desc: 'Roles',    icon: 'JO', tone: 'green',  badge: activeJobsCount },
+            { id: 'reports',    label: 'Reports',    desc: 'Exports',  icon: 'RE', tone: 'yellow' },
+            { id: 'callbacks',  label: 'Callbacks',  desc: 'Tasks',    icon: 'CB', tone: 'orange', badge: pendingCallbacks.length, urgent: todaysCallbacks.length > 0 },
           ].map(action => (
-            <button key={action.id} onClick={() => onNavigate(action.id)} className={`quick-action-card ${action.tone}`} type="button">
+            <button key={action.id} onClick={() => onNavigate(action.id)} className={`quick-action-card ${action.tone}${action.urgent ? ' urgent' : ''}`} type="button">
               <span className="quick-action-icon">{action.icon}</span>
               <div className="quick-action-copy">
                 <strong>{action.label}</strong>
                 <small>{action.desc}</small>
               </div>
+              {action.badge > 0 && <span className="qa-badge">{action.badge > 99 ? '99+' : action.badge}</span>}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* Today's Focus strip */}
+      <section className="dashboard-focus-strip">
+        <div className="focus-strip-header">
+          <span className="focus-strip-label">Today's Focus</span>
+          <span className="focus-strip-date">{dateStr}</span>
+        </div>
+        <div className="focus-strip-pills">
+          {todayFocus.map(item => (
+            <button key={item.id} type="button" onClick={() => onNavigate(item.page)} className={`focus-pill${item.urgent ? ' urgent' : ''}`}>
+              <span className="focus-pill-icon">{item.icon}</span>
+              <strong className="focus-pill-value">{item.value}</strong>
+              <small className="focus-pill-label">{item.label}</small>
             </button>
           ))}
         </div>
