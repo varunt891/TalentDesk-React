@@ -5374,6 +5374,11 @@ input, select, textarea, button {
     pointer-events: auto !important;
   }
 
+  /* On mobile the sidebar is a drawer overlay — collapse-to-icon makes no sense, hide it */
+  .sidebar-collapse-toggle {
+    display: none !important;
+  }
+
   .sidebar-close {
     display: inline-flex !important;
     width: 32px !important;
