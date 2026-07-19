@@ -5551,24 +5551,14 @@ input, select, textarea, button {
     left: 14px !important;
   }
 
+  /* ── Dashboard: strip old conflicting rules (handled in the main 760px block below) ── */
   .dashboard-page,
   .directory-page {
-    padding: 14px !important;
+    padding: 0 !important;
   }
 
-  .dashboard-hero,
-  .directory-topbar {
-    flex-direction: column !important;
-    align-items: stretch !important;
-  }
-
-  .dashboard-hero h1,
-  .directory-topbar h1 {
-    font-size: 22px !important;
-  }
-
-  .dashboard-stat-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  .dashboard-hero h1 {
+    font-size: 20px !important;
   }
 
   .dashboard-grid,
@@ -5592,22 +5582,6 @@ input, select, textarea, button {
   .directory-member-count {
     width: 100% !important;
     justify-content: center !important;
-  }
-
-  .dashboard-chart,
-  .dashboard-donut {
-    height: 230px !important;
-  }
-
-  /* Dashboard Details stack */
-  .dashboard-welcome-panel {
-    flex-direction: column !important;
-    align-items: stretch !important;
-    gap: 16px !important;
-  }
-
-  .quick-actions-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 
   /* Candidate details grid collapse */
@@ -5863,46 +5837,67 @@ input, select, textarea, button {
     padding-right: 0 !important;
   }
 
-  /* ── Dashboard hero: stack vertically, compact ── */
+  /* ══════════════════════════════════════════════
+     DASHBOARD MOBILE — comprehensive layout pass
+     ══════════════════════════════════════════════ */
+
+  /* ── Hero: compact 2-row stack ── */
   .dashboard-hero {
     grid-template-columns: 1fr !important;
-    gap: 10px !important;
-    padding-top: 12px !important;
-    padding-bottom: 10px !important;
+    gap: 8px !important;
+    padding: 10px 0 8px !important;
   }
 
   .dashboard-welcome-panel {
-    padding: 14px 16px !important;
+    padding: 12px 14px !important;
     min-height: 0 !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 12px !important;
   }
 
   .dashboard-welcome-panel h1 {
-    font-size: 20px !important;
+    font-size: 18px !important;
+    line-height: 1.25 !important;
   }
 
-  /* Hero stat panel: horizontal strip instead of tall box */
+  .dashboard-kicker {
+    font-size: 9px !important;
+    letter-spacing: 1.2px !important;
+  }
+
+  /* Pipeline health: slim horizontal strip */
   .dashboard-hero-panel {
     flex-direction: row !important;
     align-items: center !important;
     justify-content: space-between !important;
-    padding: 12px 16px !important;
+    padding: 10px 14px !important;
     min-width: 0 !important;
     min-height: 0 !important;
-    gap: 10px !important;
+    gap: 8px !important;
+    text-align: left !important;
   }
 
   .dashboard-hero-panel strong {
-    font-size: 26px !important;
+    font-size: 22px !important;
   }
 
-  /* ── Control bar: 2-col grid for the selects ── */
+  .dashboard-hero-panel span {
+    font-size: 9px !important;
+  }
+
+  .dashboard-hero-panel small {
+    font-size: 9px !important;
+  }
+
+  /* ── Control bar: 2-col, compact ── */
   .dashboard-control-bar {
     grid-template-columns: 1fr 1fr !important;
     gap: 8px !important;
     padding: 10px 12px !important;
+    margin-top: 4px !important;
   }
 
-  /* Time-range selector spans full width */
   .dashboard-control-bar .time-range-selector {
     grid-column: 1 / -1 !important;
     display: flex !important;
@@ -5912,45 +5907,62 @@ input, select, textarea, button {
   .dashboard-control-bar .time-range-tab {
     flex: 1 !important;
     text-align: center !important;
-    padding: 6px 4px !important;
+    padding: 5px 2px !important;
+    font-size: 11px !important;
   }
 
-  /* Reset button spans full width */
   .dashboard-reset-btn {
     grid-column: 1 / -1 !important;
     width: 100% !important;
+    min-height: 32px !important;
+    font-size: 11px !important;
   }
 
-  /* ── Stat grid: 2 columns (compact) ── */
+  /* ── Stat cards: 2-col compact ── */
   .dashboard-stat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 8px !important;
+    padding: 0 !important;
+    margin-top: 6px !important;
   }
 
   .dashboard-stat {
-    min-height: 82px !important;
-    padding: 11px 12px !important;
-  }
-
-  .stat-content strong {
-    font-size: 22px !important;
+    min-height: 76px !important;
+    padding: 10px 12px 8px !important;
+    border-radius: 10px !important;
+    box-shadow: none !important;
   }
 
   .stat-content span {
     font-size: 10px !important;
+    letter-spacing: 0.3px !important;
   }
 
-  .dashboard-insight-strip,
-  .candidates-stat-grid,
-  .jobs-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 8px !important;
+  .stat-content strong {
+    font-size: 20px !important;
+    margin: 3px 0 2px !important;
   }
 
-  /* ── Quick actions: 3 columns ── */
+  .stat-content small {
+    font-size: 10px !important;
+  }
+
+  .stat-decorator {
+    display: none !important;
+  }
+
+  /* ── Quick actions: 3-col pill row ── */
+  .dashboard-quick-actions {
+    padding: 8px 0 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    margin-top: 4px !important;
+  }
+
   .quick-actions-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    gap: 8px !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    gap: 6px !important;
   }
 
   .quick-action-card {
@@ -5958,46 +5970,161 @@ input, select, textarea, button {
     align-items: center !important;
     justify-content: center !important;
     text-align: center !important;
-    gap: 6px !important;
-    padding: 10px 8px !important;
-    min-height: 72px !important;
+    gap: 4px !important;
+    padding: 8px 4px !important;
+    min-height: 60px !important;
+    border-radius: 10px !important;
+    box-shadow: none !important;
+  }
+
+  .quick-action-icon {
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 9px !important;
+    border-radius: 8px !important;
   }
 
   .quick-action-copy strong {
-    font-size: 11px !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
   }
 
   .quick-action-copy small {
     display: none !important;
   }
 
-  /* ── Dashboard panels: single column, tight padding ── */
+  /* ── Chart panels: single column, tighter ── */
   .dashboard-grid {
     grid-template-columns: 1fr !important;
-    gap: 10px !important;
+    gap: 8px !important;
+    padding: 0 0 16px !important;
+    margin-top: 6px !important;
+  }
+
+  .dashboard-panel {
+    border-radius: 10px !important;
+    box-shadow: none !important;
+    border: 1px solid var(--border) !important;
   }
 
   .dashboard-panel-head {
-    padding: 12px 14px 0 !important;
+    padding: 10px 14px 0 !important;
   }
 
+  .dashboard-panel-head h2 {
+    font-size: 13px !important;
+  }
+
+  .dashboard-panel-head p {
+    font-size: 10.5px !important;
+  }
+
+  /* Charts: compact height */
   .dashboard-chart,
   .dashboard-donut {
-    height: 160px !important;
+    height: 148px !important;
+    padding: 8px 10px 10px !important;
   }
 
-  .dashboard-quick-actions {
-    padding-top: 10px !important;
-    padding-bottom: 10px !important;
+  /* Leaderboard rows: tighter */
+  .dashboard-report-list {
+    padding: 6px 12px 10px !important;
+    gap: 6px !important;
   }
 
+  .dashboard-report-row.visual-leaderboard {
+    gap: 8px !important;
+  }
+
+  .leaderboard-rank {
+    font-size: 14px !important;
+  }
+
+  .leaderboard-meta strong {
+    font-size: 12px !important;
+  }
+
+  .leaderboard-meta small {
+    font-size: 9.5px !important;
+  }
+
+  .leaderboard-value {
+    font-size: 12px !important;
+  }
+
+  /* Activity feed: compact rows */
+  .dashboard-activity {
+    padding: 2px 12px 10px !important;
+  }
+
+  .dashboard-activity-row {
+    padding: 7px 6px !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-activity-row > span {
+    width: 26px !important;
+    height: 26px !important;
+    font-size: 11px !important;
+    border-radius: 6px !important;
+  }
+
+  .dashboard-activity-row strong {
+    font-size: 12px !important;
+  }
+
+  .dashboard-activity-row small {
+    font-size: 10px !important;
+  }
+
+  /* Task / action cards */
+  .dashboard-work-list {
+    padding: 6px 12px 10px !important;
+    gap: 6px !important;
+  }
+
+  .action-task-card,
+  .interview-task-card {
+    padding: 8px 10px !important;
+    border-radius: 8px !important;
+    gap: 8px !important;
+  }
+
+  .task-content strong {
+    font-size: 12px !important;
+  }
+
+  .task-content small {
+    font-size: 10px !important;
+  }
+
+  .task-action-btn {
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 12px !important;
+  }
+
+  /* Scratchpad */
+  .dashboard-scratchpad {
+    min-height: 100px !important;
+    font-size: 12px !important;
+    padding: 10px 12px !important;
+  }
+
+  /* Empty states */
+  .dashboard-empty-line {
+    padding: 10px 0 !important;
+    font-size: 12px !important;
+  }
+
+  /* Overall margin/padding rhythm */
   .dashboard-hero,
   .dashboard-quick-actions,
   .candidates-topbar,
   .jobs-topbar,
   .directory-topbar {
-    padding-top: 12px !important;
-    padding-bottom: 12px !important;
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
   }
 
   .quick-action-card,
