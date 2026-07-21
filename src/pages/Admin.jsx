@@ -87,7 +87,7 @@ export default function Admin() {
         if (!selectedOrgId) setSelectedOrgId(orgId)
       }
     })
-  }, [isSuperAdmin, orgId])
+  }, [isSuperAdmin, orgId, selectedOrgId])
 
   useEffect(() => {
     if (!orgId || !isAdmin) return
@@ -690,7 +690,7 @@ function TeamsTab({ onAssignManager, saving, userStats, users }) {
           <p>Collapsible tree showing reporting lines and performance statistics.</p>
         </div>
         <div className="org-chart-toolbar-actions">
-          <input className="admin-search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search name or email..." style={{ width: 220, marginBottom: 0 }} />
+          <input className="admin-search org-chart-search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search name or email..." />
           <button onClick={expandAll} type="button">Expand All</button>
           <button onClick={collapseAll} type="button">Collapse All</button>
         </div>

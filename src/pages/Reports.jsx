@@ -64,27 +64,29 @@ export default function Reports() {
     })
   }, [])
 
+  const profileTeam = profile?.team
+
   // When users are loaded, auto-lock AM to their own team
   useEffect(() => {
-    if (isAM && profile?.team && users.length > 0) {
-      setScope({ team: profile.team, user: 'all' })
+    if (isAM && profileTeam && users.length > 0) {
+      setScope({ team: profileTeam, user: 'all' })
     }
-  }, [isAM, profile?.team, users.length])
+  }, [isAM, profileTeam, users.length])
 
   const rangeDays = mode === 'daily' ? 1 : 7
 
   // For AMs: only their own team; for RMs/admins: all teams
   const teams = useMemo(() => {
     const allTeams = [...new Set(users.map(u => u.team).filter(Boolean))].sort()
-    if (isAM && profile?.team) return [profile.team]
+    if (isAM && profileTeam) return [profileTeam]
     return allTeams
-  }, [users, isAM, profile?.team])
+  }, [users, isAM, profileTeam])
 
   const scopeUsers = useMemo(() => {
     // AMs are always locked to their team
-    const effectiveTeam = isAM ? (profile?.team || 'all') : scope.team
+    const effectiveTeam = isAM ? (profileTeam || 'all') : scope.team
     return users.filter(u => effectiveTeam === 'all' || u.team === effectiveTeam)
-  }, [scope.team, users, isAM, profile?.team])
+  }, [scope.team, users, isAM, profileTeam])
 
   const reportCandidates = useMemo(() => {
     return candidates.filter(candidate => {

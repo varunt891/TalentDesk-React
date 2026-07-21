@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { db } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
@@ -7,7 +7,7 @@ export function useCandidates() {
   const [candidates, setCandidates] = useState([])
   const [loading, setLoading] = useState(true)
 
-  const fetch = async () => {
+  const fetch = useCallback(async () => {
     try {
       setLoading(true)
       console.log('[useCandidates] Fetching candidates for user:', user?.id)
@@ -29,12 +29,12 @@ export function useCandidates() {
       console.error('[useCandidates] Exception:', err)
       setLoading(false)
     }
-  }
+  }, [user])
 
   useEffect(() => { 
     console.log('[useCandidates] useEffect triggered, user:', user?.id)
     if (user) fetch() 
-  }, [user])
+  }, [user, fetch])
 
   const cleanDates = (data) => {
     const dateFields = ['submission_date', 'interview_date', 'followup_date']

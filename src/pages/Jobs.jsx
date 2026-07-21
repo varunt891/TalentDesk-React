@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { db } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
@@ -23,12 +23,7 @@ export default function Jobs() {
   const [toast, setToast] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
 
-  useEffect(() => { 
-    console.log('[Jobs] useEffect triggered, user:', user?.id)
-    if (user) fetchJobs() 
-  }, [user])
-
-  const fetchJobs = async () => {
+  const fetchJobs = useCallback(async () => {
     try {
       setLoading(true)
       console.log('[Jobs] Fetching jobs for user:', user?.id)
@@ -44,7 +39,12 @@ export default function Jobs() {
       console.error('[Jobs] Exception:', err)
       setLoading(false)
     }
-  }
+  }, [user])
+
+  useEffect(() => { 
+    console.log('[Jobs] useEffect triggered, user:', user?.id)
+    if (user) fetchJobs() 
+  }, [user, fetchJobs])
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type })
