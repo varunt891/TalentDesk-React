@@ -327,18 +327,8 @@ export default function Admin() {
 
       {/* Superadmin Org Switcher */}
       {isSuperAdmin && allOrgs.length > 1 && (
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 4,
-          padding: '0 2rem 0',
-          borderBottom: '1px solid var(--border)',
-          background: 'var(--surface)',
-          overflowX: 'auto',
-        }}>
-          <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '1px', whiteSpace: 'nowrap', paddingRight: 12, borderRight: '1px solid var(--border)', marginRight: 4 }}>
-            🏢 Platform Orgs
-          </span>
+        <div className="admin-org-switcher">
+          <span className="admin-org-switcher-label">Platform Orgs</span>
           {allOrgs.map(o => {
             const isActive = (selectedOrgId || orgId) === o.id
             return (
@@ -346,36 +336,9 @@ export default function Admin() {
                 key={o.id}
                 onClick={() => setSelectedOrgId(o.id)}
                 type="button"
-                style={{
-                  position: 'relative',
-                  padding: '14px 20px',
-                  fontSize: 13,
-                  fontWeight: isActive ? 700 : 500,
-                  color: isActive ? '#ff5c87' : 'var(--text2)',
-                  background: 'transparent',
-                  border: 'none',
-                  borderBottom: isActive ? '2px solid #ff5c87' : '2px solid transparent',
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  whiteSpace: 'nowrap',
-                  transition: 'color 0.15s, border-color 0.15s',
-                  marginBottom: -1,
-                }}
-                onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = 'var(--text)' }}
-                onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = 'var(--text2)' }}
+                className={isActive ? 'active' : ''}
               >
                 {o.name}
-                {isActive && (
-                  <span style={{
-                    position: 'absolute',
-                    top: 10,
-                    right: 8,
-                    width: 6,
-                    height: 6,
-                    borderRadius: '50%',
-                    background: '#ff5c87',
-                  }} />
-                )}
               </button>
             )
           })}
@@ -969,3 +932,4 @@ function EmptyState({ title, body }) {
     </div>
   )
 }
+

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from 'react'
+﻿import { useEffect, useMemo, useState, useRef } from 'react'
 import {
   Area,
   AreaChart,
@@ -311,10 +311,10 @@ export default function Dashboard({ onNavigate }) {
   ]
 
   const todayFocus = [
-    { id: 'calls',      icon: '📞', label: 'Calls today',    value: todaysCallbacks.length,  urgent: todaysCallbacks.length > 0,  page: 'callbacks' },
-    { id: 'overdue',   icon: '⚠️',  label: 'Overdue tasks',  value: overdueFollowups.length, urgent: overdueFollowups.length > 0, page: 'followups' },
-    { id: 'interview', icon: '📅', label: 'Interviews',      value: upcomingInterviews.length, urgent: false,                      page: 'candidates' },
-    { id: 'new',       icon: '✨', label: 'Added today',     value: candidates.filter(c => c.submission_date === today).length, urgent: false, page: 'candidates' },
+    { id: 'calls', label: 'Calls today', value: todaysCallbacks.length, urgent: todaysCallbacks.length > 0, page: 'callbacks' },
+    { id: 'overdue', label: 'Overdue tasks', value: overdueFollowups.length, urgent: overdueFollowups.length > 0, page: 'followups' },
+    { id: 'interview', label: 'Interviews', value: upcomingInterviews.length, urgent: false, page: 'candidates' },
+    { id: 'new', label: 'Added today', value: candidates.filter(c => c.submission_date === today).length, urgent: false, page: 'candidates' },
   ]
 
   const firstName = profile?.full_name?.split(' ')[0] || 'there'
@@ -357,7 +357,7 @@ export default function Dashboard({ onNavigate }) {
 
       <section className="dashboard-control-bar">
         <div className="dashboard-search-container">
-          <span className="search-icon">🔍</span>
+          <span className="search-icon">Search</span>
           <input 
             type="text" 
             placeholder="Search candidates, emails, jobs..." 
@@ -395,7 +395,7 @@ export default function Dashboard({ onNavigate }) {
                   ? ownerOptions.find(([id]) => id === selectedOwners[0])?.[1] || selectedOwners[0]
                   : `${selectedOwners.length} recruiters selected`}
             </span>
-            <span className="multiselect-arrow">▼</span>
+            <span className="multiselect-arrow">v</span>
           </button>
           
           {showOwnerDropdown && (
@@ -467,7 +467,7 @@ export default function Dashboard({ onNavigate }) {
                 <small>{stat.helper}</small>
                 {stat.trend && (
                   <span className={`stat-trend ${stat.trend.dir}`}>
-                    {stat.trend.dir === 'up' ? '↑' : '↓'}
+                    {stat.trend.dir === 'up' ? '+' : '-'}
                     {stat.trend.pct !== null ? ` ${stat.trend.pct > 999 ? '999+' : stat.trend.pct}%` : ''}
                   </span>
                 )}
@@ -481,14 +481,13 @@ export default function Dashboard({ onNavigate }) {
       <section className="dashboard-quick-actions">
         <div className="quick-actions-grid">
           {[
-            { id: 'candidates', label: 'Candidates', desc: 'Profiles', icon: 'CA', tone: 'blue',   badge: filteredCandidates.length },
-            { id: 'pipeline',   label: 'Pipeline',   desc: 'Stages',   icon: 'PI', tone: 'purple', badge: filteredCandidates.filter(c => ['Interview Scheduled','Interview Done','Shortlisted'].includes(c.internal_status)).length },
-            { id: 'jobs',       label: 'Jobs',       desc: 'Roles',    icon: 'JO', tone: 'green',  badge: activeJobsCount },
-            { id: 'reports',    label: 'Reports',    desc: 'Exports',  icon: 'RE', tone: 'yellow' },
-            { id: 'callbacks',  label: 'Callbacks',  desc: 'Tasks',    icon: 'CB', tone: 'orange', badge: pendingCallbacks.length, urgent: todaysCallbacks.length > 0 },
+            { id: 'candidates', label: 'Candidates', desc: 'Profiles', tone: 'blue', badge: filteredCandidates.length },
+            { id: 'pipeline', label: 'Pipeline', desc: 'Stages', tone: 'purple', badge: filteredCandidates.filter(c => ['Interview Scheduled','Interview Done','Shortlisted'].includes(c.internal_status)).length },
+            { id: 'jobs', label: 'Jobs', desc: 'Roles', tone: 'green', badge: activeJobsCount },
+            { id: 'reports', label: 'Reports', desc: 'Exports', tone: 'yellow' },
+            { id: 'callbacks', label: 'Callbacks', desc: 'Tasks', tone: 'orange', badge: pendingCallbacks.length, urgent: todaysCallbacks.length > 0 },
           ].map(action => (
             <button key={action.id} onClick={() => onNavigate(action.id)} className={`quick-action-card ${action.tone}${action.urgent ? ' urgent' : ''}`} type="button">
-              <span className="quick-action-icon">{action.icon}</span>
               <div className="quick-action-copy">
                 <strong>{action.label}</strong>
                 <small>{action.desc}</small>
@@ -508,7 +507,6 @@ export default function Dashboard({ onNavigate }) {
         <div className="focus-strip-pills">
           {todayFocus.map(item => (
             <button key={item.id} type="button" onClick={() => onNavigate(item.page)} className={`focus-pill${item.urgent ? ' urgent' : ''}`}>
-              <span className="focus-pill-icon">{item.icon}</span>
               <strong className="focus-pill-value">{item.value}</strong>
               <small className="focus-pill-label">{item.label}</small>
             </button>
@@ -540,8 +538,7 @@ export default function Dashboard({ onNavigate }) {
                 <EmptyLine text="No recruiter submissions in this period" />
               ) : (
                 recruiterData.map((row, index) => {
-                  const medals = ['🥇', '🥈', '🥉']
-                  const rankDisplay = index < 3 ? medals[index] : `#${index + 1}`
+                  const rankDisplay = String(index + 1).padStart(2, '0')
                   const initials = row.name
                     .split(' ')
                     .map(n => n[0])
@@ -550,18 +547,18 @@ export default function Dashboard({ onNavigate }) {
                     .slice(0, 2)
                   const conversionPct = row.submissions > 0 ? Math.round((row.hires / row.submissions) * 100) : 0
                   return (
-                    <div className={`leaderboard-card rank-${index + 1}`} key={row.name}>
+                    <div className="leaderboard-card" key={row.name}>
                       <div className="leaderboard-rank-badge">{rankDisplay}</div>
                       <div className="leaderboard-avatar-circle">{initials}</div>
                       <div className="leaderboard-info">
                         <div className="leaderboard-name-row">
                           <strong>{row.name}</strong>
-                          <span className="leaderboard-conv-badge" title="Hire conversion rate">{conversionPct}% conv</span>
+                          <span className="leaderboard-conv-badge" title="Hire conversion rate">{conversionPct}% conversion</span>
                         </div>
                         <div className="leaderboard-stats-row">
-                          <span className="leaderboard-stat-pill sub" title="Submissions">💼 {row.submissions} subs</span>
-                          <span className="leaderboard-stat-pill int" title="Interviews">📅 {row.interviews} ints</span>
-                          <span className="leaderboard-stat-pill hire" title="Hires">🎉 {row.hires} hires</span>
+                          <span className="leaderboard-stat-pill" title="Submissions"><b>{row.submissions}</b> submissions</span>
+                          <span className="leaderboard-stat-pill" title="Interviews"><b>{row.interviews}</b> interviews</span>
+                          <span className="leaderboard-stat-pill" title="Hires"><b>{row.hires}</b> hires</span>
                         </div>
                         <div className="leaderboard-progress-bg">
                           <div className="leaderboard-progress-fill" style={{ width: `${row.percentage}%` }} />
@@ -582,23 +579,17 @@ export default function Dashboard({ onNavigate }) {
                 activity.map(item => {
                   const actionLower = (item.action || '').toLowerCase()
                   
-                  let icon = '📝'
                   let typeClass = 'update'
                   
                   if (actionLower.includes('create') || actionLower.includes('add') || actionLower.includes('submit')) {
-                    icon = '✨'
                     typeClass = 'create'
                   } else if (actionLower.includes('delete') || actionLower.includes('remove')) {
-                    icon = '🗑️'
                     typeClass = 'delete'
                   } else if (actionLower.includes('schedule') || actionLower.includes('interview')) {
-                    icon = '📅'
                     typeClass = 'interview'
                   } else if (actionLower.includes('call') || actionLower.includes('phone')) {
-                    icon = '📞'
                     typeClass = 'call'
                   } else if (actionLower.includes('hire') || actionLower.includes('offer')) {
-                    icon = '🎉'
                     typeClass = 'success'
                   }
 
@@ -612,7 +603,7 @@ export default function Dashboard({ onNavigate }) {
                   return (
                     <div className={`activity-timeline-item ${typeClass}`} key={item.id}>
                       <div className="activity-item-left">
-                        <div className="activity-action-icon">{icon}</div>
+                        <div className="activity-action-icon" aria-hidden="true" />
                         <div className="activity-timeline-line" />
                       </div>
                       <div className="activity-item-content">
@@ -689,17 +680,17 @@ export default function Dashboard({ onNavigate }) {
                   {todaysCallbacks.slice(0, 4).map(item => (
                     <div className="action-task-card yellow" key={`c-${item.id}`}>
                       <div className="task-content">
-                        <strong>📞 Callback: {item.candidate_name}</strong>
-                        <small>{item.time || 'Schedule'} · {item.phone || 'No phone'}</small>
+                        <strong>ðŸ“ž Callback: {item.candidate_name}</strong>
+                        <small>{item.time || 'Schedule'} Â· {item.phone || 'No phone'}</small>
                       </div>
                       <div className="task-actions">
                         {item.phone && (
                           <a href={`tel:${item.phone}`} className="task-action-btn phone-btn" title="Call candidate">
-                            📞
+                            ðŸ“ž
                           </a>
                         )}
                         <button onClick={() => handleCompleteCallback(item.id)} className="task-action-btn check-btn" title="Mark Done" type="button">
-                          ✓
+                          âœ“
                         </button>
                       </div>
                     </div>
@@ -707,12 +698,12 @@ export default function Dashboard({ onNavigate }) {
                   {overdueFollowups.slice(0, 4).map(item => (
                     <div className="action-task-card red" key={`f-${item.id}`}>
                       <div className="task-content">
-                        <strong>🔔 Follow-up: {item.candidate_name}</strong>
-                        <small>{item.date} · {item.priority || 'Medium'} priority</small>
+                        <strong>ðŸ”” Follow-up: {item.candidate_name}</strong>
+                        <small>{item.date} Â· {item.priority || 'Medium'} priority</small>
                       </div>
                       <div className="task-actions">
                         <button onClick={() => handleCompleteFollowup(item.id)} className="task-action-btn check-btn" title="Mark Done" type="button">
-                          ✓
+                          âœ“
                         </button>
                       </div>
                     </div>
@@ -734,10 +725,10 @@ export default function Dashboard({ onNavigate }) {
                     </div>
                     <div className="task-content">
                       <strong>{item.candidate_name}</strong>
-                      <small>{item.job_title} · {item.type}</small>
+                      <small>{item.job_title} Â· {item.type}</small>
                     </div>
                     <button onClick={() => onNavigate('candidates')} className="task-action-btn view-btn" title="View Candidate Profile" type="button">
-                      👁️
+                      ðŸ‘ï¸
                     </button>
                   </div>
                 ))

@@ -157,12 +157,46 @@ export default function Candidates() {
   const [sortField, setSortField] = useState('submission_date')
   const [sortDir, setSortDir] = useState(-1)
   const [showBulkStatus, setShowBulkStatus] = useState(false)
+  const [hideStats, setHideStats] = useState(false)
+  const [userCollapsed, setUserCollapsed] = useState(false)
+  const pageRef = useRef(null)
+  const contentRef = useRef(null)
   const bulkRef = useRef(null)
 
   useEffect(() => {
     const handler = (e) => { if (bulkRef.current && !bulkRef.current.contains(e.target)) setShowBulkStatus(false) }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  useEffect(() => {
+    let frame = 0
+
+    const handleScroll = () => {
+      if (frame) cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const scrollEl = contentRef.current
+        const scrollTop = scrollEl ? scrollEl.scrollTop : (window.scrollY || document.documentElement.scrollTop || 0)
+        setHideStats(scrollTop > 20)
+      })
+    }
+
+    handleScroll()
+    const scrollEl = contentRef.current
+    if (scrollEl) {
+      scrollEl.addEventListener('scroll', handleScroll, { passive: true })
+    }
+    window.addEventListener('scroll', handleScroll, { passive: true, capture: true })
+    window.addEventListener('resize', handleScroll, { passive: true })
+
+    return () => {
+      if (frame) cancelAnimationFrame(frame)
+      if (scrollEl) {
+        scrollEl.removeEventListener('scroll', handleScroll)
+      }
+      window.removeEventListener('scroll', handleScroll, { capture: true })
+      window.removeEventListener('resize', handleScroll)
+    }
   }, [])
 
   const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000) }
@@ -317,10 +351,11 @@ export default function Candidates() {
   if (isAdmin) {
     tableHeaders.push({ field: 'recruiter_name', label: 'Recruiter', sortable: true })
   }
+
   tableHeaders.push({ field: 'actions', label: '', sortable: false })
 
   return (
-    <div className="candidates-page">
+    <div className="candidates-page" ref={pageRef}>
 
       {/* Topbar */}
       <div className="candidates-topbar">
@@ -334,6 +369,25 @@ export default function Candidates() {
             <span>Search</span>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name, job, client, skill..." />
           </div>
+          <button
+            className="candidate-btn ghost compact"
+            onClick={() => setUserCollapsed(prev => !prev)}
+            title={(hideStats || userCollapsed) ? "Expand cards" : "Collapse cards"}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              style={{ transform: (hideStats || userCollapsed) ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}
+            >
+              <path d="M18 15l-6-6-6 6"/>
+            </svg>
+            {(hideStats || userCollapsed) ? 'Show Stats' : 'Collapse Stats'}
+          </button>
           <button className="candidate-btn ghost candidates-desktop-export" onClick={exportAll}>Export XLSX</button>
           <button className="candidate-btn primary candidates-desktop-add" onClick={openAdd}>Add Candidate</button>
         </div>
@@ -347,7 +401,7 @@ export default function Candidates() {
         <button className="candidate-btn primary" onClick={openAdd}>Add Candidate</button>
       </div>
 
-      <div className="candidates-stat-grid">
+      <div className={`candidates-stat-grid ${(hideStats || userCollapsed) ? 'is-hidden-on-scroll' : ''}`}>
         {candidateStats.map(stat => (
           <div className={`candidate-stat ${stat.tone}`} key={stat.label}>
             <span>{stat.label}</span>
@@ -371,7 +425,7 @@ export default function Candidates() {
       </div>
 
       {/* Table */}
-      <div className="candidates-content">
+      <div className="candidates-content" ref={contentRef}>
         {loading ? (
           <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text3)' }}>Loading candidates...</div>
         ) : filtered.length === 0 ? (
