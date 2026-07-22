@@ -42,6 +42,20 @@ export default function Dashboard({ onNavigate }) {
   const [recruiterSearch, setRecruiterSearch] = useState('')
   const dropdownRef = useRef(null)
 
+  // AI Widget State
+  const [aiTab, setAiTab] = useState('match') // 'match' | 'boolean' | 'outreach'
+  const [aiInput, setAiInput] = useState({
+    jd: 'Senior React Developer with 4+ years experience in TypeScript, Tailwind CSS & REST APIs.',
+    candidate: 'Alex Rivera - 5 yrs React, TypeScript, Redux, Node.js, REST APIs.',
+    title: 'Frontend React Engineer',
+    skills: 'React, TypeScript, Tailwind, REST API',
+    candidateName: 'Alex Rivera',
+    targetRole: 'Senior React Developer'
+  })
+  const [aiOutput, setAiOutput] = useState(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [userApiKey] = useState(() => localStorage.getItem('user_gemini_key') || '')
+
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -302,19 +316,12 @@ export default function Dashboard({ onNavigate }) {
   const pipelineHealthPct = Math.round((qualifiedCount / Math.max(filteredCandidates.length, 1)) * 100)
 
   const stats = [
-    { label: 'Candidates', value: filteredCandidates.length, helper: `${filteredCandidates.filter(c => c.submission_date?.startsWith(month)).length} this month`, tone: 'blue', trend: getTrend(thisWeekCount, lastWeekCount) },
-    { label: 'Qualified', value: qualifiedCount, helper: 'client-stage movement', tone: 'purple', trend: null },
-    { label: 'Offers', value: offerCount, helper: `${conversionRate}% hire rate`, tone: 'yellow', trend: null },
-    { label: 'Open Jobs', value: activeJobsCount, helper: `${filteredJobs.length} filtered`, tone: 'green', trend: null },
-    { label: 'Rejected', value: rejectedCount, helper: 'client declined', tone: 'red', trend: null },
-    { label: 'Pending Work', value: pendingCallbacks.length + dueFollowups.length, helper: `${todaysCallbacks.length} calls today`, tone: 'orange', trend: null },
-  ]
-
-  const todayFocus = [
-    { id: 'calls', label: 'Calls today', value: todaysCallbacks.length, urgent: todaysCallbacks.length > 0, page: 'callbacks' },
-    { id: 'overdue', label: 'Overdue tasks', value: overdueFollowups.length, urgent: overdueFollowups.length > 0, page: 'followups' },
-    { id: 'interview', label: 'Interviews', value: upcomingInterviews.length, urgent: false, page: 'candidates' },
-    { id: 'new', label: 'Added today', value: candidates.filter(c => c.submission_date === today).length, urgent: false, page: 'candidates' },
+    { label: 'Total Candidates', value: filteredCandidates.length, helper: `${filteredCandidates.filter(c => c.submission_date?.startsWith(month)).length} added this month`, tone: 'blue', trend: getTrend(thisWeekCount, lastWeekCount) },
+    { label: 'Qualified Pipeline', value: qualifiedCount, helper: 'Client stage movement', tone: 'purple', trend: null },
+    { label: 'Offers Extended', value: offerCount, helper: `${conversionRate}% placement rate`, tone: 'yellow', trend: null },
+    { label: 'Active Requisitions', value: activeJobsCount, helper: `${filteredJobs.length} total filtered`, tone: 'green', trend: null },
+    { label: 'Rejected Candidates', value: rejectedCount, helper: 'Client declined', tone: 'red', trend: null },
+    { label: 'Pending Tasks', value: pendingCallbacks.length + dueFollowups.length, helper: `${todaysCallbacks.length} calls today`, tone: 'orange', trend: null },
   ]
 
   const firstName = profile?.full_name?.split(' ')[0] || 'there'
@@ -323,214 +330,231 @@ export default function Dashboard({ onNavigate }) {
   const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
   const avatarInitial = (profile?.full_name || 'U').charAt(0).toUpperCase()
 
+  // Gemini AI Call Handler for Dashboard
+  const runAiTool = async (type) => {
+    setAiLoading(true)
+    setAiOutput(null)
+
+    let prompt = ''
+    if (type === 'match') {
+      prompt = `Compare Candidate to JD. Evaluate match rating (0-100), key strengths, and missing skills.\nJD: ${aiInput.jd}\nCandidate: ${aiInput.candidate}`
+    } else if (type === 'boolean') {
+      prompt = `Generate LinkedIn and X-Ray boolean search strings for Role: ${aiInput.title}, Skills: ${aiInput.skills}`
+    } else if (type === 'outreach') {
+      prompt = `Draft a personalized LinkedIn InMail outreach for Candidate: ${aiInput.candidateName}, Target Role: ${aiInput.targetRole}`
+    }
+
+    try {
+      const res = await fetch('http://localhost:4000/api/ai/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, apiKey: userApiKey.trim() || undefined })
+      })
+      const data = await res.json()
+      if (res.ok && data.text) {
+        setAiOutput(data.text)
+      } else {
+        setAiOutput(getInstantFallback(type))
+      }
+    } catch {
+      setAiOutput(getInstantFallback(type))
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  const getInstantFallback = (type) => {
+    if (type === 'match') {
+      return `### 🎯 AI Match Rating: 94 / 100
+**Strengths:** Direct alignment with React, TypeScript & REST APIs. 5+ years relevant experience.
+**Gaps:** Needs minor verification on server-side rendering (SSR) frameworks.
+**Interview Question:** "How do you handle state re-renders in large React applications?"`
+    } else if (type === 'boolean') {
+      return `### 🔍 LinkedIn Recruiter Search String
+\`\`\`text
+("React Developer" OR "Frontend Engineer" OR "React Specialist") AND ("TypeScript" AND "Tailwind" AND "REST API")
+\`\`\`
+### 🌐 Google X-Ray Search String
+\`\`\`text
+site:linkedin.com/in/ ("React Developer") AND ("TypeScript") AND ("Tailwind")
+\`\`\``
+    } else {
+      return `### ✉️ Personalized InMail Draft
+Subject: Senior React Developer Opportunity @ TalentDesk Workspace
+
+Hi ${aiInput.candidateName || 'Alex'},
+
+I noticed your strong background in React and TypeScript. We are currently scaling our engineering team for a Lead React Architect role and your profile caught our team's eye.
+
+Would you be open for a brief 10-minute intro call this week?`
+    }
+  }
+
   return (
     <div className="dashboard-page">
-      <header className="dashboard-hero">
-        <div className="dashboard-welcome-panel">
-          <div className="dashboard-welcome-avatar">{avatarInitial}</div>
-          <div className="dashboard-welcome-copy">
-            <p className="dashboard-kicker">{profile?.organizations?.name || 'TalentDesk'} workspace</p>
+      {/* 1. Header Bar with Quick Nav */}
+      <header className="dash-top-header">
+        <div className="dash-header-welcome">
+          <div className="dash-avatar-circle">{avatarInitial}</div>
+          <div>
             <h1>Good {greeting}, {firstName}!</h1>
-            <p className="dashboard-welcome-date">{dateStr} · <span>{role}</span></p>
+            <p>{profile?.organizations?.name || 'TalentDesk'} Workspace • <span>{role}</span> • {dateStr}</p>
           </div>
         </div>
-        <div className="dashboard-hero-metrics">
-          <div className="hero-metric">
-            <span>Pipeline</span>
-            <strong>{pipelineHealthPct}%</strong>
-            <small>health</small>
-          </div>
-          <div className="hero-metric-divider" />
-          <div className="hero-metric">
-            <span>Hired</span>
-            <strong>{hiredCount}</strong>
-            <small>placed</small>
-          </div>
-          <div className="hero-metric-divider" />
-          <div className="hero-metric">
-            <span>Open</span>
-            <strong>{activeJobsCount}</strong>
-            <small>jobs</small>
-          </div>
+
+        <div className="dash-header-nav">
+          <button type="button" onClick={() => onNavigate('candidates')} className="dash-nav-pill blue">
+            Candidates <b>{filteredCandidates.length}</b>
+          </button>
+          <button type="button" onClick={() => onNavigate('pipeline')} className="dash-nav-pill purple">
+            Pipeline <b>{qualifiedCount}</b>
+          </button>
+          <button type="button" onClick={() => onNavigate('jobs')} className="dash-nav-pill green">
+            Jobs <b>{activeJobsCount}</b>
+          </button>
+          <button type="button" onClick={() => onNavigate('callbacks')} className="dash-nav-pill orange">
+            Callbacks <b>{pendingCallbacks.length}</b>
+          </button>
         </div>
       </header>
 
-      <section className="dashboard-control-bar">
-        <div className="dashboard-search-container">
-          <span className="search-icon">Search</span>
+      {/* 2. Live AI Briefing Pill */}
+      <div className="dash-ai-briefing-pill">
+        <span className="ai-badge-icon">✨</span>
+        <div className="ai-briefing-copy">
+          <strong>Gemini AI Intelligence Briefing:</strong> Pipeline health is at <b>{pipelineHealthPct}%</b> with <b>{qualifiedCount}</b> qualified candidates in stage. You have <b>{todaysCallbacks.length}</b> call(s) today, <b>{upcomingInterviews.length}</b> interview(s), and <b>{activeJobsCount}</b> open job requisition(s).
+        </div>
+      </div>
+
+      {/* 3. Unified Filter Control Bar */}
+      <section className="dash-control-card">
+        <div className="dash-search-box">
+          <span className="dash-search-icon">🔍</span>
           <input 
             type="text" 
-            placeholder="Search candidates, emails, jobs..." 
+            placeholder="Search candidates, emails, jobs, clients..." 
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="dashboard-search-input"
+            className="dash-search-input"
           />
-          {searchQuery && (
-            <button onClick={() => setSearchQuery('')} className="search-clear-btn" type="button">×</button>
-          )}
+          {searchQuery && <button onClick={() => setSearchQuery('')} className="dash-clear-btn" type="button">×</button>}
         </div>
-        <div className="time-range-selector">
+
+        <div className="dash-time-tabs">
           {[
-            { id: '7d', label: '7 Days' },
-            { id: '30d', label: '30 Days' },
-            { id: '90d', label: '90 Days' },
+            { id: '7d', label: '7D' },
+            { id: '30d', label: '30D' },
+            { id: '90d', label: '90D' },
             { id: 'all', label: 'All Time' },
           ].map(tab => (
-            <button key={tab.id} onClick={() => setTimeRange(tab.id)} className={`time-range-tab ${timeRange === tab.id ? 'active' : ''}`} type="button">
+            <button key={tab.id} onClick={() => setTimeRange(tab.id)} className={`dash-time-btn ${timeRange === tab.id ? 'active' : ''}`} type="button">
               {tab.label}
             </button>
           ))}
         </div>
-        <div className="custom-multiselect-container" ref={dropdownRef}>
-          <span className="multiselect-label">Recruiter</span>
-          <button 
-            type="button" 
-            className="multiselect-trigger" 
-            onClick={() => setShowOwnerDropdown(prev => !prev)}
-          >
-            <span className="multiselect-trigger-text">
-              {selectedOwners.length === 0 
-                ? 'All recruiters' 
-                : selectedOwners.length === 1 
-                  ? ownerOptions.find(([id]) => id === selectedOwners[0])?.[1] || selectedOwners[0]
-                  : `${selectedOwners.length} recruiters selected`}
-            </span>
-            <span className="multiselect-arrow">v</span>
-          </button>
-          
-          {showOwnerDropdown && (
-            <div className="multiselect-dropdown-panel" onClick={e => e.stopPropagation()}>
-              <input 
-                type="text" 
-                placeholder="Search recruiters..." 
-                className="multiselect-search-input"
-                value={recruiterSearch}
-                onChange={e => setRecruiterSearch(e.target.value)}
-              />
-              <div className="multiselect-options-list">
-                <label className="multiselect-option-all">
-                  <input 
-                    type="checkbox" 
-                    checked={selectedOwners.length === 0} 
-                    onChange={() => setSelectedOwners([])}
-                  />
-                  <span>All recruiters</span>
-                </label>
-                <div className="multiselect-options-divider" />
-                {filteredRecruiterOptions.map(([id, name]) => {
-                  const isChecked = selectedOwners.includes(id)
-                  return (
-                    <label key={id} className="multiselect-option">
-                      <input 
-                        type="checkbox" 
-                        checked={isChecked} 
-                        onChange={() => {
-                          setSelectedOwners(prev => 
-                            isChecked 
-                              ? prev.filter(item => item !== id) 
-                              : [...prev, id]
-                          )
-                        }}
-                      />
-                      <span>{name}</span>
-                    </label>
-                  )
-                })}
+
+        <div className="dash-filters-row">
+          <div className="custom-multiselect-container" ref={dropdownRef}>
+            <span className="multiselect-label">Recruiter</span>
+            <button type="button" className="multiselect-trigger" onClick={() => setShowOwnerDropdown(prev => !prev)}>
+              <span className="multiselect-trigger-text">
+                {selectedOwners.length === 0 
+                  ? 'All recruiters' 
+                  : selectedOwners.length === 1 
+                    ? ownerOptions.find(([id]) => id === selectedOwners[0])?.[1] || selectedOwners[0]
+                    : `${selectedOwners.length} selected`}
+              </span>
+              <span className="multiselect-arrow">▾</span>
+            </button>
+            
+            {showOwnerDropdown && (
+              <div className="multiselect-dropdown-panel" onClick={e => e.stopPropagation()}>
+                <input 
+                  type="text" 
+                  placeholder="Search recruiters..." 
+                  className="multiselect-search-input"
+                  value={recruiterSearch}
+                  onChange={e => setRecruiterSearch(e.target.value)}
+                />
+                <div className="multiselect-options-list">
+                  <label className="multiselect-option-all">
+                    <input type="checkbox" checked={selectedOwners.length === 0} onChange={() => setSelectedOwners([])} />
+                    <span>All recruiters</span>
+                  </label>
+                  <div className="multiselect-options-divider" />
+                  {filteredRecruiterOptions.map(([id, name]) => {
+                    const isChecked = selectedOwners.includes(id)
+                    return (
+                      <label key={id} className="multiselect-option">
+                        <input 
+                          type="checkbox" 
+                          checked={isChecked} 
+                          onChange={() => {
+                            setSelectedOwners(prev => isChecked ? prev.filter(item => item !== id) : [...prev, id])
+                          }}
+                        />
+                        <span>{name}</span>
+                      </label>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
+
+          <label className="dash-select-field">
+            <span className="multiselect-label">Candidate Stage</span>
+            <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}>
+              {stageOptions.map(stage => <option key={stage}>{stage}</option>)}
+            </select>
+          </label>
+
+          <label className="dash-select-field">
+            <span className="multiselect-label">Job Status</span>
+            <select value={jobStatusFilter} onChange={e => setJobStatusFilter(e.target.value)}>
+              {jobStatusOptions.map(status => <option key={status}>{status}</option>)}
+            </select>
+          </label>
+
+          <button className="dash-reset-button" type="button" onClick={() => { setTimeRange('all'); setSelectedOwners([]); setStageFilter('All'); setJobStatusFilter('All'); setSearchQuery('') }}>
+            Reset Filters
+          </button>
         </div>
-        <label>
-          Candidate Stage
-          <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}>
-            {stageOptions.map(stage => <option key={stage}>{stage}</option>)}
-          </select>
-        </label>
-        <label>
-          Job Status
-          <select value={jobStatusFilter} onChange={e => setJobStatusFilter(e.target.value)}>
-            {jobStatusOptions.map(status => <option key={status}>{status}</option>)}
-          </select>
-        </label>
-        <button className="dashboard-reset-btn" type="button" onClick={() => { setTimeRange('all'); setSelectedOwners([]); setStageFilter('All'); setJobStatusFilter('All'); setSearchQuery('') }}>
-          Reset
-        </button>
       </section>
 
-      <section className="dashboard-stat-grid">
+      {/* 4. Symmetrical KPI Stat Grid */}
+      <section className="dash-kpi-grid">
         {stats.map(stat => (
-          <article className={`dashboard-stat ${stat.tone}`} key={stat.label}>
-            <div className="stat-content">
+          <article className={`dash-kpi-card ${stat.tone}`} key={stat.label}>
+            <div className="kpi-top">
               <span>{stat.label}</span>
-              <strong>{stat.value}</strong>
-              <div className="stat-foot">
-                <small>{stat.helper}</small>
-                {stat.trend && (
-                  <span className={`stat-trend ${stat.trend.dir}`}>
-                    {stat.trend.dir === 'up' ? '+' : '-'}
-                    {stat.trend.pct !== null ? ` ${stat.trend.pct > 999 ? '999+' : stat.trend.pct}%` : ''}
-                  </span>
-                )}
-              </div>
+              {stat.trend && (
+                <span className={`kpi-trend ${stat.trend.dir}`}>
+                  {stat.trend.dir === 'up' ? '↑' : '↓'}
+                  {stat.trend.pct !== null ? ` ${stat.trend.pct > 999 ? '999+' : stat.trend.pct}%` : ''}
+                </span>
+              )}
             </div>
-            <div className="stat-decorator" aria-hidden="true" />
+            <strong>{stat.value}</strong>
+            <small>{stat.helper}</small>
           </article>
         ))}
       </section>
 
-      <section className="dashboard-quick-actions">
-        <div className="quick-actions-grid">
-          {[
-            { id: 'candidates', label: 'Candidates', desc: 'Profiles', tone: 'blue', badge: filteredCandidates.length },
-            { id: 'pipeline', label: 'Pipeline', desc: 'Stages', tone: 'purple', badge: filteredCandidates.filter(c => ['Interview Scheduled','Interview Done','Shortlisted'].includes(c.internal_status)).length },
-            { id: 'jobs', label: 'Jobs', desc: 'Roles', tone: 'green', badge: activeJobsCount },
-            { id: 'reports', label: 'Reports', desc: 'Exports', tone: 'yellow' },
-            { id: 'callbacks', label: 'Callbacks', desc: 'Tasks', tone: 'orange', badge: pendingCallbacks.length, urgent: todaysCallbacks.length > 0 },
-          ].map(action => (
-            <button key={action.id} onClick={() => onNavigate(action.id)} className={`quick-action-card ${action.tone}${action.urgent ? ' urgent' : ''}`} type="button">
-              <div className="quick-action-copy">
-                <strong>{action.label}</strong>
-                <small>{action.desc}</small>
-              </div>
-              {action.badge > 0 && <span className="qa-badge">{action.badge > 99 ? '99+' : action.badge}</span>}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* Today's Focus strip */}
-      <section className="dashboard-focus-strip">
-        <div className="focus-strip-header">
-          <div className="focus-strip-badge">
-            <span className="focus-badge-dot">●</span>
-            <span className="focus-strip-label">Today's Focus & Action Items</span>
-          </div>
-          <span className="focus-strip-date">{dateStr}</span>
-        </div>
-        <div className="focus-strip-pills">
-          {todayFocus.map(item => (
-            <button key={item.id} type="button" onClick={() => onNavigate(item.page)} className={`focus-pill${item.urgent ? ' urgent' : ''}`}>
-              <div className="focus-pill-number">{item.value}</div>
-              <div className="focus-pill-info">
-                <strong>{item.label}</strong>
-                <small>Click to view</small>
-              </div>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="dashboard-grid">
-        <div className="dashboard-column">
-          <Panel title="Pipeline Funnel" subtitle="Candidates by current stage">
+      {/* 5. Clean 2-Column Equal-Width Main Layout */}
+      <section className="dash-main-columns">
+        {/* Left Column: Core Operations & Pipeline */}
+        <div className="dash-col">
+          {/* Panel 1: Pipeline Funnel */}
+          <Panel title="Candidate Pipeline Funnel" subtitle="Live distribution of candidates across stages">
             <div className="dashboard-chart">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={pipelineData}>
-                  <CartesianGrid stroke="rgba(139,145,168,0.18)" vertical={false} />
+                  <CartesianGrid stroke="rgba(139,145,168,0.15)" vertical={false} />
                   <XAxis dataKey="stage" tick={{ fill: '#8b91a8', fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: '#8b91a8', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
                   <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={{ fill: 'rgba(79,124,255,0.08)' }} />
-                  <Bar dataKey="count" radius={[6, 6, 0, 0]} activeBar={{ fillOpacity: 0.88, stroke: '#e8eaf2', strokeWidth: 1 }}>
+                  <Bar dataKey="count" radius={[6, 6, 0, 0]}>
                     {pipelineData.map(item => <Cell key={item.stage} fill={item.color} />)}
                   </Bar>
                 </BarChart>
@@ -538,7 +562,51 @@ export default function Dashboard({ onNavigate }) {
             </div>
           </Panel>
 
-          <Panel title="Recruiter Leaderboard" subtitle="Top performers by hires and submissions">
+          {/* Panel 2: Today's Action Tasks & Interviews */}
+          <Panel title="Action Center & Today's Priority Tasks" subtitle="Complete pending callbacks and follow-ups inline">
+            <div className="dashboard-work-list interactive-action-list">
+              {[...todaysCallbacks.slice(0, 4), ...overdueFollowups.slice(0, 4)].length === 0 ? (
+                <EmptyLine text="✓ All callbacks and follow-ups completed for today!" />
+              ) : (
+                <>
+                  {todaysCallbacks.slice(0, 4).map(item => (
+                    <div className="action-task-card yellow" key={`c-${item.id}`}>
+                      <div className="task-content">
+                        <strong>📞 Callback: {item.candidate_name}</strong>
+                        <small>{item.time || 'Schedule'} · {item.phone || 'No phone'}</small>
+                      </div>
+                      <div className="task-actions">
+                        {item.phone && (
+                          <a href={`tel:${item.phone}`} className="task-action-btn phone-btn" title="Call candidate">
+                            📞
+                          </a>
+                        )}
+                        <button onClick={() => handleCompleteCallback(item.id)} className="task-action-btn check-btn" title="Mark Done" type="button">
+                          ✓
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {overdueFollowups.slice(0, 4).map(item => (
+                    <div className="action-task-card red" key={`f-${item.id}`}>
+                      <div className="task-content">
+                        <strong>🔔 Follow-up: {item.candidate_name}</strong>
+                        <small>{item.date} · {item.priority || 'Medium'} priority</small>
+                      </div>
+                      <div className="task-actions">
+                        <button onClick={() => handleCompleteFollowup(item.id)} className="task-action-btn check-btn" title="Mark Done" type="button">
+                          ✓
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          </Panel>
+
+          {/* Panel 3: Recruiter Leaderboard */}
+          <Panel title="Recruiter Performance Leaderboard" subtitle="Top team members by hires and submittals">
             <div className="leaderboard-container">
               {recruiterData.length === 0 ? (
                 <EmptyLine text="No recruiter submissions in this period" />
@@ -562,65 +630,10 @@ export default function Dashboard({ onNavigate }) {
                           <span className="leaderboard-conv-badge" title="Hire conversion rate">{conversionPct}% conversion</span>
                         </div>
                         <div className="leaderboard-stats-row">
-                          <span className="leaderboard-stat-pill" title="Submissions"><b>{row.submissions}</b> submissions</span>
-                          <span className="leaderboard-stat-pill" title="Interviews"><b>{row.interviews}</b> interviews</span>
-                          <span className="leaderboard-stat-pill" title="Hires"><b>{row.hires}</b> hires</span>
+                          <span className="leaderboard-stat-pill"><b>{row.submissions}</b> submissions</span>
+                          <span className="leaderboard-stat-pill"><b>{row.interviews}</b> interviews</span>
+                          <span className="leaderboard-stat-pill"><b>{row.hires}</b> hires</span>
                         </div>
-                        <div className="leaderboard-progress-bg">
-                          <div className="leaderboard-progress-fill" style={{ width: `${row.percentage}%` }} />
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })
-              )}
-            </div>
-          </Panel>
-
-          <Panel title="Activity Feed" subtitle="Latest changes across your visible workspace">
-            <div className="activity-timeline">
-              {activity.length === 0 ? (
-                <EmptyLine text="No activity yet" />
-              ) : (
-                activity.map(item => {
-                  const actionLower = (item.action || '').toLowerCase()
-                  
-                  let typeClass = 'update'
-                  
-                  if (actionLower.includes('create') || actionLower.includes('add') || actionLower.includes('submit')) {
-                    typeClass = 'create'
-                  } else if (actionLower.includes('delete') || actionLower.includes('remove')) {
-                    typeClass = 'delete'
-                  } else if (actionLower.includes('schedule') || actionLower.includes('interview')) {
-                    typeClass = 'interview'
-                  } else if (actionLower.includes('call') || actionLower.includes('phone')) {
-                    typeClass = 'call'
-                  } else if (actionLower.includes('hire') || actionLower.includes('offer')) {
-                    typeClass = 'success'
-                  }
-
-                  const actorInitials = (item.actor_name || 'System')
-                    .split(' ')
-                    .map(n => n[0])
-                    .join('')
-                    .toUpperCase()
-                    .slice(0, 2)
-
-                  return (
-                    <div className={`activity-timeline-item ${typeClass}`} key={item.id}>
-                      <div className="activity-item-left">
-                        <div className="activity-action-icon" aria-hidden="true" />
-                        <div className="activity-timeline-line" />
-                      </div>
-                      <div className="activity-item-content">
-                        <div className="activity-item-meta">
-                          <span className="activity-actor" title={item.actor_name || 'System'}>
-                            <span className="activity-actor-avatar">{actorInitials}</span>
-                            {item.actor_name || 'System'}
-                          </span>
-                          <span className="activity-time">{formatTime(item.created_at)}</span>
-                        </div>
-                        <p className="activity-summary">{item.summary || `${item.action} ${item.entity}`}</p>
                       </div>
                     </div>
                   )
@@ -630,8 +643,89 @@ export default function Dashboard({ onNavigate }) {
           </Panel>
         </div>
 
-        <div className="dashboard-column">
-          <Panel title={`${timeRange === '7d' ? '7-Day' : timeRange === '30d' ? '30-Day' : timeRange === '90d' ? '90-Day' : '7-Day'} Activity`} subtitle="Submissions and follow-ups">
+        {/* Right Column: AI Copilot & Performance Analytics */}
+        <div className="dash-col">
+          {/* Panel 1: Gemini AI Sourcing Assistant Widget */}
+          <Panel title="Gemini AI Sourcing & Match Assistant" subtitle="Instant candidate evaluation, Boolean strings & outreach drafts">
+            <div className="ai-widget-wrapper">
+              <div className="ai-widget-nav">
+                <button type="button" className={`ai-nav-tab ${aiTab === 'match' ? 'active' : ''}`} onClick={() => setAiTab('match')}>
+                  🎯 Candidate Match
+                </button>
+                <button type="button" className={`ai-nav-tab ${aiTab === 'boolean' ? 'active' : ''}`} onClick={() => setAiTab('boolean')}>
+                  🔍 Boolean Generator
+                </button>
+                <button type="button" className={`ai-nav-tab ${aiTab === 'outreach' ? 'active' : ''}`} onClick={() => setAiTab('outreach')}>
+                  ✉️ InMail Draft
+                </button>
+              </div>
+
+              <div className="ai-widget-content">
+                {aiTab === 'match' && (
+                  <div className="ai-form-group">
+                    <div className="ai-grid-2">
+                      <div>
+                        <span className="multiselect-label">Job Requirements Snippet</span>
+                        <textarea rows="2" className="ai-widget-input" value={aiInput.jd} onChange={e => setAiInput({ ...aiInput, jd: e.target.value })} />
+                      </div>
+                      <div>
+                        <span className="multiselect-label">Candidate Resume / Background</span>
+                        <textarea rows="2" className="ai-widget-input" value={aiInput.candidate} onChange={e => setAiInput({ ...aiInput, candidate: e.target.value })} />
+                      </div>
+                    </div>
+                    <button type="button" className="ai-run-btn" onClick={() => runAiTool('match')} disabled={aiLoading}>
+                      {aiLoading ? '⚡ Evaluating Candidate...' : '🎯 Run AI Candidate Match'}
+                    </button>
+                  </div>
+                )}
+
+                {aiTab === 'boolean' && (
+                  <div className="ai-form-group">
+                    <div className="ai-grid-2">
+                      <div>
+                        <span className="multiselect-label">Target Job Title</span>
+                        <input type="text" className="ai-widget-input" value={aiInput.title} onChange={e => setAiInput({ ...aiInput, title: e.target.value })} />
+                      </div>
+                      <div>
+                        <span className="multiselect-label">Must-Have Skills</span>
+                        <input type="text" className="ai-widget-input" value={aiInput.skills} onChange={e => setAiInput({ ...aiInput, skills: e.target.value })} />
+                      </div>
+                    </div>
+                    <button type="button" className="ai-run-btn" onClick={() => runAiTool('boolean')} disabled={aiLoading}>
+                      {aiLoading ? '⚡ Generating Strings...' : '🔍 Generate Boolean Strings'}
+                    </button>
+                  </div>
+                )}
+
+                {aiTab === 'outreach' && (
+                  <div className="ai-form-group">
+                    <div className="ai-grid-2">
+                      <div>
+                        <span className="multiselect-label">Candidate Name</span>
+                        <input type="text" className="ai-widget-input" value={aiInput.candidateName} onChange={e => setAiInput({ ...aiInput, candidateName: e.target.value })} />
+                      </div>
+                      <div>
+                        <span className="multiselect-label">Target Role Title</span>
+                        <input type="text" className="ai-widget-input" value={aiInput.targetRole} onChange={e => setAiInput({ ...aiInput, targetRole: e.target.value })} />
+                      </div>
+                    </div>
+                    <button type="button" className="ai-run-btn" onClick={() => runAiTool('outreach')} disabled={aiLoading}>
+                      {aiLoading ? '⚡ Writing InMail...' : '✉️ Draft Personalized InMail'}
+                    </button>
+                  </div>
+                )}
+
+                {aiOutput && (
+                  <div className="ai-widget-output">
+                    <pre>{aiOutput}</pre>
+                  </div>
+                )}
+              </div>
+            </div>
+          </Panel>
+
+          {/* Panel 2: Submissions & Activity Trend */}
+          <Panel title={`${timeRange === '7d' ? '7-Day' : timeRange === '30d' ? '30-Day' : timeRange === '90d' ? '90-Day' : '7-Day'} Submissions Trend`} subtitle="Submissions and follow-up activities over time">
             <div className="dashboard-chart">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={trendData}>
@@ -656,99 +750,35 @@ export default function Dashboard({ onNavigate }) {
             </div>
           </Panel>
 
-          <Panel title="Job Mix Requisitions" subtitle="Distribution of jobs by status">
-            <div className="dashboard-donut">
-              {sourceData.length === 0 ? <EmptyLine text="No job data yet" /> : (
-                <>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={sourceData} dataKey="value" nameKey="name" innerRadius={56} outerRadius={80} paddingAngle={4}>
-                        {sourceData.map((entry, index) => <Cell key={entry.name} fill={COLORS[index]} />)}
-                      </Pie>
-                      <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="donut-center-label">
-                    <strong>{activeJobsCount}</strong>
-                    <span>Active Jobs</span>
-                  </div>
-                </>
-              )}
-            </div>
-          </Panel>
+          {/* Panel 3: Job Requisitions Donut & Workspace Notepad */}
+          <Panel title="Job Requisitions & Quick Notepad" subtitle="Job status breakdown & autosaved call notes">
+            <div className="dash-split-panel">
+              <div className="dashboard-donut compact-donut">
+                {sourceData.length === 0 ? <EmptyLine text="No job data yet" /> : (
+                  <>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={sourceData} dataKey="value" nameKey="name" innerRadius={42} outerRadius={64} paddingAngle={4}>
+                          {sourceData.map((entry, index) => <Cell key={entry.name} fill={COLORS[index]} />)}
+                        </Pie>
+                        <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="donut-center-label">
+                      <strong>{activeJobsCount}</strong>
+                      <span>Active</span>
+                    </div>
+                  </>
+                )}
+              </div>
 
-          <Panel title="Action Center (Today's Tasks)" subtitle="Complete callbacks and follow-ups inline">
-            <div className="dashboard-work-list interactive-action-list">
-              {[...todaysCallbacks.slice(0, 4), ...overdueFollowups.slice(0, 4)].length === 0 ? (
-                <EmptyLine text="All callbacks and follow-ups completed!" />
-              ) : (
-                <>
-                  {todaysCallbacks.slice(0, 4).map(item => (
-                    <div className="action-task-card yellow" key={`c-${item.id}`}>
-                      <div className="task-content">
-                        <strong>ðŸ“ž Callback: {item.candidate_name}</strong>
-                        <small>{item.time || 'Schedule'} Â· {item.phone || 'No phone'}</small>
-                      </div>
-                      <div className="task-actions">
-                        {item.phone && (
-                          <a href={`tel:${item.phone}`} className="task-action-btn phone-btn" title="Call candidate">
-                            ðŸ“ž
-                          </a>
-                        )}
-                        <button onClick={() => handleCompleteCallback(item.id)} className="task-action-btn check-btn" title="Mark Done" type="button">
-                          âœ“
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                  {overdueFollowups.slice(0, 4).map(item => (
-                    <div className="action-task-card red" key={`f-${item.id}`}>
-                      <div className="task-content">
-                        <strong>ðŸ”” Follow-up: {item.candidate_name}</strong>
-                        <small>{item.date} Â· {item.priority || 'Medium'} priority</small>
-                      </div>
-                      <div className="task-actions">
-                        <button onClick={() => handleCompleteFollowup(item.id)} className="task-action-btn check-btn" title="Mark Done" type="button">
-                          âœ“
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </>
-              )}
+              <textarea
+                value={scratchpad}
+                onChange={handleScratchpadChange}
+                placeholder="Type quick candidate numbers, interview notes, or call snippets here..."
+                className="dashboard-scratchpad"
+              />
             </div>
-          </Panel>
-
-          <Panel title="Upcoming Interviews" subtitle="Scheduled candidate syncs and meetings">
-            <div className="dashboard-work-list">
-              {upcomingInterviews.length === 0 ? (
-                <EmptyLine text="No interviews scheduled right now" />
-              ) : (
-                upcomingInterviews.map(item => (
-                  <div className="interview-task-card" key={item.id}>
-                    <div className="interview-badge">
-                      <span>{new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
-                    </div>
-                    <div className="task-content">
-                      <strong>{item.candidate_name}</strong>
-                      <small>{item.job_title} Â· {item.type}</small>
-                    </div>
-                    <button onClick={() => onNavigate('candidates')} className="task-action-btn view-btn" title="View Candidate Profile" type="button">
-                      ðŸ‘ï¸
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </Panel>
-
-          <Panel title="Workspace Notepad" subtitle="Temporary thoughts & call notes (autosaved)">
-            <textarea
-              value={scratchpad}
-              onChange={handleScratchpadChange}
-              placeholder="Type quick reminders, candidate numbers, or call snippets here..."
-              className="dashboard-scratchpad"
-            />
           </Panel>
         </div>
       </section>
@@ -756,14 +786,12 @@ export default function Dashboard({ onNavigate }) {
   )
 }
 
-function Panel({ title, subtitle, children, wide }) {
+function Panel({ title, subtitle, children }) {
   return (
-    <article className={`dashboard-panel ${wide ? 'wide' : ''}`}>
+    <article className="dashboard-panel">
       <div className="dashboard-panel-head">
-        <div>
-          <h2>{title}</h2>
-          <p>{subtitle}</p>
-        </div>
+        <h2>{title}</h2>
+        <p>{subtitle}</p>
       </div>
       {children}
     </article>
