@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext'
 
 const navItems = [
   { id: 'dashboard', icon: 'dashboard', label: 'Dashboard', section: 'Main' },
+  { id: 'ai_center', icon: 'ai', label: 'AI Center', section: 'Main' },
   { id: 'candidates', icon: 'candidates', label: 'Candidates', section: 'Main' },
   { id: 'pipeline', icon: 'pipeline', label: 'Pipeline', section: 'Main' },
   { id: 'jobs', icon: 'jobs', label: 'Jobs', section: 'Main' },
@@ -203,6 +204,12 @@ function SidebarIcon({ name }) {
           <rect x="14" y="3" width="7" height="5" rx="1" />
           <rect x="14" y="12" width="7" height="9" rx="1" />
           <rect x="3" y="16" width="7" height="5" rx="1" />
+        </svg>
+      )
+    case 'ai':
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
         </svg>
       )
     case 'candidates':

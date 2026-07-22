@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState, useRef } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import {
   Area,
   AreaChart,
@@ -501,14 +501,20 @@ export default function Dashboard({ onNavigate }) {
       {/* Today's Focus strip */}
       <section className="dashboard-focus-strip">
         <div className="focus-strip-header">
-          <span className="focus-strip-label">Today's Focus</span>
+          <div className="focus-strip-badge">
+            <span className="focus-badge-dot">●</span>
+            <span className="focus-strip-label">Today's Focus & Action Items</span>
+          </div>
           <span className="focus-strip-date">{dateStr}</span>
         </div>
         <div className="focus-strip-pills">
           {todayFocus.map(item => (
             <button key={item.id} type="button" onClick={() => onNavigate(item.page)} className={`focus-pill${item.urgent ? ' urgent' : ''}`}>
-              <strong className="focus-pill-value">{item.value}</strong>
-              <small className="focus-pill-label">{item.label}</small>
+              <div className="focus-pill-number">{item.value}</div>
+              <div className="focus-pill-info">
+                <strong>{item.label}</strong>
+                <small>Click to view</small>
+              </div>
             </button>
           ))}
         </div>

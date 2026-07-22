@@ -14,6 +14,7 @@ import Directory from './pages/Directory'
 import Resubmit from './pages/Resubmit'
 import Admin from './pages/Admin'
 import Reports from './pages/Reports'
+import AICenter from './pages/AICenter'
 import AppLayout from './components/layout/AppLayout'
 import { db } from './lib/api'
 
@@ -82,6 +83,7 @@ function MainApp() {
   const renderPage = () => {
     switch (currentPage) {
       case 'dashboard': return <Dashboard onNavigate={setCurrentPage} />
+      case 'ai_center': return <AICenter />
       case 'candidates': return <Candidates />
       case 'jobs': return <Jobs />
       case 'pipeline': return <Pipeline />

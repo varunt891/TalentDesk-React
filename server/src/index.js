@@ -5,6 +5,7 @@ import cors from 'cors'
 import authRoutes from './routes/auth.routes.js'
 import dataRoutes from './routes/data.routes.js'
 import adminRoutes from './routes/admin.routes.js'
+import aiRoutes from './routes/ai.routes.js'
 
 if (!process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET is required')
@@ -68,6 +69,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }))
 app.use('/api/auth', authRoutes)
 app.use('/api/data', dataRoutes)
 app.use('/api/admin', adminRoutes)
+app.use('/api/ai', aiRoutes)
 
 app.use((err, _req, res, _next) => {
   console.error(err)
