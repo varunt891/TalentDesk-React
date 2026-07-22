@@ -9357,3 +9357,233 @@ input, select, textarea, button {
     font-size: 13px;
   }
 }
+
+/* ==========================================================================
+   GLOBAL MOBILE RESPONSIVE ENHANCEMENTS
+   ========================================================================== */
+
+.mobile-topbar-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mobile-brand-name {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--accent);
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+}
+
+.mobile-page-badge {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(124, 92, 255, 0.15);
+  color: #7c5cff;
+  white-space: nowrap;
+}
+
+[data-theme="light"] .mobile-page-badge {
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563eb;
+}
+
+@media (max-width: 768px) {
+  .mobile-topbar {
+    display: flex !important;
+    align-items: center !important;
+    padding: 10px 16px !important;
+    gap: 12px !important;
+    border-bottom: 1px solid var(--border) !important;
+    background: var(--surface) !important;
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 40 !important;
+  }
+
+  /* Dashboard Hero Panel */
+  .dashboard-hero {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    padding: 16px !important;
+    gap: 14px !important;
+  }
+
+  .dashboard-welcome-panel {
+    gap: 12px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+  }
+
+  .dashboard-welcome-avatar {
+    width: 42px !important;
+    height: 42px !important;
+    font-size: 16px !important;
+  }
+
+  .dashboard-welcome-copy h1 {
+    font-size: 20px !important;
+    line-height: 1.2 !important;
+  }
+
+  .dashboard-welcome-date {
+    font-size: 11.5px !important;
+  }
+
+  .dashboard-hero-metrics {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 8px !important;
+    padding-top: 10px !important;
+    border-top: 1px solid rgba(148, 163, 184, 0.15) !important;
+  }
+
+  .hero-metric-divider {
+    display: none !important;
+  }
+
+  .hero-metric {
+    align-items: center !important;
+    text-align: center !important;
+    padding: 6px 4px !important;
+  }
+
+  .hero-metric span {
+    font-size: 10px !important;
+    letter-spacing: 0.5px !important;
+  }
+
+  .hero-metric strong {
+    font-size: 18px !important;
+  }
+
+  .hero-metric small {
+    font-size: 9.5px !important;
+  }
+
+  /* Dashboard Control Bar Filters */
+  .dashboard-control-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+    padding: 14px !important;
+  }
+
+  .dashboard-search-container {
+    width: 100% !important;
+  }
+
+  .time-range-selector {
+    width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: 2px !important;
+  }
+
+  .time-range-tab {
+    flex: 1 !important;
+    padding: 7px 10px !important;
+    font-size: 11.5px !important;
+    white-space: nowrap !important;
+  }
+
+  .custom-multiselect-container,
+  .dashboard-control-bar label {
+    width: 100% !important;
+  }
+
+  .multiselect-trigger,
+  .dashboard-control-bar select {
+    width: 100% !important;
+  }
+
+  /* Dashboard Stats Grid */
+  .dashboard-stats-grid,
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  .dashboard-stat {
+    padding: 12px 14px !important;
+    min-height: 90px !important;
+  }
+
+  .dashboard-stat strong {
+    font-size: 22px !important;
+  }
+
+  .dashboard-stat span {
+    font-size: 10px !important;
+  }
+
+  .stat-foot {
+    font-size: 10.5px !important;
+  }
+
+  /* Today's Focus Strip */
+  .focus-strip-pills {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  .focus-pill {
+    padding: 10px 12px !important;
+    gap: 10px !important;
+    min-height: 56px !important;
+  }
+
+  .focus-pill-number {
+    font-size: 20px !important;
+  }
+
+  .focus-pill-info strong {
+    font-size: 12px !important;
+  }
+
+  /* Quick Actions Grid */
+  .quick-actions-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .quick-action-card {
+    padding: 10px 12px !important;
+    min-height: 54px !important;
+  }
+
+  .quick-action-copy strong {
+    font-size: 12px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .dashboard-stats-grid,
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-stat {
+    padding: 10px 12px !important;
+  }
+
+  .dashboard-stat strong {
+    font-size: 20px !important;
+  }
+
+  .focus-strip-pills {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  .quick-actions-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

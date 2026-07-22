@@ -57,9 +57,9 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
             <span />
             <span />
           </button>
-          <div>
-            <div className="mobile-brand-name">TalentDesk</div>
-            <div className="mobile-page-name">{currentPage}</div>
+          <div className="mobile-topbar-title-group">
+            <span className="mobile-brand-name">TalentDesk</span>
+            <span className="mobile-page-badge">{currentPage}</span>
           </div>
         </header>
         {children}
