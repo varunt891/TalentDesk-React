@@ -9263,3 +9263,97 @@ input, select, textarea, button {
   color: #ff4d6a;
   font-size: 13px;
 }
+
+/* ==========================================================================
+   AI CENTER RESPONSIVE MEDIA QUERIES
+   ========================================================================== */
+@media (max-width: 1024px) {
+  .ai-center-page {
+    padding: 20px 20px 36px;
+  }
+}
+
+@media (max-width: 768px) {
+  .ai-center-page {
+    padding: 16px 14px 32px;
+    gap: 16px;
+  }
+
+  .ai-center-header {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 18px 20px;
+    gap: 14px;
+  }
+
+  .ai-header-content h1 {
+    font-size: 21px;
+  }
+
+  .ai-header-content p {
+    font-size: 12.5px;
+  }
+
+  .ai-key-card {
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .ai-key-card > div {
+    align-items: flex-start !important;
+    width: 100%;
+  }
+
+  .ai-tools-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 10px;
+  }
+
+  .ai-tool-tile {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+
+  .tile-icon {
+    font-size: 18px;
+  }
+
+  .tile-info strong {
+    font-size: 12px;
+  }
+
+  .tile-info small {
+    font-size: 10.5px;
+  }
+
+  .ai-tool-layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .ai-form-card,
+  .ai-results-card {
+    padding: 16px 18px;
+  }
+
+  .ai-field-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .ai-output-content {
+    max-height: 420px;
+    padding: 12px 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .ai-tools-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .ai-submit-btn {
+    padding: 11px 14px;
+    font-size: 13px;
+  }
+}

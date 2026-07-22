@@ -12,7 +12,7 @@ router.post('/generate', async (req, res) => {
       });
     }
 
-    const key = (clientKey || process.env.GEMINI_API_KEY || '').trim();
+    const key = (process.env.GEMINI_API_KEY || clientKey || '').trim();
 
     if (!key) {
       return res.status(400).json({
@@ -21,10 +21,10 @@ router.post('/generate', async (req, res) => {
     }
 
     const models = [
-      'gemini-2.5-flash',
       'gemini-2.5-flash-lite',
       'gemini-2.0-flash',
-      'gemini-1.5-flash'
+      'gemini-1.5-flash',
+      'gemini-2.5-flash'
     ];
 
     let lastError = null;

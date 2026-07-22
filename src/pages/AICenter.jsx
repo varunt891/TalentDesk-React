@@ -442,40 +442,31 @@ Product-minded engineer who thrives in autonomous environments, values clean cod
 
       case 'copilot': {
         const query = typeof inputData === 'string' ? inputData.trim() : 'Recruiting Assistance'
+        if (!query) return 'Please enter a recruiting query or custom prompt.'
 
-        // Extract candidate name if mentioned
-        const nameMatch = query.match(/(?:candidate|for|with)\s+([A-Z][a-z]+)/i) || query.match(/([A-Z][a-z]+)/)
-        const candName = (nameMatch && nameMatch[1] && nameMatch[1].length > 2 && !['call', 'today', 'scheduled', 'screening', 'make'].includes(nameMatch[1].toLowerCase())) ? nameMatch[1] : 'Alexa'
+        const cleanQuery = query.replace(/^[?\s#*•-]+/, '').trim()
+        const words = cleanQuery.split(/\s+/).filter(w => w.length > 2)
+        const topicName = cleanQuery.length < 60 ? cleanQuery : words.slice(0, 6).join(' ')
 
-        const timeMatch = query.match(/\d{1,2}(?::\d{2})?\s*(?:AM|PM|am|pm)(?:\s*[A-Z]{3})?/i)
-        const apptTime = timeMatch ? timeMatch[0] : '3:00 PM EST'
+        return `### ⚡ Recruiter AI Copilot Intelligence
 
-        return `### ✉️ Candidate Follow-Up & Call Reminder
-
-**Candidate Name:** ${candName}  
-**Scheduled Call Time:** ${apptTime}  
+**Query / Prompt:** "${cleanQuery}"
 
 ---
 
-#### 📧 Screening Call Confirmation / Reminder Email
-**Subject:** Screening Call Today at ${apptTime} — ${candName}
+#### 📌 Strategic Intelligence & Overview
+Regarding **"${topicName}"**: In modern talent acquisition, handling this effectively requires a structured, multi-channel recruitment strategy.
 
-Hi ${candName},
+#### 🛠️ Key Core Components & Best Practices:
+• **Strategic Focus:** Establish clear alignment between target candidate skillsets, company hiring priorities, and market compensation benchmarks.
+• **Sourcing & Talent Discovery:** Leverage specialized Boolean search strings, LinkedIn Recruiter, and industry networks to engage both active and passive talent.
+• **Candidate Experience & Outreach:** Craft concise, high-converting outreach messages highlighting key role impact, team vision, and compensation flexibility.
+• **Qualification & Evaluation:** Conduct structured 15-minute phone screenings to assess technical competency, cultural fit, and motivation.
 
-I hope you're having a great day! This is a quick confirmation for our candidate screening call scheduled for today at **${apptTime}**.
-
-**Agenda for our 15-minute call:**
-• Overview of your career background and key technical projects  
-• Role details, team vision, and company highlights  
-• Next steps, target timeline, and your availability  
-
-If you need to reschedule or have any questions prior to our call, please reply directly to this message.
-
-Looking forward to connecting!
-
-Best regards,  
-Talent Acquisition Specialist  
-*TalentDesk Recruiting Team*`
+#### 📊 Recommended Tactical Next Steps:
+1. **Define Core Requirements:** Document must-have technical skills vs nice-to-have qualifications.
+2. **Execute Targeted Campaign:** Launch outreach across primary sourcing channels with personalized follow-up nudges.
+3. **Monitor Conversion Metrics:** Track submittals-to-interview and interview-to-offer ratios to optimize pipeline velocity.`
       }
 
       default:
@@ -485,7 +476,7 @@ Ready to assist with recruiting, sourcing prompts, candidate feedback, or hiring
   }
 
   const [apiNotice, setApiNotice] = useState(null)
-  const [userApiKey, setUserApiKey] = useState(() => localStorage.getItem('user_gemini_key') || '')
+  const [userApiKey, setUserApiKey] = useState('')
 
   const callGeminiAPI = async (promptText, toolId, inputData = {}) => {
     if (demoMode) {
