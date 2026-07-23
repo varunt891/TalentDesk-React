@@ -96,7 +96,6 @@ async function buildWhere(req, table, config) {
         { id: req.user.id },
       ]
       if (req.profile.team) teamConditions.push({ team: req.profile.team })
-      if (req.profile.department) teamConditions.push({ department: req.profile.department })
 
       const teamProfiles = await prisma.profile.findMany({
         where: {
@@ -106,12 +105,10 @@ async function buildWhere(req, table, config) {
         select: { id: true }
       })
       const teamIds = teamProfiles.map(p => p.id)
-      if (teamIds.length > 1) {
-        where.OR = [
-          { assigned_to: { in: teamIds } },
-          { assigned_by: { in: teamIds } }
-        ]
-      }
+      where.OR = [
+        { assigned_to: { in: teamIds } },
+        { assigned_by: { in: teamIds } }
+      ]
     } else {
       where.OR = [
         { assigned_to: req.user.id },
@@ -131,24 +128,8 @@ async function buildWhere(req, table, config) {
         { id: req.user.id },
       ]
       if (req.profile.team) teamConditions.push({ team: req.profile.team })
-      if (req.profile.department) teamConditions.push({ department: req.profile.department })
 
-      const teamCount = await prisma.profile.count({
-        where: {
-          org_id: req.profile.org_id,
-          OR: teamConditions
-        }
-      })
-
-      if (teamCount > 1) {
-        where.OR = teamConditions
-      } else {
-        // Fallback: If manager has no direct manager_id/team links set in DB, allow seeing recruiters in org
-        where.OR = [
-          { role: 'recruiter' },
-          { id: req.user.id }
-        ]
-      }
+      where.OR = teamConditions
     } else {
       where.id = req.user.id
     }
