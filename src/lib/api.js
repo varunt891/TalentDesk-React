@@ -1,4 +1,8 @@
-const API_BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '')
+let rawUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '')
+if (rawUrl.startsWith('http') && !rawUrl.endsWith('/api')) {
+  rawUrl = `${rawUrl}/api`
+}
+const API_BASE = rawUrl
 const TOKEN_KEY = 'td_session_token'
 
 export function getAuthToken() {

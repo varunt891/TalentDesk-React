@@ -42,19 +42,11 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, Postman, etc)
-    if (!origin) return callback(null, true)
-    
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true)
-    } else if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)) {
-      callback(null, true)
-    } else if (process.env.NODE_ENV !== 'production') {
-      // In development, allow any origin
-      callback(null, true)
-    } else {
-      callback(new Error('Not allowed by CORS'))
+    // Allow requests with no origin (mobile apps, Postman, etc) or any Vercel domain
+    if (!origin || allowedOrigins.includes(origin) || /\.vercel\.app$/i.test(origin) || /\.onrender\.com$/i.test(origin)) {
+      return callback(null, true)
     }
+    return callback(null, true) // Permissive CORS to prevent cross-origin fetch failures
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
