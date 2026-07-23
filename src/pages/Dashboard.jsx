@@ -627,99 +627,109 @@ Would you be open for a brief intro call this week?`
         </button>
       </div>
 
-      {/* 3. Unified Filter Control Bar */}
-      <section className="dash-control-card">
-        <div className="dash-search-box">
-          <span className="dash-search-icon">🔍</span>
-          <input 
-            type="text" 
-            placeholder="Search candidates, emails, jobs, clients..." 
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="dash-search-input"
-          />
-          {searchQuery && <button onClick={() => setSearchQuery('')} className="dash-clear-btn" type="button">×</button>}
-        </div>
-
-        <div className="dash-time-tabs">
-          {[
-            { id: '7d', label: '7D' },
-            { id: '30d', label: '30D' },
-            { id: '90d', label: '90D' },
-            { id: 'all', label: 'All Time' },
-          ].map(tab => (
-            <button key={tab.id} onClick={() => setTimeRange(tab.id)} className={`dash-time-btn ${timeRange === tab.id ? 'active' : ''}`} type="button">
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="dash-filters-row">
-          <div className="custom-multiselect-container" ref={dropdownRef}>
-            <span className="multiselect-label">Recruiter</span>
-            <button type="button" className="multiselect-trigger" onClick={() => setShowOwnerDropdown(prev => !prev)}>
-              <span className="multiselect-trigger-text">
-                {selectedOwners.length === 0 
-                  ? 'All recruiters' 
-                  : selectedOwners.length === 1 
-                    ? ownerOptions.find(([id]) => id === selectedOwners[0])?.[1] || selectedOwners[0]
-                    : `${selectedOwners.length} selected`}
-              </span>
-              <span className="multiselect-arrow">▾</span>
-            </button>
-            
-            {showOwnerDropdown && (
-              <div className="multiselect-dropdown-panel" onClick={e => e.stopPropagation()}>
-                <input 
-                  type="text" 
-                  placeholder="Search recruiters..." 
-                  className="multiselect-search-input"
-                  value={recruiterSearch}
-                  onChange={e => setRecruiterSearch(e.target.value)}
-                />
-                <div className="multiselect-options-list">
-                  <label className="multiselect-option-all">
-                    <input type="checkbox" checked={selectedOwners.length === 0} onChange={() => setSelectedOwners([])} />
-                    <span>All recruiters</span>
-                  </label>
-                  <div className="multiselect-options-divider" />
-                  {filteredRecruiterOptions.map(([id, name]) => {
-                    const isChecked = selectedOwners.includes(id)
-                    return (
-                      <label key={id} className="multiselect-option">
-                        <input 
-                          type="checkbox" 
-                          checked={isChecked} 
-                          onChange={() => {
-                            setSelectedOwners(prev => isChecked ? prev.filter(item => item !== id) : [...prev, id])
-                          }}
-                        />
-                        <span>{name}</span>
-                      </label>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
+      {/* 3. Sleek 2-Row Arranged Control Card */}
+      <section className="dash-toolbar-card">
+        {/* Row 1: Search (Left) + Time Range Pills (Right) */}
+        <div className="dash-toolbar-row1">
+          <div className="dash-search-box-v2">
+            <span className="search-icon-v2">🔍</span>
+            <input 
+              type="text" 
+              placeholder="Search candidates, emails, jobs, clients..." 
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="dash-search-input-v2"
+            />
+            {searchQuery && <button onClick={() => setSearchQuery('')} className="dash-clear-btn-v2" type="button">×</button>}
           </div>
 
-          <label className="dash-select-field">
-            <span className="multiselect-label">Candidate Stage</span>
-            <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}>
-              {stageOptions.map(stage => <option key={stage}>{stage}</option>)}
-            </select>
-          </label>
+          <div className="dash-time-tabs-v2">
+            {[
+              { id: '7d', label: '7D' },
+              { id: '30d', label: '30D' },
+              { id: '90d', label: '90D' },
+              { id: 'all', label: 'All Time' },
+            ].map(tab => (
+              <button key={tab.id} onClick={() => setTimeRange(tab.id)} className={`dash-time-btn-v2 ${timeRange === tab.id ? 'active' : ''}`} type="button">
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
-          <label className="dash-select-field">
-            <span className="multiselect-label">Job Status</span>
-            <select value={jobStatusFilter} onChange={e => setJobStatusFilter(e.target.value)}>
-              {jobStatusOptions.map(status => <option key={status}>{status}</option>)}
-            </select>
-          </label>
+        {/* Row 2: Filter Dropdowns (Left) + Reset (Right) */}
+        <div className="dash-toolbar-row2">
+          <div className="dash-filters-group-v2">
+            {/* Recruiter Multiselect */}
+            <div className="custom-multiselect-container v2" ref={dropdownRef}>
+              <button type="button" className="multiselect-trigger-v2" onClick={() => setShowOwnerDropdown(prev => !prev)}>
+                <span className="multiselect-trigger-text">
+                  {selectedOwners.length === 0 
+                    ? 'All Recruiters' 
+                    : selectedOwners.length === 1 
+                      ? ownerOptions.find(([id]) => id === selectedOwners[0])?.[1] || selectedOwners[0]
+                      : `${selectedOwners.length} Selected`}
+                </span>
+                <span className="multiselect-arrow">▾</span>
+              </button>
+              
+              {showOwnerDropdown && (
+                <div className="multiselect-dropdown-panel" onClick={e => e.stopPropagation()}>
+                  <input 
+                    type="text" 
+                    placeholder="Search recruiters..." 
+                    className="multiselect-search-input"
+                    value={recruiterSearch}
+                    onChange={e => setRecruiterSearch(e.target.value)}
+                  />
+                  <div className="multiselect-options-list">
+                    <label className="multiselect-option-all">
+                      <input type="checkbox" checked={selectedOwners.length === 0} onChange={() => setSelectedOwners([])} />
+                      <span>All recruiters</span>
+                    </label>
+                    <div className="multiselect-options-divider" />
+                    {filteredRecruiterOptions.map(([id, name]) => {
+                      const isChecked = selectedOwners.includes(id)
+                      return (
+                        <label key={id} className="multiselect-option">
+                          <input 
+                            type="checkbox" 
+                            checked={isChecked} 
+                            onChange={() => {
+                              setSelectedOwners(prev => isChecked ? prev.filter(item => item !== id) : [...prev, id])
+                            }}
+                          />
+                          <span>{name}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
 
-          <button className="dash-reset-button" type="button" onClick={() => { setTimeRange('all'); setSelectedOwners([]); setStageFilter('All'); setJobStatusFilter('All'); setSearchQuery('') }}>
-            Reset Filters
-          </button>
+            {/* Candidate Stage */}
+            <div className="dash-select-v2">
+              <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}>
+                <option value="All">All Stages</option>
+                {stageOptions.filter(s => s !== 'All').map(stage => <option key={stage} value={stage}>{stage}</option>)}
+              </select>
+            </div>
+
+            {/* Job Status */}
+            <div className="dash-select-v2">
+              <select value={jobStatusFilter} onChange={e => setJobStatusFilter(e.target.value)}>
+                <option value="All">All Job Statuses</option>
+                {jobStatusOptions.filter(s => s !== 'All').map(status => <option key={status} value={status}>{status}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {(searchQuery || selectedOwners.length > 0 || stageFilter !== 'All' || jobStatusFilter !== 'All' || timeRange !== 'all') && (
+            <button className="dash-reset-btn-v2" type="button" onClick={() => { setTimeRange('all'); setSelectedOwners([]); setStageFilter('All'); setJobStatusFilter('All'); setSearchQuery('') }}>
+              ↺ Reset Filters
+            </button>
+          )}
         </div>
       </section>
 
@@ -807,7 +817,7 @@ Would you be open for a brief intro call this week?`
           </Panel>
 
           {/* Panel 3: Recruiter Leaderboard */}
-          <Panel title="🏆 Recruiter Yield & Performance Leaderboard" subtitle="Real-time team submittals, interviews & hire conversion rankings">
+          <Panel title="Recruiter Performance Leaderboard" subtitle="Real-time team submittals, interviews & hire conversion rankings">
             <div className="leaderboard-container">
               {recruiterData.length === 0 ? (
                 <EmptyLine text="No recruiter submissions in this period" />
@@ -821,40 +831,36 @@ Would you be open for a brief intro call this week?`
                     .toUpperCase()
                     .slice(0, 2)
                   const conversionPct = row.submissions > 0 ? Math.round((row.hires / row.submissions) * 100) : 0
-                  const rankBadgeClass = index === 0 ? 'gold' : index === 1 ? 'silver' : index === 2 ? 'bronze' : 'standard'
-                  const rankLabel = index === 0 ? '🥇 #1' : index === 1 ? '🥈 #2' : index === 2 ? '🥉 #3' : rankDisplay
 
                   return (
-                    <div className={`exec-leaderboard-row rank-${rankBadgeClass}`} key={row.name}>
-                      <div className={`exec-rank-pill ${rankBadgeClass}`}>
-                        {rankLabel}
-                      </div>
+                    <div className="td-leaderboard-row" key={row.name}>
+                      <div className="td-rank-badge">{rankDisplay}</div>
 
-                      <div className="exec-avatar-circle">{initials}</div>
+                      <div className="td-avatar-circle">{initials}</div>
 
-                      <div className="exec-leaderboard-main">
-                        <div className="exec-leaderboard-top-row">
-                          <div className="exec-recruiter-identity">
-                            <strong className="exec-recruiter-name">{row.name}</strong>
-                            <span className="exec-conversion-tag">{conversionPct}% Yield Rate</span>
+                      <div className="td-leaderboard-main">
+                        <div className="td-leaderboard-top-row">
+                          <div className="td-recruiter-identity">
+                            <strong className="td-recruiter-name">{row.name}</strong>
+                            <span className="td-conversion-tag">{conversionPct}% Yield Rate</span>
                           </div>
 
-                          <div className="exec-metrics-group">
-                            <span className="exec-metric blue" title="Submittals">
+                          <div className="td-metrics-group">
+                            <span className="td-metric">
                               <b>{row.submissions}</b> Submittals
                             </span>
-                            <span className="exec-metric purple" title="Interviews">
+                            <span className="td-metric">
                               <b>{row.interviews}</b> Interviews
                             </span>
-                            <span className="exec-metric green" title="Hires">
+                            <span className="td-metric green">
                               <b>{row.hires}</b> Hires
                             </span>
                           </div>
                         </div>
 
                         {/* Conversion Progress Track */}
-                        <div className="exec-yield-track">
-                          <div className={`exec-yield-bar ${rankBadgeClass}`} style={{ width: `${Math.max(conversionPct, 8)}%` }} />
+                        <div className="td-yield-track">
+                          <div className="td-yield-bar" style={{ width: `${Math.max(conversionPct, 6)}%` }} />
                         </div>
                       </div>
                     </div>
