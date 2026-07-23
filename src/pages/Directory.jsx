@@ -1,18 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { db } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
-
-const DEPARTMENTS = [
-  'Recruitment Managers',
-  'Account Managers',
-  'Healthcare',
-  'IT',
-  'PMO Team',
-  'Ecare Team',
-  'HR Onboarding',
-  'Helpdesk Team',
-  'Operations'
-]
 
 const emptyForm = {
   full_name: '',
@@ -20,7 +8,7 @@ const emptyForm = {
   phone: '',
   extension: '',
   role: 'recruiter',
-  department: 'Healthcare',
+  department: '',
   team: '',
 }
 
@@ -29,7 +17,7 @@ export default function Directory() {
   const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [activeDepartment, setActiveDepartment] = useState('Recruitment Managers')
+  const [activeDepartment, setActiveDepartment] = useState('All')
   const [showAdd, setShowAdd] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(emptyForm)
@@ -59,21 +47,40 @@ export default function Directory() {
     setTimeout(() => setToast(null), 3000)
   }
 
+  // Derive available departments dynamically from actual workspace members
+  const dynamicDepartments = useMemo(() => {
+    const set = new Set()
+    members.forEach(member => {
+      const dept = (member.department || '').trim()
+      if (dept) set.add(dept)
+    })
+    return Array.from(set).sort()
+  }, [members])
+
   const searchFiltered = members.filter(member => {
     const q = search.toLowerCase()
-    const department = normalizeDepartment(member)
-    const text = `${member.full_name} ${member.email} ${member.phone} ${member.extension} ${member.team} ${department}`.toLowerCase()
+    const department = getMemberDepartment(member)
+    const text = `${member.full_name || ''} ${member.email || ''} ${member.phone || ''} ${member.extension || ''} ${member.team || ''} ${department}`.toLowerCase()
     return !q || text.includes(q)
   })
 
-  const visibleStaff = searchFiltered.filter(member => normalizeDepartment(member) === activeDepartment)
-  const departmentCounts = DEPARTMENTS.map(department => ({
-    department,
-    count: members.filter(member => normalizeDepartment(member) === department).length,
-  }))
+  const visibleStaff = searchFiltered.filter(member => {
+    if (activeDepartment === 'All') return true
+    return getMemberDepartment(member) === activeDepartment
+  })
 
-  const openAdd = (department = activeDepartment) => {
-    setForm({ ...emptyForm, department: department || 'Healthcare' })
+  const departmentCounts = useMemo(() => {
+    const list = [{ department: 'All', count: members.length }]
+    dynamicDepartments.forEach(dept => {
+      const count = members.filter(m => getMemberDepartment(m) === dept).length
+      list.push({ department: dept, count })
+    })
+    return list
+  }, [dynamicDepartments, members])
+
+  const openAdd = (dept = activeDepartment) => {
+    const defaultDept = dept === 'All' ? (dynamicDepartments[0] || 'General') : dept
+    setForm({ ...emptyForm, department: defaultDept })
     setEditingId(null)
     setShowAdd(true)
   }
@@ -85,11 +92,29 @@ export default function Directory() {
       phone: member.phone || '',
       extension: member.extension || '',
       role: member.role || 'recruiter',
-      department: normalizeDepartment(member),
+      department: getMemberDepartment(member),
       team: member.team || '',
     })
     setEditingId(member.id)
     setShowAdd(true)
+  }
+
+  const deleteMember = async (member) => {
+    if (!isAdmin) return
+    const confirmDelete = window.confirm(`Are you sure you want to delete "${member.full_name || member.email}" from the directory?`)
+    if (!confirmDelete) return
+
+    try {
+      const { error } = await db.from('profiles').delete().eq('id', member.id)
+      if (error) {
+        showToast(error.message, 'error')
+        return
+      }
+      showToast(`${member.full_name || 'Member'} deleted from directory`)
+      fetchMembers()
+    } catch (err) {
+      showToast(err.message || 'Failed to delete member', 'error')
+    }
   }
 
   const saveMember = async () => {
@@ -105,7 +130,7 @@ export default function Directory() {
       phone: form.phone.trim() || null,
       extension: form.extension.trim() || null,
       role: form.role,
-      department: form.department,
+      department: form.department.trim() || 'General',
       team: form.team.trim() || null,
       is_active: true,
     }
@@ -144,7 +169,7 @@ export default function Directory() {
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, email, extension..." />
           </div>
           <div className="directory-member-count">{searchFiltered.length} members</div>
-          {isAdmin && <button onClick={() => openAdd()} type="button">Add member</button>}
+          {isAdmin && <button onClick={() => openAdd()} type="button">+ Add member</button>}
         </div>
       </header>
 
@@ -169,16 +194,26 @@ export default function Directory() {
           <section className="directory-section">
             <div className="directory-section-head">
               <div>
-                <h2>{activeDepartment}</h2>
+                <h2>{activeDepartment === 'All' ? 'All Departments' : `${activeDepartment} Department`}</h2>
                 <span>{visibleStaff.length} contacts</span>
               </div>
-              {isAdmin && <button onClick={() => openAdd(activeDepartment)} type="button">Add to {activeDepartment}</button>}
+              {isAdmin && <button onClick={() => openAdd(activeDepartment)} type="button">Add member</button>}
             </div>
             {visibleStaff.length === 0 ? (
-              <EmptyState title="No contacts in this department" body="Add a member to this department from the button above." />
+              <EmptyState title="No contacts in this view" body="Add a member to this department from the button above." />
             ) : (
               <div className="directory-grid">
-                {visibleStaff.map((member, index) => <MemberCard key={member.id} member={member} index={index} canEdit={isAdmin} onEdit={openEdit} showToast={showToast} />)}
+                {visibleStaff.map((member, index) => (
+                  <MemberCard
+                    key={member.id}
+                    member={member}
+                    index={index}
+                    canEdit={isAdmin}
+                    onEdit={openEdit}
+                    onDelete={deleteMember}
+                    showToast={showToast}
+                  />
+                ))}
               </div>
             )}
           </section>
@@ -193,21 +228,29 @@ export default function Directory() {
               <button onClick={closeModal} type="button">x</button>
             </div>
             <div className="directory-form-grid">
-              <Field label="Full name"><input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} /></Field>
-              <Field label="Email"><input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} type="email" /></Field>
-              <Field label="Phone number"><input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></Field>
-              <Field label="Extension"><input value={form.extension} onChange={e => setForm(f => ({ ...f, extension: e.target.value }))} /></Field>
+              <Field label="Full name"><input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} placeholder="John Smith" /></Field>
+              <Field label="Email"><input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} type="email" placeholder="john@company.com" /></Field>
+              <Field label="Phone number"><input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+1 555 000 0000" /></Field>
+              <Field label="Extension"><input value={form.extension} onChange={e => setForm(f => ({ ...f, extension: e.target.value }))} placeholder="1001" /></Field>
               <Field label="Department">
-                <select value={form.department} onChange={e => setForm(f => ({ ...f, department: e.target.value }))}>
-                  {DEPARTMENTS.map(department => <option key={department}>{department}</option>)}
-                </select>
+                <input
+                  value={form.department}
+                  onChange={e => setForm(f => ({ ...f, department: e.target.value }))}
+                  list="directory-department-list"
+                  placeholder="Type or select department..."
+                />
+                <datalist id="directory-department-list">
+                  {dynamicDepartments.map(dept => (
+                    <option key={dept} value={dept} />
+                  ))}
+                </datalist>
               </Field>
               <Field label="Role">
                 <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-                  {['recruiter', 'manager', 'admin'].map(role => <option key={role}>{role}</option>)}
+                  {['recruiter', 'manager', 'admin', 'employee'].map(role => <option key={role}>{role}</option>)}
                 </select>
               </Field>
-              <Field label="Team"><input value={form.team} onChange={e => setForm(f => ({ ...f, team: e.target.value }))} /></Field>
+              <Field label="Team"><input value={form.team} onChange={e => setForm(f => ({ ...f, team: e.target.value }))} placeholder="e.g. Frontend Team" /></Field>
             </div>
             <div className="directory-modal-actions">
               <button onClick={closeModal} type="button">Cancel</button>
@@ -245,6 +288,14 @@ const EditIcon = () => (
   </svg>
 )
 
+const DeleteIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#ef4444' }}>
+    <path d="M3 6h18" />
+    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+  </svg>
+)
+
 const MailIcon = () => (
   <svg className="directory-line-icon-svg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
     <circle cx="12" cy="12" r="10" fill="#4f7cff" />
@@ -266,29 +317,13 @@ const TeamIcon = () => (
   </svg>
 )
 
-function normalizeDepartment(member) {
-  if (['admin', 'superadmin'].includes(member.role)) return 'Operations'
-  
-  const dept = (member.department || '').toLowerCase()
-  const isRecruitmentBranch = dept.includes('healthcare') || dept.includes('it')
-  
-  if (member.role === 'manager' && isRecruitmentBranch) {
-    if (!member.manager_id) return 'Recruitment Managers'
-    return 'Account Managers'
-  }
-  
-  if (dept.includes('healthcare')) return 'Healthcare'
-  if (dept.includes('it')) return 'IT'
-  if (dept.includes('pmo')) return 'PMO Team'
-  if (dept.includes('ecare') || dept.includes('e-care')) return 'Ecare Team'
-  if (dept.includes('onboarding')) return 'HR Onboarding'
-  if (dept.includes('helpdesk')) return 'Helpdesk Team'
-  if (dept.includes('operations')) return 'Operations'
-  
-  return 'Healthcare'
+function getMemberDepartment(member) {
+  if (member.department?.trim()) return member.department.trim()
+  if (['admin', 'superadmin'].includes(member.role)) return 'Management'
+  return 'General'
 }
 
-function MemberCard({ member, index, canEdit, onEdit, showToast }) {
+function MemberCard({ member, index, canEdit, onEdit, onDelete, showToast }) {
   const initials = (member.full_name || member.email || '?').split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase()
   const copyMember = async (event) => {
     event.stopPropagation()
@@ -297,6 +332,7 @@ function MemberCard({ member, index, canEdit, onEdit, showToast }) {
       showToast?.('Email copied to clipboard!')
     }
   }
+
   return (
     <article className="directory-card">
       <div className="directory-avatar" style={{ background: avatarGradients[index % avatarGradients.length] }}>{initials}</div>
@@ -313,9 +349,14 @@ function MemberCard({ member, index, canEdit, onEdit, showToast }) {
           <CopyIcon />
         </button>
         {canEdit && (
-          <button className="directory-edit" onClick={(event) => { event.stopPropagation(); onEdit(member) }} type="button" title="Edit contact">
-            <EditIcon />
-          </button>
+          <>
+            <button className="directory-edit" onClick={(event) => { event.stopPropagation(); onEdit(member) }} type="button" title="Edit contact">
+              <EditIcon />
+            </button>
+            <button className="directory-delete-btn" onClick={(event) => { event.stopPropagation(); onDelete(member) }} type="button" title="Delete member">
+              <DeleteIcon />
+            </button>
+          </>
         )}
       </div>
       <div className="directory-card-lines">

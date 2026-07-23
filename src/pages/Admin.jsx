@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext'
 
 const TABS = ['Overview', 'Org Chart', 'Members', 'Access', 'Company']
 const ROLES = ['employee', 'recruiter', 'manager', 'admin', 'superadmin']
-const DEPARTMENTS = ['Healthcare', 'IT', 'Operations']
 
 const isSubmissionRecruiter = user => user.role === 'recruiter'
 
@@ -95,6 +94,7 @@ export default function Admin() {
   }, [fetchAdminData, isAdmin, orgId, selectedOrgId])
 
   const teams = useMemo(() => [...new Set(users.map(user => user.team).filter(Boolean))].sort(), [users])
+  const departments = useMemo(() => [...new Set(users.map(user => user.department).filter(Boolean))].sort(), [users])
   const managers = useMemo(() => users.filter(user => ['manager', 'admin', 'superadmin'].includes(user.role)), [users])
 
   const userStats = useMemo(() => {
@@ -376,6 +376,7 @@ export default function Admin() {
           )}
           {activeTab === 'Members' && (
             <PeopleTab
+              departments={departments}
               filteredUsers={filteredUsers}
               invite={invite}
               memberFilters={memberFilters}
@@ -477,7 +478,7 @@ function CommandCenter({ adminUsers, onSeed, saving, teamGroups, userStats }) {
   )
 }
 
-function PeopleTab({ filteredUsers, invite, managers, memberFilters, onAssignManager, onFilterChange, onInviteChange, onSearch, onSendInvite, onUpdateUser, saving, search, teams }) {
+function PeopleTab({ departments, filteredUsers, invite, managers, memberFilters, onAssignManager, onFilterChange, onInviteChange, onSearch, onSendInvite, onUpdateUser, saving, search, teams }) {
   return (
     <div className="admin-people-layout">
       <section className="admin-panel admin-invite-panel">
@@ -486,7 +487,7 @@ function PeopleTab({ filteredUsers, invite, managers, memberFilters, onAssignMan
           <label>Email<input value={invite.email} onChange={e => onInviteChange({ ...invite, email: e.target.value })} placeholder="name@company.com" /></label>
           <label>Role<select value={invite.role} onChange={e => onInviteChange({ ...invite, role: e.target.value })}>{ROLES.filter(r => r !== 'superadmin').map(role => <option key={role}>{role}</option>)}</select></label>
           <label>Team<input value={invite.team} onChange={e => onInviteChange({ ...invite, team: e.target.value })} list="admin-team-list" placeholder="Front-End Team" /></label>
-          <label>Department<select value={invite.department} onChange={e => onInviteChange({ ...invite, department: e.target.value })}>{DEPARTMENTS.map(department => <option key={department}>{department}</option>)}</select></label>
+          <label>Department<input value={invite.department} onChange={e => onInviteChange({ ...invite, department: e.target.value })} list="admin-department-list" placeholder="Type or select department..." /></label>
           <label>Manager<select value={invite.manager_id} onChange={e => onInviteChange({ ...invite, manager_id: e.target.value })}><option value="">Unassigned</option>{managers.map(manager => <option key={manager.id} value={manager.id}>{manager.full_name || manager.email}</option>)}</select></label>
         </div>
         <button className="admin-primary" onClick={onSendInvite} disabled={saving}>{saving ? 'Saving...' : 'Send Invite'}</button>
@@ -503,7 +504,7 @@ function PeopleTab({ filteredUsers, invite, managers, memberFilters, onAssignMan
             <input className="admin-search" value={search} onChange={e => onSearch(e.target.value)} placeholder="Search people, manager, role..." />
             <select value={memberFilters.department} onChange={e => onFilterChange(prev => ({ ...prev, department: e.target.value }))}>
               <option>All</option>
-              {[...DEPARTMENTS, 'Unassigned'].map(department => <option key={department}>{department}</option>)}
+              {[...(departments || []), 'Unassigned'].map(department => <option key={department}>{department}</option>)}
             </select>
             <select value={memberFilters.role} onChange={e => onFilterChange(prev => ({ ...prev, role: e.target.value }))}>
               <option>All</option>
@@ -513,7 +514,7 @@ function PeopleTab({ filteredUsers, invite, managers, memberFilters, onAssignMan
         </div>
         <div className="admin-member-directory compact">
           {filteredUsers.map(user => (
-            <MemberCard key={user.id} managers={managers} onAssignManager={onAssignManager} onUpdateUser={onUpdateUser} saving={saving} user={user} />
+            <MemberCard key={user.id} departments={departments} managers={managers} onAssignManager={onAssignManager} onUpdateUser={onUpdateUser} saving={saving} user={user} />
           ))}
         </div>
       </section>
@@ -521,7 +522,7 @@ function PeopleTab({ filteredUsers, invite, managers, memberFilters, onAssignMan
   )
 }
 
-function MemberCard({ managers, onAssignManager, onUpdateUser, saving, user }) {
+function MemberCard({ departments, managers, onAssignManager, onUpdateUser, saving, user }) {
   const [expanded, setExpanded] = useState(false)
   const [draft, setDraft] = useState({
     team: user.team || '',
@@ -578,12 +579,12 @@ function MemberCard({ managers, onAssignManager, onUpdateUser, saving, user }) {
       {expanded && <div className="admin-member-controls">
         <label>Role<select value={user.role || 'recruiter'} disabled={saving} onChange={e => onUpdateUser(user.id, { role: e.target.value })}>{ROLES.map(role => <option key={role}>{role}</option>)}</select></label>
         <label>Team<input {...editProps('team', 'Team')} /></label>
-        <label>Department<input {...editProps('department', 'Department')} list="admin-department-list" /></label>
+        <label>Department<input {...editProps('department', 'Department')} list="admin-department-list" placeholder="Department..." /></label>
         <label>Manager<select value={user.manager_id || ''} disabled={saving} onChange={e => onAssignManager(user, e.target.value)}><option value="">Unassigned</option>{managers.filter(manager => manager.id !== user.id).map(manager => <option key={manager.id} value={manager.id}>{manager.full_name || manager.email}</option>)}</select></label>
         <label>Phone<input {...editProps('phone', 'Phone')} /></label>
         <label>Ext.<input {...editProps('extension', 'Ext.')} /></label>
       </div>}
-      <datalist id="admin-department-list">{DEPARTMENTS.map(department => <option key={department} value={department} />)}</datalist>
+      <datalist id="admin-department-list">{(departments || []).map(department => <option key={department} value={department} />)}</datalist>
     </article>
   )
 }

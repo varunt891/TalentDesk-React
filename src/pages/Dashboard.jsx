@@ -627,23 +627,23 @@ Would you be open for a brief intro call this week?`
         </button>
       </div>
 
-      {/* 3. Sleek 2-Row Arranged Control Card */}
-      <section className="dash-toolbar-card">
-        {/* Row 1: Search (Left) + Time Range Pills (Right) */}
-        <div className="dash-toolbar-row1">
-          <div className="dash-search-box-v2">
+      {/* 3. Redesigned Premium Master Control Toolbar */}
+      <section className="dash-master-toolbar">
+        {/* Top Group: Search Bar + Time Range Tabs */}
+        <div className="dash-master-top-row">
+          <div className="dash-master-search-box">
             <span className="search-icon-v2">🔍</span>
             <input 
               type="text" 
               placeholder="Search candidates, emails, jobs, clients..." 
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="dash-search-input-v2"
+              className="dash-master-search-input"
             />
             {searchQuery && <button onClick={() => setSearchQuery('')} className="dash-clear-btn-v2" type="button">×</button>}
           </div>
 
-          <div className="dash-time-tabs-v2">
+          <div className="dash-master-time-tabs">
             {[
               { id: '7d', label: '7D' },
               { id: '30d', label: '30D' },
@@ -657,20 +657,21 @@ Would you be open for a brief intro call this week?`
           </div>
         </div>
 
-        {/* Row 2: Filter Dropdowns (Left) + Reset (Right) */}
-        <div className="dash-toolbar-row2">
-          <div className="dash-filters-group-v2">
+        {/* Bottom Group: Compact Filter Badges + Result Count */}
+        <div className="dash-master-bottom-row">
+          <div className="dash-master-filters-group">
             {/* Recruiter Multiselect */}
             <div className="custom-multiselect-container v2" ref={dropdownRef}>
-              <button type="button" className="multiselect-trigger-v2" onClick={() => setShowOwnerDropdown(prev => !prev)}>
-                <span className="multiselect-trigger-text">
+              <button type="button" className="dash-master-filter-btn" onClick={() => setShowOwnerDropdown(prev => !prev)}>
+                <span className="filter-icon">👤</span>
+                <span className="dash-filter-btn-text">
                   {selectedOwners.length === 0 
                     ? 'All Recruiters' 
                     : selectedOwners.length === 1 
                       ? ownerOptions.find(([id]) => id === selectedOwners[0])?.[1] || selectedOwners[0]
-                      : `${selectedOwners.length} Selected`}
+                      : `${selectedOwners.length} Recruiters`}
                 </span>
-                <span className="multiselect-arrow">▾</span>
+                <span className="dash-filter-arrow">▾</span>
               </button>
               
               {showOwnerDropdown && (
@@ -708,30 +709,38 @@ Would you be open for a brief intro call this week?`
               )}
             </div>
 
-            {/* Candidate Stage */}
-            <div className="dash-select-v2">
-              <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}>
+            {/* Candidate Stage Filter */}
+            <div className="dash-master-select-wrapper">
+              <span className="select-icon">📊</span>
+              <select className="dash-master-select" value={stageFilter} onChange={e => setStageFilter(e.target.value)}>
                 <option value="All">All Stages</option>
                 {stageOptions.filter(s => s !== 'All').map(stage => <option key={stage} value={stage}>{stage}</option>)}
               </select>
             </div>
 
-            {/* Job Status */}
-            <div className="dash-select-v2">
-              <select value={jobStatusFilter} onChange={e => setJobStatusFilter(e.target.value)}>
+            {/* Job Status Filter */}
+            <div className="dash-master-select-wrapper">
+              <span className="select-icon">💼</span>
+              <select className="dash-master-select" value={jobStatusFilter} onChange={e => setJobStatusFilter(e.target.value)}>
                 <option value="All">All Job Statuses</option>
                 {jobStatusOptions.filter(s => s !== 'All').map(status => <option key={status} value={status}>{status}</option>)}
               </select>
             </div>
+
+            {/* Reset Filters */}
+            {(searchQuery || selectedOwners.length > 0 || stageFilter !== 'All' || jobStatusFilter !== 'All' || timeRange !== 'all') && (
+              <button className="dash-master-reset-btn" type="button" onClick={() => { setTimeRange('all'); setSelectedOwners([]); setStageFilter('All'); setJobStatusFilter('All'); setSearchQuery('') }}>
+                ↺ Reset Filters
+              </button>
+            )}
           </div>
 
-          {(searchQuery || selectedOwners.length > 0 || stageFilter !== 'All' || jobStatusFilter !== 'All' || timeRange !== 'all') && (
-            <button className="dash-reset-btn-v2" type="button" onClick={() => { setTimeRange('all'); setSelectedOwners([]); setStageFilter('All'); setJobStatusFilter('All'); setSearchQuery('') }}>
-              ↺ Reset Filters
-            </button>
-          )}
+          <div className="dash-master-meta-tag">
+            <span><b>{filteredCandidates.length}</b> Candidates</span> • <span><b>{filteredJobs.length}</b> Jobs</span>
+          </div>
         </div>
       </section>
+
 
       {/* 4. Symmetrical KPI Stat Grid */}
       <section className="dash-kpi-grid">

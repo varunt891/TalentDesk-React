@@ -107,7 +107,27 @@ const candidatesTemplates = [
   { first_name: 'George', last_name: 'Costanza', email: 'george.costanza@gmail.com', job_title: 'Junior Developer', location: 'Brooklyn, NY', skills: ['HTML', 'CSS', 'JavaScript'], experience: '1' },
   { first_name: 'Hannah', last_name: 'Abbott', email: 'hannah.abbott@gmail.com', job_title: 'Technical Writer', location: 'Denver, CO', skills: ['Documentation', 'Markdown', 'Git', 'API Docs'], experience: '2' },
   { first_name: 'Ian', last_name: 'Malcolm', email: 'ian.malcolm@yahoo.com', job_title: 'Data Scientist', location: 'San Diego, CA', skills: ['Python', 'Pandas', 'SQL', 'Machine Learning'], experience: '6' },
-  { first_name: 'Julia', last_name: 'Roberts', email: 'julia.roberts@gmail.com', job_title: 'Scrum Master', location: 'Atlanta, GA', skills: ['Agile', 'Jira', 'Kanban', 'Scrum'], experience: '5' }
+  { first_name: 'Julia', last_name: 'Roberts', email: 'julia.roberts@gmail.com', job_title: 'Scrum Master', location: 'Atlanta, GA', skills: ['Agile', 'Jira', 'Kanban', 'Scrum'], experience: '5' },
+  { first_name: 'Kevin', last_name: 'Bacon', email: 'kevin.bacon@gmail.com', job_title: 'Full Stack Engineer', location: 'Los Angeles, CA', skills: ['React', 'Node.js', 'MongoDB'], experience: '5' },
+  { first_name: 'Laura', last_name: 'Palmer', email: 'laura.palmer@gmail.com', job_title: 'UX Researcher', location: 'Portland, OR', skills: ['User Testing', 'Wireframing', 'Figma'], experience: '4' },
+  { first_name: 'Michael', last_name: 'Scott', email: 'michael.scott@dundermifflin.com', job_title: 'Engineering Manager', location: 'Scranton, PA', skills: ['Leadership', 'Management', 'Agile'], experience: '10' },
+  { first_name: 'Nina', last_name: 'Sayers', email: 'nina.sayers@gmail.com', job_title: 'iOS Mobile Developer', location: 'New York, NY', skills: ['Swift', 'iOS', 'Xcode', 'UIKit'], experience: '4' },
+  { first_name: 'Oscar', last_name: 'Martinez', email: 'oscar.martinez@gmail.com', job_title: 'FinTech Analyst', location: 'Philadelphia, PA', skills: ['SQL', 'Excel', 'Financial Modeling'], experience: '6' },
+  { first_name: 'Pamela', last_name: 'Beesly', email: 'pamela.beesly@gmail.com', job_title: 'UI Frontend Developer', location: 'Scranton, PA', skills: ['HTML', 'CSS', 'Figma', 'React'], experience: '3' },
+  { first_name: 'Quentin', last_name: 'Tarantino', email: 'quentin.tarantino@gmail.com', job_title: 'Video Pipeline Engineer', location: 'Hollywood, CA', skills: ['FFmpeg', 'C++', 'Python', 'Streaming'], experience: '8' },
+  { first_name: 'Rachel', last_name: 'Green', email: 'rachel.green@gmail.com', job_title: 'Product Manager', location: 'New York, NY', skills: ['Roadmaps', 'Agile', 'Product Strategy'], experience: '5' },
+  { first_name: 'Samuel', last_name: 'Jackson', email: 'samuel.jackson@gmail.com', job_title: 'Cyber Security Engineer', location: 'Washington, DC', skills: ['Network Security', 'Penetration Testing', 'Linux'], experience: '9' },
+  { first_name: 'Tina', last_name: 'Fey', email: 'tina.fey@gmail.com', job_title: 'Content Strategist', location: 'Chicago, IL', skills: ['Copywriting', 'SEO', 'Content Marketing'], experience: '7' },
+  { first_name: 'Uma', last_name: 'Thurman', email: 'uma.thurman@gmail.com', job_title: 'Frontend Specialist', location: 'Miami, FL', skills: ['Vue.js', 'JavaScript', 'CSS3', 'Tailwind'], experience: '5' },
+  { first_name: 'Victor', last_name: 'Vance', email: 'victor.vance@gmail.com', job_title: 'Cloud Architect', location: 'Las Vegas, NV', skills: ['AWS', 'Terraform', 'Architecture', 'GCP'], experience: '9' },
+  { first_name: 'Wendy', last_name: 'Byrde', email: 'wendy.byrde@gmail.com', job_title: 'Business Analyst', location: 'Ozark, MO', skills: ['Requirements Analysis', 'SQL', 'Tableau'], experience: '6' },
+  { first_name: 'Xavier', last_name: 'Charles', email: 'xavier.charles@gmail.com', job_title: 'AI / Machine Learning Engineer', location: 'Cambridge, MA', skills: ['PyTorch', 'TensorFlow', 'Python', 'NLP'], experience: '7' },
+  { first_name: 'Yennefer', last_name: 'Vengerberg', email: 'yennefer.vengerberg@gmail.com', job_title: 'Senior Database Admin', location: 'Seattle, WA', skills: ['PostgreSQL', 'Oracle', 'Performance Tuning'], experience: '8' },
+  { first_name: 'Zachary', last_name: 'Levi', email: 'zachary.levi@gmail.com', job_title: 'Site Reliability Engineer', location: 'San Jose, CA', skills: ['Prometheus', 'Grafana', 'Kubernetes', 'Go'], experience: '6' },
+  { first_name: 'Abigail', last_name: 'Marsh', email: 'abigail.marsh@gmail.com', job_title: 'Systems Infrastructure Engineer', location: 'Raleigh, NC', skills: ['Linux', 'Bash', 'Ansible', 'Networking'], experience: '5' },
+  { first_name: 'Brian', last_name: 'Griffin', email: 'brian.griffin@gmail.com', job_title: 'Technical Recruiter', location: 'Providence, RI', skills: ['Talent Sourcing', 'Interviewing', 'ATS'], experience: '4' },
+  { first_name: 'Clara', last_name: 'Oswald', email: 'clara.oswald@gmail.com', job_title: 'Cloud Security Specialist', location: 'Austin, TX', skills: ['IAM', 'Compliance', 'AWS Security', 'SIEM'], experience: '5' },
+  { first_name: 'Daniel', last_name: 'LaRusso', email: 'daniel.larusso@gmail.com', job_title: 'Embedded Systems Developer', location: 'Reseda, CA', skills: ['C', 'C++', 'Microcontrollers', 'RTOS'], experience: '6' }
 ]
 
 router.post('/seed-demo-profiles', async (req, res, next) => {
@@ -343,12 +363,14 @@ router.post('/seed-demo-profiles', async (req, res, next) => {
 
     // Seed 10 candidates per organization (30 total) linked to new recruiters
     let seededCandidatesCount = 0
+    let oIdx = 0
     for (const orgDef of orgDefinitions) {
       const orgId = orgsMap[orgDef.slug]
       const orgRecruiters = allNewRecruiters.filter(r => r.orgKey === orgDef.slug).slice(0, 10)
 
       for (let i = 0; i < 10; i++) {
-        const template = candidatesTemplates[i]
+        const templateIndex = (oIdx * 10) + i
+        const template = candidatesTemplates[templateIndex % candidatesTemplates.length]
         const rec = orgRecruiters[i]
 
         let candidateStatus = 'Submitted'
@@ -376,6 +398,7 @@ router.post('/seed-demo-profiles', async (req, res, next) => {
         })
         seededCandidatesCount += 1
       }
+      oIdx++
     }
 
     const logOrgId = req.profile.org_id || orgsMap['talentdesk']

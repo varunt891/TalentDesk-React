@@ -515,7 +515,7 @@ export default function Candidates() {
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
-        <div style={{ position: 'fixed', bottom: '28px', left: '50%', transform: 'translateX(-50%)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '14px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(79,124,255,0.2)', zIndex: 500, whiteSpace: 'nowrap' }}>
+        <div className="candidates-bulk-bar" style={{ position: 'fixed', bottom: '28px', left: '50%', transform: 'translateX(-50%)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '14px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(79,124,255,0.2)', zIndex: 500, whiteSpace: 'nowrap' }}>
           <span style={{ background: 'var(--accent)', color: '#fff', fontFamily: 'Space Mono, monospace', fontSize: '12px', fontWeight: '700', padding: '4px 10px', borderRadius: '20px', marginRight: '4px' }}>{selected.size}</span>
           <span style={{ fontSize: '13px', color: 'var(--text2)', marginRight: '8px' }}>selected</span>
           <div style={{ width: '1px', height: '24px', background: 'var(--border)', margin: '0 4px' }} />

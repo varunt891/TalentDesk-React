@@ -1,4 +1,162 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
+
+function SearchableProfileSelect({ profiles, value, onChange }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const dropdownRef = useRef(null)
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  useEffect(() => {
+    if (isOpen && inputRef.current) {
+      inputRef.current.focus()
+    }
+  }, [isOpen])
+
+  const selectedProfile = profiles.find(p => p.id === value)
+  const filteredProfiles = profiles.filter(p => {
+    const q = search.toLowerCase()
+    const name = (p.full_name || '').toLowerCase()
+    const email = (p.email || '').toLowerCase()
+    const role = (p.role || '').toLowerCase()
+    return name.includes(q) || email.includes(q) || role.includes(q)
+  })
+
+  return (
+    <div className="searchable-profile-select" ref={dropdownRef} style={{ position: 'relative', width: '100%' }}>
+      <button
+        type="button"
+        className="searchable-profile-trigger"
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '8px',
+          padding: '9px 12px',
+          borderRadius: '8px',
+          border: '1px solid var(--border)',
+          background: 'var(--surface2)',
+          color: selectedProfile ? 'var(--text)' : 'var(--text3)',
+          fontSize: '13px',
+          fontWeight: selectedProfile ? '600' : '400',
+          cursor: 'pointer',
+          textAlign: 'left',
+          fontFamily: 'inherit',
+          outline: 'none'
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {selectedProfile
+            ? `${selectedProfile.full_name || selectedProfile.email} (${selectedProfile.role || 'recruiter'})`
+            : '-- Select Recruiter --'}
+        </span>
+        <span style={{ fontSize: '10px', color: 'var(--text3)', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease' }}>▼</span>
+      </button>
+
+      {isOpen && (
+        <div
+          className="searchable-profile-dropdown"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            right: 0,
+            zIndex: 1000,
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
+            borderRadius: '10px',
+            boxShadow: '0 12px 36px rgba(0, 0, 0, 0.4)',
+            padding: '8px',
+            maxHeight: '240px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '6px'
+          }}
+        >
+          <div style={{ position: 'relative', width: '100%' }}>
+            <input
+              ref={inputRef}
+              type="text"
+              placeholder="Search recruiter name, email, role..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '7px 10px 7px 28px',
+                borderRadius: '6px',
+                border: '1px solid var(--border)',
+                background: 'var(--surface2)',
+                color: 'var(--text)',
+                fontSize: '12px',
+                outline: 'none',
+                fontFamily: 'inherit',
+                boxSizing: 'border-box'
+              }}
+            />
+            <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', opacity: 0.5 }}>🔍</span>
+          </div>
+
+          <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            {filteredProfiles.length === 0 ? (
+              <div style={{ padding: '10px', fontSize: '12px', color: 'var(--text3)', textAlign: 'center' }}>
+                No recruiter found
+              </div>
+            ) : (
+              filteredProfiles.map(p => {
+                const isSelected = p.id === value
+                return (
+                  <div
+                    key={p.id}
+                    onClick={() => {
+                      onChange(p.id)
+                      setIsOpen(false)
+                      setSearch('')
+                    }}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '12.5px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: isSelected ? 'rgba(79, 124, 255, 0.16)' : 'transparent',
+                      color: isSelected ? 'var(--accent)' : 'var(--text)',
+                      fontWeight: isSelected ? '700' : '400',
+                      transition: 'all 0.12s ease'
+                    }}
+                    onMouseEnter={e => {
+                      if (!isSelected) e.currentTarget.style.background = 'var(--surface2)'
+                    }}
+                    onMouseLeave={e => {
+                      if (!isSelected) e.currentTarget.style.background = 'transparent'
+                    }}
+                  >
+                    <span>{p.full_name || p.email}</span>
+                    <span style={{ fontSize: '10.5px', color: isSelected ? 'var(--accent)' : 'var(--text3)', padding: '1px 6px', borderRadius: '4px', background: 'var(--surface2)', fontFamily: 'var(--mono)' }}>
+                      {p.role || 'recruiter'}
+                    </span>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function TaskModal({
   isOpen,
@@ -141,18 +299,11 @@ export default function TaskModal({
 
             <div className="task-form-field">
               <label>Assign To (Recruiter) *</label>
-              <select
+              <SearchableProfileSelect
+                profiles={profiles}
                 value={formData.assigned_to}
-                onChange={e => setFormData({ ...formData, assigned_to: e.target.value })}
-                required
-              >
-                <option value="">-- Select Recruiter --</option>
-                {profiles.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.full_name || p.email} ({p.role || 'Recruiter'})
-                  </option>
-                ))}
-              </select>
+                onChange={val => setFormData({ ...formData, assigned_to: val })}
+              />
             </div>
 
             <div className="task-form-field">
