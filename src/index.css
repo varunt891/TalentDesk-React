@@ -1,23 +1,24 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #0d0f14;
-  --surface: #161922;
-  --surface2: #1e2230;
-  --surface3: #252a3a;
-  --border: #2c3148;
-  --accent: #4f7cff;
-  --accent2: #7c5cff;
-  --accent3: #ff5c87;
-  --green: #2ecc8f;
-  --yellow: #f5c842;
-  --orange: #ff8c42;
-  --red: #ff4d6a;
-  --text: #e8eaf2;
-  --text2: #8b91a8;
-  --text3: #acaeb5;
-  --mono: 'Space Mono', monospace;
-  --sans: 'DM Sans', sans-serif;
+  --bg: #000000;
+  --surface: #0a0a0d;
+  --surface2: #121319;
+  --surface3: #191b24;
+  --border: #222634;
+  --border-light: rgba(255, 255, 255, 0.08);
+  --accent: #3b82f6;
+  --accent2: #6366f1;
+  --accent3: #ec4899;
+  --green: #10b981;
+  --yellow: #f59e0b;
+  --orange: #f97316;
+  --red: #ef4444;
+  --text: #ffffff;
+  --text2: #94a3b8;
+  --text3: #64748b;
+  --mono: 'Geist Mono', 'Space Mono', monospace;
+  --sans: 'Inter', 'DM Sans', sans-serif;
 }
 
 [data-theme="light"] {
@@ -12818,6 +12819,113 @@ input, select, textarea, button {
 
   .leaderboard-cards-grid {
     grid-template-columns: 1fr !important;
+  }
+}
+
+/* ==========================================================================
+   PHONE-SPECIFIC COMPONENT LAYOUT FORMATTING & SQUEEZING FIXES
+   ========================================================================== */
+
+@media (max-width: 640px) {
+  /* 1. AI Executive Briefing Card */
+  .dash-ai-briefing-pill {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+    padding: 12px 14px !important;
+  }
+
+  .ai-briefing-header {
+    white-space: normal !important;
+  }
+
+  .ai-briefing-copy {
+    font-size: 12px !important;
+    line-height: 1.5 !important;
+  }
+
+  .ai-briefing-refresh-btn {
+    width: 100% !important;
+    justify-content: center !important;
+    text-align: center !important;
+    padding: 9px 12px !important;
+  }
+
+  /* 2. Dashboard Welcome Bar & Nav Pills */
+  .dash-top-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+
+  .dash-header-nav {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .dash-nav-pill {
+    width: 100% !important;
+    justify-content: space-between !important;
+  }
+
+  /* 3. AI Daily Notes Input Row Squeezing Fix */
+  .todo-add-form {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .todo-tag-select {
+    width: 100% !important;
+  }
+
+  .todo-input-field {
+    width: 100% !important;
+  }
+
+  .todo-add-btn {
+    width: 100% !important;
+    justify-content: center !important;
+    text-align: center !important;
+    padding: 9px 14px !important;
+  }
+
+  /* 4. Recruiter Leaderboard Mobile Row Fix */
+  .recruiter-leaderboard-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 4px !important;
+  }
+
+  .recruiter-leaderboard-header p {
+    font-size: 11.5px !important;
+  }
+
+  .leaderboard-item {
+    padding: 8px 10px !important;
+    gap: 6px !important;
+  }
+
+  /* 5. Search Bar & Time Tabs on Dashboard */
+  .dash-control-card {
+    padding: 12px !important;
+    gap: 10px !important;
+  }
+
+  .dash-time-tabs {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 4px !important;
+  }
+
+  .dash-time-tab {
+    padding: 6px 4px !important;
+    text-align: center !important;
+    font-size: 11px !important;
   }
 }
 
