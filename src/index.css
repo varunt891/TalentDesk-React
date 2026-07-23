@@ -13008,21 +13008,40 @@ input, select, textarea, button {
 
 /* Rank #1 Gold Podium Card */
 .exec-leaderboard-row.rank-gold {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(15, 23, 42, 0.8)) !important;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), var(--surface2)) !important;
   border: 1px solid rgba(245, 158, 11, 0.4) !important;
-  box-shadow: 0 0 16px rgba(245, 158, 11, 0.1) !important;
+}
+
+[data-theme="light"] .exec-leaderboard-row.rank-gold {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), #ffffff) !important;
+  border-color: #f59e0b !important;
 }
 
 /* Rank #2 Silver Podium Card */
 .exec-leaderboard-row.rank-silver {
-  background: linear-gradient(135deg, rgba(148, 163, 184, 0.08), rgba(15, 23, 42, 0.8)) !important;
+  background: linear-gradient(135deg, rgba(148, 163, 184, 0.08), var(--surface2)) !important;
   border: 1px solid rgba(148, 163, 184, 0.3) !important;
+}
+
+[data-theme="light"] .exec-leaderboard-row.rank-silver {
+  background: linear-gradient(135deg, rgba(148, 163, 184, 0.08), #ffffff) !important;
+  border-color: #94a3b8 !important;
 }
 
 /* Rank #3 Bronze Podium Card */
 .exec-leaderboard-row.rank-bronze {
-  background: linear-gradient(135deg, rgba(249, 115, 22, 0.08), rgba(15, 23, 42, 0.8)) !important;
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.08), var(--surface2)) !important;
   border: 1px solid rgba(249, 115, 22, 0.3) !important;
+}
+
+[data-theme="light"] .exec-leaderboard-row.rank-bronze {
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.08), #ffffff) !important;
+  border-color: #f97316 !important;
+}
+
+[data-theme="light"] .exec-leaderboard-row {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
 }
 
 /* Rank Badge Pills */
@@ -13059,6 +13078,12 @@ input, select, textarea, button {
   background: var(--surface3) !important;
   color: var(--text3) !important;
   border: 1px solid var(--border) !important;
+}
+
+[data-theme="light"] .exec-rank-pill.standard {
+  background: #e2e8f0 !important;
+  color: #475569 !important;
+  border-color: #cbd5e1 !important;
 }
 
 /* Recruiter Avatar */
@@ -13107,6 +13132,10 @@ input, select, textarea, button {
   color: var(--text) !important;
 }
 
+[data-theme="light"] .exec-recruiter-name {
+  color: #0f172a !important;
+}
+
 .exec-conversion-tag {
   font-size: 10.5px !important;
   font-weight: 700 !important;
@@ -13115,6 +13144,12 @@ input, select, textarea, button {
   background: rgba(16, 185, 129, 0.15) !important;
   color: #34d399 !important;
   border: 1px solid rgba(52, 211, 153, 0.25) !important;
+}
+
+[data-theme="light"] .exec-conversion-tag {
+  background: rgba(16, 185, 129, 0.12) !important;
+  color: #047857 !important;
+  border-color: rgba(4, 120, 87, 0.3) !important;
 }
 
 .exec-metrics-group {
@@ -13128,10 +13163,16 @@ input, select, textarea, button {
   font-size: 11px !important;
   font-weight: 600 !important;
   color: var(--text2) !important;
-  padding: 2px 8px !important;
+  padding: 3px 9px !important;
   border-radius: 6px !important;
   background: var(--surface) !important;
   border: 1px solid var(--border) !important;
+}
+
+[data-theme="light"] .exec-metric {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #334155 !important;
 }
 
 .exec-metric b {
@@ -13143,6 +13184,10 @@ input, select, textarea, button {
 .exec-metric.purple b { color: #a78bfa !important; }
 .exec-metric.green b { color: #34d399 !important; }
 
+[data-theme="light"] .exec-metric.blue b { color: #2563eb !important; }
+[data-theme="light"] .exec-metric.purple b { color: #7c5cff !important; }
+[data-theme="light"] .exec-metric.green b { color: #059669 !important; }
+
 /* Conversion Progress Track */
 .exec-yield-track {
   width: 100% !important;
@@ -13150,6 +13195,10 @@ input, select, textarea, button {
   border-radius: 3px !important;
   background: var(--surface) !important;
   overflow: hidden !important;
+}
+
+[data-theme="light"] .exec-yield-track {
+  background: #e2e8f0 !important;
 }
 
 .exec-yield-bar {
