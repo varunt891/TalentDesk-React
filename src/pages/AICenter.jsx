@@ -1,24 +1,27 @@
 import { useState } from 'react'
+import { apiRequest } from '../lib/api'
 
 function MarkdownView({ content }) {
   if (!content) return null
 
-  const lines = content.split('\n')
-  const elements = []
-  let codeBlockLines = null
-  let listItems = []
-
   const formatInline = (str) => {
     return str
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer" class="md-link">$1 ↗</a>')
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
       .replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>')
   }
 
+  const lines = content.split('\n')
+  const elements = []
+  let codeBlockLines = null
+  let listItems = []
+  let tableRows = []
+
   const flushList = () => {
     if (listItems.length > 0) {
       elements.push(
-        <ul key={`ul-${elements.length}`} className="md-list">
+        <ul key={`ul-${elements.length}-${Math.random()}`} className="md-list">
           {listItems.map((li, idx) => (
             <li key={idx} dangerouslySetInnerHTML={{ __html: formatInline(li) }} />
           ))}
@@ -28,21 +31,70 @@ function MarkdownView({ content }) {
     }
   }
 
+  const flushTable = () => {
+    if (tableRows.length > 0) {
+      // Filter out alignment divider row like | :--- | :--- |
+      const cleanRows = tableRows.filter(row => !row.every(cell => /^[\s:-]+$/.test(cell)))
+      if (cleanRows.length > 0) {
+        const header = cleanRows[0]
+        const body = cleanRows.slice(1)
+        elements.push(
+          <div key={`table-${elements.length}-${Math.random()}`} className="md-table-wrapper">
+            <table className="md-table">
+              <thead>
+                <tr>
+                  {header.map((cell, idx) => (
+                    <th key={idx} dangerouslySetInnerHTML={{ __html: formatInline(cell) }} />
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {body.map((row, rIdx) => (
+                  <tr key={rIdx}>
+                    {row.map((cell, cIdx) => (
+                      <td key={cIdx} dangerouslySetInnerHTML={{ __html: formatInline(cell) }} />
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+      tableRows = []
+    }
+  }
+
   lines.forEach((line, idx) => {
+    const trimmed = line.trim()
+
+    // Markdown Table row
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      flushList()
+      const cells = trimmed
+        .slice(1, -1)
+        .split('|')
+        .map(c => c.trim())
+      tableRows.push(cells)
+      return
+    } else {
+      flushTable()
+    }
+
     // Code Block
-    if (line.startsWith('```')) {
+    if (trimmed.startsWith('```')) {
       if (codeBlockLines !== null) {
         const codeText = codeBlockLines.join('\n')
         elements.push(
           <div key={`code-${idx}`} className="md-code-box">
             <div className="md-code-header">
-              <span className="md-code-lang">Search String / Code</span>
+              <span className="md-code-lang">Search String / Output</span>
               <button
                 type="button"
                 className="md-code-copy-btn"
                 onClick={() => navigator.clipboard.writeText(codeText)}
               >
-                📋 Copy String
+                📋 Copy Text
               </button>
             </div>
             <pre><code>{codeText}</code></pre>
@@ -61,42 +113,59 @@ function MarkdownView({ content }) {
       return
     }
 
+    // Horizontal Rule
+    if (trimmed === '---' || trimmed === '***') {
+      flushList()
+      elements.push(<hr key={`hr-${idx}`} className="md-hr" />)
+      return
+    }
+
     // Headers
-    if (line.startsWith('### ')) {
+    if (trimmed.startsWith('### ')) {
       flushList()
       elements.push(
         <h3 key={`h3-${idx}`} className="md-h3">
-          {line.replace('### ', '')}
+          {trimmed.replace('### ', '')}
         </h3>
       )
       return
     }
 
-    if (line.startsWith('#### ')) {
+    if (trimmed.startsWith('#### ')) {
       flushList()
       elements.push(
         <h4 key={`h4-${idx}`} className="md-h4">
-          {line.replace('#### ', '')}
+          {trimmed.replace('#### ', '')}
         </h4>
       )
       return
     }
 
+    if (trimmed.startsWith('## ')) {
+      flushList()
+      elements.push(
+        <h2 key={`h2-${idx}`} className="md-h2">
+          {trimmed.replace('## ', '')}
+        </h2>
+      )
+      return
+    }
+
     // Bullets
-    if (line.startsWith('• ') || line.startsWith('- ') || line.startsWith('* ')) {
-      const cleanLine = line.replace(/^[•\-\*]\s*/, '')
+    if (trimmed.startsWith('• ') || trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      const cleanLine = trimmed.replace(/^[•*-]\s*/, '')
       listItems.push(cleanLine)
       return
     }
 
     // Paragraph
-    if (line.trim().length > 0) {
+    if (trimmed.length > 0) {
       flushList()
       elements.push(
         <p
           key={`p-${idx}`}
           className="md-p"
-          dangerouslySetInnerHTML={{ __html: formatInline(line) }}
+          dangerouslySetInnerHTML={{ __html: formatInline(trimmed) }}
         />
       )
     } else {
@@ -105,6 +174,7 @@ function MarkdownView({ content }) {
   })
 
   flushList()
+  flushTable()
 
   return <div className="markdown-rendered-view">{elements}</div>
 }
@@ -167,7 +237,7 @@ export default function AICenter() {
 
   // Copy Feedback
   const [copiedKey, setCopiedKey] = useState(null)
-  const [demoMode, setDemoMode] = useState(false)
+  const [apiNotice, setApiNotice] = useState(null)
 
   const handleCopy = (text, key) => {
     navigator.clipboard.writeText(text)
@@ -175,349 +245,31 @@ export default function AICenter() {
     setTimeout(() => setCopiedKey(null), 2000)
   }
 
-  // Demo Fallback Data
-  const getDemoResponse = (toolId, inputData) => {
-    switch (toolId) {
-      case 'boolean': {
-        const title = (inputData && inputData.title) ? inputData.title.trim() : 'Software Engineer'
-        const skills = (inputData && inputData.skills) ? inputData.skills.trim() : ''
-        const location = (inputData && inputData.location) ? inputData.location.trim() : ''
-
-        const isDriver = title.toLowerCase().includes('driver') || title.toLowerCase().includes('cdl')
-        const isJava = title.toLowerCase().includes('java') && !title.toLowerCase().includes('javascript')
-        const isDevOps = title.toLowerCase().includes('devops') || title.toLowerCase().includes('cloud')
-
-        let titleVariants = `"${title}"`
-        if (isDriver) {
-          titleVariants = `"${title}" OR "Truck Driver" OR "Commercial Driver" OR "Class A Driver" OR "Delivery Driver"`
-        } else if (isJava) {
-          titleVariants = `"${title}" OR "Java Engineer" OR "Java Developer" OR "Backend Java Developer"`
-        } else if (isDevOps) {
-          titleVariants = `"${title}" OR "DevOps Engineer" OR "Cloud Architect" OR "SRE"`
-        } else {
-          titleVariants = `"${title}" OR "${title} Specialist" OR "Senior ${title}" OR "Lead ${title}"`
-        }
-
-        let skillClause = ''
-        if (skills) {
-          skillClause = skills.split(',').map(s => `"${s.trim()}"`).join(' OR ')
-        } else if (isDriver) {
-          skillClause = '"CDL Class A" OR "CDL Class B" OR "DOT Compliance" OR "Hauling" OR "Clean MVR" OR "Logistics"'
-        } else if (isJava) {
-          skillClause = '"Java 17" OR "Spring Boot" OR "Hibernate" OR "Microservices" OR "Maven"'
-        } else {
-          skillClause = '"Operations" OR "Management" OR "Strategy" OR "Leadership"'
-        }
-
-        const locationClause = location ? ` AND ("${location.split(',')[0].trim()}")` : ''
-
-        return `### 1. LinkedIn Recruiter / Sales Navigator Search String
-\`\`\`text
-(${titleVariants}) AND (${skillClause})${locationClause}
-\`\`\`
-
-### 2. Google X-Ray Search String
-\`\`\`text
-site:linkedin.com/in/ (${titleVariants}) AND (${skillClause})${locationClause}
-\`\`\`
-
-### 3. Indeed & Job Board Search String
-\`\`\`text
-(${titleVariants}) AND (${skillClause})${locationClause}
-\`\`\`
-
-### 4. Alternative Search Keywords & Synonyms
-• Title Synonyms: ${title}, Senior ${title}, Lead ${title}, ${title} Specialist
-• Skill Synonyms: ${skills || (isDriver ? 'Commercial Driving, DOT, Class A, Logistics' : 'Core Technologies, Enterprise Architecture')}
-• Location Variations: ${location || 'N/A'}`
-      }
-
-      case 'email':
-        return `### ✉️ LinkedIn InMail (High Conversion)
-Subject: ${emailForm.targetRole || 'Role'} Opportunity @ ${emailForm.company || 'Company'}
-
-Hi ${emailForm.candidateName || 'Candidate'},
-
-I noticed your impressive background as a ${emailForm.currentRole || 'Developer'}. We are hiring a ${emailForm.targetRole || 'Lead Engineer'} at ${emailForm.company || 'TalentDesk'} and your experience caught our team's eye.
-
-Highlights:
-- ${emailForm.sellingPoints || '$160k-$190k, Remote, Great perks'}
-
-Would you be open for a brief 10-minute intro call this week?
-
-Best regards,
-Talent Acquisition Team
-
-### 📧 Cold Outreach Email
-Subject: Executive Sourcing: ${emailForm.targetRole || 'Position'} at ${emailForm.company || 'TalentDesk'}
-
-Hi ${emailForm.candidateName || 'Candidate'},
-
-I hope this note finds you well! I came across your work as a ${emailForm.currentRole || 'Professional'} and wanted to reach out regarding a high-growth opportunity.
-
-We are actively seeking a ${emailForm.targetRole || 'Lead Engineer'} to drive core architecture at ${emailForm.company || 'TalentDesk'}.
-
-Key Role Benefits:
-- ${emailForm.sellingPoints || 'Competitive Compensation, Remote flexibility, Equity package'}
-
-If you are open to learning more, let's schedule a short call.
-
-### 💬 3-Day Follow-Up Nudge
-Hi ${emailForm.candidateName || 'Candidate'}, following up on my note below. Would love to share quick details if you're open to exploring new roles right now!`
-
-      case 'formatter': {
-        const rawText = typeof inputData === 'string' ? inputData.trim() : ''
-        
-        // 1. Line-by-line cleaning
-        const allLines = rawText.split('\n').map(l => l.trim()).filter(Boolean)
-        
-        // 2. Extract Candidate Name (First non-header line < 35 chars)
-        let candidateName = 'Executive Candidate'
-        for (const line of allLines) {
-          if (line.length > 2 && line.length < 35 && !/resume|summary|experience|skills|education|phone|email|professional|contact|location|dallas|texas|chicago/i.test(line)) {
-            candidateName = line.replace(/^[#*•\-\s]+/, '').trim()
-            break
-          }
-        }
-
-        // 3. Extract Email & Phone
-        const emailMatch = rawText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)
-        const phoneMatch = rawText.match(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/)
-        const emailStr = emailMatch ? emailMatch[0] : ''
-        const phoneStr = phoneMatch ? phoneMatch[0] : ''
-
-        // 4. Extract Location
-        let locationStr = ''
-        const locMatch = rawText.match(/([A-Z][a-z]+,\s*(?:TX|CA|NY|FL|IL|PA|OH|GA|NC|MI|[A-Z]{2}|[A-Z][a-z]+))/)
-        if (locMatch) {
-          locationStr = locMatch[1]
-        }
-
-        // 5. Target Position Inference
-        let inferredTitle = 'Operations & Domain Specialist'
-        if (/warehouse|distribution|picker|hauling|forklift|pallet|shipping|inventory/i.test(rawText)) {
-          inferredTitle = 'Warehouse Operations & Inventory Specialist'
-        } else if (/driver|cdl|hauling|truck/i.test(rawText)) {
-          inferredTitle = 'Commercial CDL Logistics Specialist'
-        } else if (/nurse|rn|patient|clinical|hospital|medical/i.test(rawText)) {
-          inferredTitle = 'Clinical Healthcare Specialist'
-        } else if (/java|spring|backend/i.test(rawText)) {
-          inferredTitle = 'Senior Java Backend Engineer'
-        } else if (/react|frontend|javascript|typescript|css|html/i.test(rawText)) {
-          inferredTitle = 'Senior Frontend Engineer'
-        } else if (/python|data|sql|machine learning|ai/i.test(rawText)) {
-          inferredTitle = 'Data Engineer & AI Analyst'
-        }
-
-        // 6. Certifications
-        const certs = []
-        if (/osha/i.test(rawText)) certs.push('OSHA Warehouse Safety Training')
-        if (/forklift/i.test(rawText)) certs.push('Valid Forklift Operator Certification (Sit-down, Stand-up, Reach Truck, Pallet Jack)')
-        if (/cdl/i.test(rawText)) certs.push('Commercial Driver License (CDL)')
-        if (/cpr/i.test(rawText)) certs.push('Certified CPR & First Aid')
-
-        // 7. Filter out metadata lines to get actual experience sentences
-        const cleanContentLines = allLines.filter(line => {
-          const l = line.toLowerCase()
-          if (l === candidateName.toLowerCase()) return false
-          if (l.includes('@') || l.includes('phone:') || l.includes('email:')) return false
-          if (/^(professional summary|work experience|experience|education|skills|certifications|summary)$/i.test(l)) return false
-          if (locMatch && line.includes(locMatch[1])) return false
-          return true
-        })
-
-        // 8. Convert content lines into structured action bullets
-        const actionBullets = []
-        for (const line of cleanContentLines) {
-          if (line.length < 20) continue
-          
-          let bullet = line.replace(/^[#*•\-\d.\s]+/, '').trim()
-          if (/experience in shipping|receiving|inventory management/i.test(bullet)) {
-            bullet = 'Managed shipping, receiving, inventory counts, and order picking/packing with high accuracy.'
-          } else if (/fast-paced warehouse|safety, productivity/i.test(bullet)) {
-            bullet = 'Maintained safety, high productivity, and order fulfillment accuracy in fast-paced warehouse environments.'
-          } else if (/forklift/i.test(bullet) && !bullet.startsWith('Operated')) {
-            bullet = 'Operated sit-down and stand-up forklifts, reach trucks, and pallet jacks safely.'
-          }
-          
-          if (!actionBullets.includes(`• ${bullet}`)) {
-            actionBullets.push(`• ${bullet}`)
-          }
-        }
-
-        // 9. Format Markdown Output
-        let contactHeader = ''
-        if (locationStr || emailStr || phoneStr) {
-          const parts = [locationStr, phoneStr, emailStr].filter(Boolean)
-          contactHeader = `**Contact & Location:** ${parts.join(' | ')}  \n`
-        }
-
-        let certsSection = ''
-        if (certs.length > 0) {
-          certsSection = `#### Certifications & Safety Credentials\n${certs.map(c => `• ${c}`).join('\n')}\n\n`
-        }
-
-        return `### Standardized Executive Candidate Summary
-
-**Candidate Name:** ${candidateName}  
-**Target Position:** ${inferredTitle}  
-${contactHeader}
----
-
-#### Executive Summary
-Hardworking and dependable ${inferredTitle} with extensive experience in shipping, receiving, inventory management, order picking, and warehouse logistics. Demonstrated commitment to safety, accuracy, and high operational throughput.
-
-${certsSection}#### Core Key Responsibilities & Professional Capabilities
-${actionBullets.slice(0, 5).join('\n') || `• Managed daily warehouse operations, inventory control, and shipping/receiving workflows.\n• Maintained strict compliance with safety guidelines and quality standards.`}
-
-#### Education & Certifications
-• High School Diploma / Relevant Vocational Training`
-      }
-
-      case 'jd':
-        return `### 📌 Executive Summary
-High-growth role for a Senior Frontend Architect to drive core client user experience using React, TypeScript, and modern component systems.
-
-### 🛠️ Must-Have Core Skills
-• 4+ years of professional React.js development
-• Strong mastery of JavaScript (ES6+), TypeScript, and HTML5/CSS3
-• Experience building responsive UIs with TailwindCSS or modern CSS frameworks
-• API consumption (REST / GraphQL) and frontend state management
-
-### 🌟 Nice-to-Have Skills
-• Next.js / Server-Side Rendering (SSR)
-• Automated testing (Jest, Cypress, React Testing Library)
-• Performance optimization & Web Vitals tuning
-
-### 💡 Ideal Candidate Persona
-Product-minded engineer who thrives in autonomous environments, values clean code architecture, and collaborates seamlessly with product managers.
-
-### ❓ Top 5 Technical Interview Questions
-1. How do you structure global state vs local state in large React applications?
-2. What techniques do you use to diagnose and fix unnecessary component re-renders?
-3. How do you implement responsive design and accessibility (a11y) standards?
-4. Explain how custom hooks can be used to encapsulate complex API data fetching.
-5. Describe a time you resolved a performance bottleneck in a web app.`
-
-      case 'match':
-        return `### 📊 Match Rating: [92 / 100] - Highly Recommended
-
-### ✅ Key Matching Strengths
-• Direct alignment with React & TypeScript requirements (5+ years hands-on experience)
-• Strong background building responsive interfaces with TailwindCSS
-• Proven track record in state management and REST API integrations
-
-### ⚠️ Potential Gaps / Unverified Areas
-• Limited explicit mention of Next.js SSR in resume
-• Unit testing coverage metrics not specified
-
-### 🎙️ Probing Interview Questions
-1. Have you implemented Next.js or Server-Side Rendering in production?
-2. What testing framework do you prefer for React component testing?
-3. How do you handle cross-browser compatibility issues?`
-
-      case 'salary': {
-        const role = (inputData && inputData.role) ? inputData.role.trim() : 'Role'
-        const location = (inputData && inputData.location) ? inputData.location.trim() : 'Location'
-        const exp = (inputData && inputData.expLevel) ? inputData.expLevel.trim() : 'Experience'
-
-        return `### Compensation & Market Intelligence
-
-**Target Role:** ${role}  
-**Location / Region:** ${location}  
-**Experience Level:** ${exp}  
-
----
-
-#### Salary Benchmarks & Market Analysis
-• **Base Salary Range:** Market competitive rates based on live real-time compensation data for ${location}.
-• **Median Compensation:** Evaluated dynamically for ${role} with ${exp} experience.
-• **Incentives & Bonuses:** Performance incentives, equity options, and local market benefits.
-
-#### Market Demand & Hiring Trends
-• **Demand Index:** 🔥 High Demand for ${role} in ${location}  
-• **Time-to-Hire Average:** 18 - 24 Days  
-• **Key Hiring Drivers:** Specialized skill alignment, market availability, local compensation competitiveness.`
-      }
-
-      case 'copilot': {
-        const query = typeof inputData === 'string' ? inputData.trim() : 'Recruiting Assistance'
-        if (!query) return 'Please enter a recruiting query or custom prompt.'
-
-        const cleanQuery = query.replace(/^[?\s#*•-]+/, '').trim()
-        const words = cleanQuery.split(/\s+/).filter(w => w.length > 2)
-        const topicName = cleanQuery.length < 60 ? cleanQuery : words.slice(0, 6).join(' ')
-
-        return `### ⚡ Recruiter AI Copilot Intelligence
-
-**Query / Prompt:** "${cleanQuery}"
-
----
-
-#### 📌 Strategic Intelligence & Overview
-Regarding **"${topicName}"**: In modern talent acquisition, handling this effectively requires a structured, multi-channel recruitment strategy.
-
-#### 🛠️ Key Core Components & Best Practices:
-• **Strategic Focus:** Establish clear alignment between target candidate skillsets, company hiring priorities, and market compensation benchmarks.
-• **Sourcing & Talent Discovery:** Leverage specialized Boolean search strings, LinkedIn Recruiter, and industry networks to engage both active and passive talent.
-• **Candidate Experience & Outreach:** Craft concise, high-converting outreach messages highlighting key role impact, team vision, and compensation flexibility.
-• **Qualification & Evaluation:** Conduct structured 15-minute phone screenings to assess technical competency, cultural fit, and motivation.
-
-#### 📊 Recommended Tactical Next Steps:
-1. **Define Core Requirements:** Document must-have technical skills vs nice-to-have qualifications.
-2. **Execute Targeted Campaign:** Launch outreach across primary sourcing channels with personalized follow-up nudges.
-3. **Monitor Conversion Metrics:** Track submittals-to-interview and interview-to-offer ratios to optimize pipeline velocity.`
-      }
-
-      default:
-        return `### ⚡ Gemini AI Copilot Response
-Ready to assist with recruiting, sourcing prompts, candidate feedback, or hiring strategies.`
-    }
-  }
-
-  const [apiNotice, setApiNotice] = useState(null)
-  const [userApiKey, setUserApiKey] = useState('')
-
-  const callGeminiAPI = async (promptText, toolId, inputData = {}) => {
-    if (demoMode) {
-      await new Promise(resolve => setTimeout(resolve, 400))
-      return getDemoResponse(toolId, inputData)
-    }
-
+  const callAiApi = async (promptText, toolId) => {
     try {
-      const res = await fetch('http://localhost:4000/api/ai/generate', {
+      const data = await apiRequest('/ai/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           prompt: promptText,
-          apiKey: userApiKey.trim() || undefined
-        })
+          toolId
+        }
       })
 
-      const data = await res.json()
-      if (res.ok && data.text) {
-        setApiNotice(null)
+      if (data?.text) {
+        if (data.grounded) {
+          setApiNotice('🌐 Response grounded with live Google Search web intelligence.')
+        } else {
+          setApiNotice(null)
+        }
         return data.text
       }
 
-      // Handle Google Free Tier Quota Exceeded (429)
-      if (res.status === 429 || (data.error && (data.error.includes('Quota') || data.error.includes('rate') || data.error.includes('limit')))) {
-        console.warn('Gemini Free Tier Quota Limit reached. Seamlessly serving via Instant AI Engine.')
-        setApiNotice('⚠️ Google Gemini Free Tier daily quota limit reached for key. Paste a fresh key above or use Instant Mode.')
-        return getDemoResponse(toolId, inputData)
-      }
-
-      if (data.error) {
-        setApiNotice(`⚠️ Gemini API: ${data.error}`)
-        return getDemoResponse(toolId, inputData)
-      }
+      throw new Error(data?.error || 'AI service returned an empty response.')
     } catch (err) {
-      console.warn('API error, falling back to Instant AI:', err.message)
-      setApiNotice('⚡ Generating via Instant AI Engine.')
-      return getDemoResponse(toolId, inputData)
+      const message = err.message || 'AI request failed.'
+      setApiNotice(`⚠️ AI Notice: ${message}`)
+      throw new Error(message, { cause: err })
     }
-
-    return getDemoResponse(toolId, inputData)
   }
 
   // Submit Handlers
@@ -527,14 +279,15 @@ Ready to assist with recruiting, sourcing prompts, candidate feedback, or hiring
     setBoolError(null)
     setBoolResults(null)
 
-    const prompt = `You are a Senior Sourcing Specialist. Generate high-conversion Boolean search strings.
-Output ONLY structured Markdown. DO NOT output internal thinking or reasoning notes.
+    const prompt = `You are a Senior Technical Sourcing Specialist.
+STRICT RULE: Construct precision high-conversion Boolean search strings STRICTLY using ONLY:
+1. Target Job Title: ${boolInput.title}
+2. Must-Have Skills: ${boolInput.skills}
+3. Must-Have Job Description Requirements: ${boolInput.jdText}
 
-Job Title: ${boolInput.title}
-Required Skills: ${boolInput.skills}
+EXCLUDE all nice-to-haves, soft skills, company overview, benefits, or optional filler text.
 Location: ${boolInput.location}
-Experience: ${boolInput.experience}
-Job Description: ${boolInput.jdText}
+Experience Level: ${boolInput.experience}
 
 Format:
 ### 1. LinkedIn Recruiter / Sales Navigator Search String
@@ -553,12 +306,12 @@ Format:
 \`\`\`
 
 ### 4. Alternative Search Keywords & Synonyms
-• Title Synonyms: ...
-• Skill Synonyms: ...
-• Location Variations: ...`
+- Title Synonyms: ...
+- Skill Synonyms: ...
+- Location Variations: ...`
 
     try {
-      const res = await callGeminiAPI(prompt, 'boolean', boolInput)
+      const res = await callAiApi(prompt, 'boolean')
       setBoolResults(res)
     } catch (err) {
       setBoolError(err.message)
@@ -582,12 +335,12 @@ Company: ${emailForm.company}
 Selling Points: ${emailForm.sellingPoints}
 
 Format:
-### ✉️ LinkedIn InMail (Short & Engaging)
-### 📧 Cold Outreach Email
-### 💬 3-Day Follow-Up Nudge`
+### LinkedIn InMail (Short & High Conversion)
+### Cold Outreach Email
+### 3-Day Follow-Up Nudge`
 
     try {
-      const res = await callGeminiAPI(prompt, 'email', emailForm)
+      const res = await callAiApi(prompt, 'email')
       setEmailResults(res)
     } catch (err) {
       alert(err.message)
@@ -623,7 +376,7 @@ Format:
 #### Education & Certifications`
 
     try {
-      const res = await callGeminiAPI(prompt, 'formatter', resumeText)
+      const res = await callAiApi(prompt, 'formatter')
       setFormatterResults(res)
     } catch (err) {
       alert(err.message)
@@ -645,14 +398,14 @@ JOB DESCRIPTION:
 ${jdText}
 
 Format:
-### 📌 Executive Summary
-### 🛠️ Must-Have Core Skills
-### 🌟 Nice-to-Have Skills
-### 💡 Ideal Candidate Persona
-### ❓ Top 5 Technical Interview Questions`
+### Executive Summary
+### Must-Have Core Skills
+### Nice-to-Have Skills
+### Ideal Candidate Persona
+### Top 5 Technical Interview Questions`
 
     try {
-      const res = await callGeminiAPI(prompt, 'jd', jdText)
+      const res = await callAiApi(prompt, 'jd')
       setJdResults(res)
     } catch (err) {
       alert(err.message)
@@ -674,13 +427,13 @@ JD: ${matchJd}
 RESUME: ${matchCandidate}
 
 Format:
-### 📊 Match Rating: [X / 100]
-### ✅ Key Matching Strengths
-### ⚠️ Potential Gaps / Unverified Areas
-### 🎙️ Probing Interview Questions`
+### Match Rating: [X / 100]
+### Key Matching Strengths
+### Potential Gaps / Unverified Areas
+### Probing Interview Questions`
 
     try {
-      const res = await callGeminiAPI(prompt, 'match', { matchJd, matchCandidate })
+      const res = await callAiApi(prompt, 'match')
       setMatchResult(res)
     } catch (err) {
       alert(err.message)
@@ -698,8 +451,9 @@ Format:
 
 CRITICAL INSTRUCTIONS:
 1. Provide accurate, real-world salary benchmarks specifically for the requested location: "${salaryForm.location}".
-2. Use the LOCAL CURRENCY of "${salaryForm.location}" (e.g. INR ₹ for India, GBP £ for UK, EUR € for Europe, CAD $ for Canada, AUD $ for Australia, BRL R$ for Brazil, JPY ¥ for Japan, AED for UAE, PHP ₱ for Philippines, etc.).
-3. Output ONLY the final structured Markdown response. DO NOT output internal reasoning or scratchpad notes.
+2. Use the LOCAL CURRENCY of "${salaryForm.location}" (for example INR/Rs for India, GBP for UK, EUR for Europe, CAD for Canada, AUD for Australia, BRL for Brazil, JPY for Japan, AED for UAE, PHP for Philippines).
+3. Provide structured Markdown tables for salary benchmarks by seniority level.
+4. Output ONLY structured Markdown. DO NOT output internal reasoning or scratchpad notes.
 
 TARGET DETAILS:
 - Role Title: ${salaryForm.role}
@@ -716,17 +470,16 @@ Format:
 ---
 
 #### Salary Benchmarks ([Local Currency Code & Symbol])
-• **Base Salary Range:** (Provide realistic low-to-high local range)
-• **Median Compensation:** (Provide median local figure)
-• **Incentives & Bonuses:** (Standard bonuses/commissions for this local market)
+| Level / Title | YOE | Base Salary Range | Total Comp Range |
+| :--- | :--- | :--- | :--- |
 
 #### Market Demand Trends
-• **Demand Index:** 🔥 (High / Very High / Moderate)
-• **Time-to-Hire Average:** (Average days)
-• **Key Hiring Drivers:** (Key local drivers and market trends)`
+- **Demand Index:** (High / Very High / Moderate)
+- **Time-to-Hire Average:** (Average days)
+- **Key Hiring Drivers:** (Key local market drivers)`
 
     try {
-      const res = await callGeminiAPI(prompt, 'salary', salaryForm)
+      const res = await callAiApi(prompt, 'salary')
       setSalaryResult(res)
     } catch (err) {
       alert(err.message)
@@ -741,13 +494,13 @@ Format:
     setCopilotLoading(true)
     setCopilotResponse(null)
 
-    const prompt = `You are a Recruiter AI Assistant. Answer concisely.
+    const prompt = `You are TalentDesk AI Recruiter Copilot. Provide strategic, actionable talent intelligence.
 Output ONLY structured Markdown response.
 
 PROMPT: ${copilotPrompt}`
 
     try {
-      const res = await callGeminiAPI(prompt, 'copilot', copilotPrompt)
+      const res = await callAiApi(prompt, 'copilot')
       setCopilotResponse(res)
     } catch (err) {
       alert(err.message)
@@ -773,59 +526,18 @@ PROMPT: ${copilotPrompt}`
         <div className="ai-header-content">
           <div className="ai-badge">
             <span className="ai-sparkle">✨</span>
-            <span>GEMINI 2.5 RECRUITING AI SUITE</span>
+            <span>TALENTDESK RECRUITER AI SUITE</span>
           </div>
           <h1>Recruiter AI Innovation Center</h1>
-          <p>7 specialized AI tools for sourcing, resume formatting, email outreach, candidate evaluation, and salary intelligence.</p>
+          <p>7 specialized AI intelligence tools for sourcing, resume formatting, email outreach, candidate evaluation, and salary benchmarks.</p>
         </div>
 
         <div className="ai-key-card">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '700', color: demoMode ? '#7c5cff' : 'var(--text2)' }}>
-                <input
-                  type="checkbox"
-                  checked={demoMode}
-                  onChange={e => setDemoMode(e.target.checked)}
-                  style={{ width: '15px', height: '15px', accentColor: '#7c5cff' }}
-                />
-                ⚡ Instant Demo Mode
-              </label>
-              <div className="ai-key-status">
-                <span className="key-indicator active" />
-                <span className="key-label">{userApiKey ? 'Custom Key Active' : 'Gemini 2.5 Active'}</span>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="password"
-                placeholder="Paste Gemini API Key (AIzaSy...)"
-                value={userApiKey}
-                onChange={e => {
-                  setUserApiKey(e.target.value)
-                  localStorage.setItem('user_gemini_key', e.target.value)
-                }}
-                style={{
-                  padding: '5px 10px',
-                  borderRadius: '6px',
-                  border: '1px solid var(--border)',
-                  background: 'var(--surface2)',
-                  color: 'var(--text)',
-                  fontSize: '11px',
-                  width: '210px'
-                }}
-              />
-              <a
-                href="https://aistudio.google.com/app/apikey"
-                target="_blank"
-                rel="noreferrer"
-                style={{ fontSize: '11px', color: '#7c5cff', textDecoration: 'none', fontWeight: '600' }}
-              >
-                Get Free Key ↗
-              </a>
-            </div>
+          <div className="ai-key-status">
+            <span className="key-indicator active" />
+            <span className="key-label">Server AI Active</span>
           </div>
+          <p className="ai-key-note">Live web search grounding enabled</p>
         </div>
       </header>
 
@@ -869,6 +581,7 @@ PROMPT: ${copilotPrompt}`
                     type="text"
                     value={boolInput.title}
                     onChange={e => setBoolInput({ ...boolInput, title: e.target.value })}
+                    required
                   />
                 </div>
                 <div className="ai-field">
@@ -898,10 +611,10 @@ PROMPT: ${copilotPrompt}`
               </div>
 
               <div className="ai-field">
-                <label>Job Description Text (Optional)</label>
+                <label>Must-Have Job Description Requirements</label>
                 <textarea
                   rows="4"
-                  placeholder="Paste Job Description for max accuracy..."
+                  placeholder="Paste core must-have requirements from Job Description..."
                   value={boolInput.jdText}
                   onChange={e => setBoolInput({ ...boolInput, jdText: e.target.value })}
                 />
@@ -934,7 +647,7 @@ PROMPT: ${copilotPrompt}`
             {boolLoading && (
               <div className="ai-loading-box">
                 <div className="loading-pulse" />
-                <p>Gemini 2.5 is synthesizing search queries...</p>
+                <p>AI is synthesizing search queries...</p>
               </div>
             )}
             {boolResults && (
@@ -961,6 +674,7 @@ PROMPT: ${copilotPrompt}`
                     type="text"
                     value={emailForm.candidateName}
                     onChange={e => setEmailForm({ ...emailForm, candidateName: e.target.value })}
+                    required
                   />
                 </div>
                 <div className="ai-field">
@@ -977,6 +691,7 @@ PROMPT: ${copilotPrompt}`
                     type="text"
                     value={emailForm.targetRole}
                     onChange={e => setEmailForm({ ...emailForm, targetRole: e.target.value })}
+                    required
                   />
                 </div>
                 <div className="ai-field">
@@ -1228,6 +943,7 @@ PROMPT: ${copilotPrompt}`
                   type="text"
                   value={salaryForm.role}
                   onChange={e => setSalaryForm({ ...salaryForm, role: e.target.value })}
+                  required
                 />
               </div>
               <div className="ai-field">
@@ -1236,6 +952,7 @@ PROMPT: ${copilotPrompt}`
                   type="text"
                   value={salaryForm.location}
                   onChange={e => setSalaryForm({ ...salaryForm, location: e.target.value })}
+                  required
                 />
               </div>
               <div className="ai-field">
@@ -1244,6 +961,7 @@ PROMPT: ${copilotPrompt}`
                   type="text"
                   value={salaryForm.expLevel}
                   onChange={e => setSalaryForm({ ...salaryForm, expLevel: e.target.value })}
+                  required
                 />
               </div>
 
@@ -1273,7 +991,7 @@ PROMPT: ${copilotPrompt}`
             {salaryLoading && (
               <div className="ai-loading-box">
                 <div className="loading-pulse" />
-                <p>Analyzing compensation data...</p>
+                <p>Analyzing live market compensation data...</p>
               </div>
             )}
             {salaryResult && (
@@ -1290,7 +1008,7 @@ PROMPT: ${copilotPrompt}`
         <div className="ai-tool-layout">
           <div className="ai-form-card">
             <h3>⚡ Freeform Recruiter AI Copilot</h3>
-            <p className="ai-card-sub">Ask Gemini AI anything related to recruiting, sourcing strategies, or candidate feedback.</p>
+            <p className="ai-card-sub">Ask TalentDesk AI anything related to recruiting, sourcing strategies, or candidate feedback.</p>
 
             <form onSubmit={handleCopilotSubmit}>
               <div className="ai-field">
@@ -1305,14 +1023,14 @@ PROMPT: ${copilotPrompt}`
               </div>
 
               <button type="submit" className="ai-submit-btn" disabled={copilotLoading}>
-                {copilotLoading ? <span className="ai-spinner" /> : '⚡ Ask Gemini Copilot'}
+                {copilotLoading ? <span className="ai-spinner" /> : '⚡ Ask AI Copilot'}
               </button>
             </form>
           </div>
 
           <div className="ai-results-card">
             <div className="results-header">
-              <h4>Gemini Copilot Output</h4>
+              <h4>AI Copilot Output</h4>
               {copilotResponse && (
                 <button type="button" className="copy-btn" onClick={() => handleCopy(copilotResponse, 'copilot')}>
                   {copiedKey === 'copilot' ? '✓ Copied!' : '📋 Copy Response'}
@@ -1330,7 +1048,7 @@ PROMPT: ${copilotPrompt}`
             {copilotLoading && (
               <div className="ai-loading-box">
                 <div className="loading-pulse" />
-                <p>Processing query...</p>
+                <p>Processing query with AI Assistant...</p>
               </div>
             )}
             {copilotResponse && (

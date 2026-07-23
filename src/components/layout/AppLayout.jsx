@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import Sidebar from './Sidebar'
+import { db } from '../../lib/api'
 
 export default function AppLayout({ currentPage, onNavigate, children }) {
   const [theme, setTheme] = useState(() => localStorage.getItem('td_theme') || 'dark')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('td_sidebar_collapsed') === 'true')
+  const [pendingTasksCount, setPendingTasksCount] = useState(0)
 
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark'
@@ -22,6 +24,24 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    const checkTasks = async () => {
+      try {
+        const { data } = await db.from('tasks').select('*')
+        if (data) {
+          const pending = data.filter(t => t.status !== 'Completed').length
+          setPendingTasksCount(pending)
+        }
+      } catch (err) {
+        // silent catch
+      }
+    }
+
+    checkTasks()
+    const interval = setInterval(checkTasks, 10000)
+    return () => clearInterval(interval)
+  }, [])
 
   const handleNavigate = (page) => {
     onNavigate(page)
@@ -43,6 +63,7 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
         isCollapsed={sidebarCollapsed}
         onToggleCollapse={toggleSidebarCollapse}
         onClose={() => setSidebarOpen(false)}
+        pendingTasksCount={pendingTasksCount}
       />
       <main className="app-main">
         <header className="mobile-topbar">

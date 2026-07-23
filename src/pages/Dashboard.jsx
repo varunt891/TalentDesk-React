@@ -13,7 +13,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { db } from '../lib/api'
+import { db, apiRequest } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useCandidates } from '../hooks/useCandidates'
 
@@ -33,7 +33,6 @@ export default function Dashboard({ onNavigate }) {
   const [jobs, setJobs] = useState([])
   const [callbacks, setCallbacks] = useState([])
   const [followups, setFollowups] = useState([])
-  const [activity, setActivity] = useState([])
   const [profiles, setProfiles] = useState([])
   const [timeRange, setTimeRange] = useState('all')
   const [stageFilter, setStageFilter] = useState('All')
@@ -44,6 +43,8 @@ export default function Dashboard({ onNavigate }) {
 
   // AI Widget State
   const [aiTab, setAiTab] = useState('match') // 'match' | 'boolean' | 'outreach'
+  const [selectedCandidateId, setSelectedCandidateId] = useState('')
+  const [selectedJobId, setSelectedJobId] = useState('')
   const [aiInput, setAiInput] = useState({
     jd: 'Senior React Developer with 4+ years experience in TypeScript, Tailwind CSS & REST APIs.',
     candidate: 'Alex Rivera - 5 yrs React, TypeScript, Redux, Node.js, REST APIs.',
@@ -53,8 +54,103 @@ export default function Dashboard({ onNavigate }) {
     targetRole: 'Senior React Developer'
   })
   const [aiOutput, setAiOutput] = useState(null)
+  const [aiMetadata, setAiMetadata] = useState(null)
   const [aiLoading, setAiLoading] = useState(false)
-  const [userApiKey] = useState(() => localStorage.getItem('user_gemini_key') || '')
+
+  // AI Executive Briefing State
+  const [aiBriefingText, setAiBriefingText] = useState('')
+  const [briefingLoading, setBriefingLoading] = useState(false)
+
+  // AI Daily Notes & EOD Recruiter Todo State
+  const [dailyNotes, setDailyNotes] = useState(() => {
+    const saved = localStorage.getItem('td_daily_notes')
+    if (saved) {
+      try { return JSON.parse(saved) } catch (e) { console.error(e) }
+    }
+    return [
+      { id: 1, text: 'Follow up with Alex Rivera on Senior React Developer offer letter', done: false, tag: 'Offer' },
+      { id: 2, text: 'Screen 3 DevOps candidates for Acme Corp requisition', done: true, tag: 'Screening' },
+      { id: 3, text: 'Schedule final technical interview round for candidate Sarah Jenkins', done: true, tag: 'Interview' },
+      { id: 4, text: 'Perform EOD submittal audit & clean up stalled CRM leads', done: false, tag: 'EOD Review' }
+    ]
+  })
+  const [newNoteText, setNewNoteText] = useState('')
+  const [noteTag, setNoteTag] = useState('Follow-up')
+  const [todoTab, setTodoTab] = useState('notes')
+  const [eodSummaryText, setEodSummaryText] = useState('')
+  const [eodLoading, setEodLoading] = useState(false)
+
+  const handleAddNote = (e) => {
+    e.preventDefault()
+    if (!newNoteText.trim()) return
+    const newNote = {
+      id: Date.now(),
+      text: newNoteText.trim(),
+      done: false,
+      tag: noteTag
+    }
+    const updated = [newNote, ...dailyNotes]
+    setDailyNotes(updated)
+    localStorage.setItem('td_daily_notes', JSON.stringify(updated))
+    setNewNoteText('')
+  }
+
+  const handleToggleNote = (id) => {
+    const updated = dailyNotes.map(n => n.id === id ? { ...n, done: !n.done } : n)
+    setDailyNotes(updated)
+    localStorage.setItem('td_daily_notes', JSON.stringify(updated))
+  }
+
+  const handleDeleteNote = (id) => {
+    const updated = dailyNotes.filter(n => n.id !== id)
+    setDailyNotes(updated)
+    localStorage.setItem('td_daily_notes', JSON.stringify(updated))
+  }
+
+  const handleGenerateEODSummary = async () => {
+    setEodLoading(true)
+    setTodoTab('eod')
+    const completed = dailyNotes.filter(n => n.done).map(n => `- [x] ${n.text} (${n.tag})`).join('\n') || 'None'
+    const pending = dailyNotes.filter(n => !n.done).map(n => `- [ ] ${n.text} (${n.tag})`).join('\n') || 'None'
+
+    const prompt = `You are a Senior Recruiting Operations Manager. Generate a concise, high-impact End of Day (EOD) Recruiter Summary & Action Plan based on the recruiter's daily notes and tasks.
+
+RECRUITER DAILY NOTES STATUS:
+COMPLETED ITEMS:
+${completed}
+
+PENDING FOLLOW-UPS:
+${pending}
+
+Format:
+### 🏆 EOD Recruiter Summary & Accomplishments
+- Highlighting key wins from completed notes...
+
+### ⏳ Pending Bottlenecks & Open Tasks
+- Summary of unfinished items...
+
+### 🎯 3 Priority Actions for Tomorrow Morning
+1. Action item 1...
+2. Action item 2...
+3. Action item 3...`
+
+    try {
+      const data = await apiRequest('/ai/generate', {
+        method: 'POST',
+        body: { prompt, toolId: 'copilot' }
+      })
+      if (data?.text) {
+        setEodSummaryText(data.text)
+      } else {
+        setEodSummaryText('### 🏆 EOD Summary\n- All priority tasks reviewed for today.')
+      }
+    } catch (err) {
+      console.error(err)
+      setEodSummaryText('⚠️ AI service temporarily unavailable. Daily notes are saved locally.')
+    } finally {
+      setEodLoading(false)
+    }
+  }
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -100,13 +196,11 @@ export default function Dashboard({ onNavigate }) {
       db.from('jobs').select('*').order('created_at', { ascending: false }),
       db.from('callbacks').select('*').order('date', { ascending: true }),
       db.from('followups').select('*').order('date', { ascending: true }),
-      db.from('activity_logs').select('*').order('created_at', { ascending: false }),
       db.from('profiles').select('*').order('full_name'),
-    ]).then(([jobsRes, callbacksRes, followupsRes, activityRes, profilesRes]) => {
+    ]).then(([jobsRes, callbacksRes, followupsRes, profilesRes]) => {
       setJobs(jobsRes.data || [])
       setCallbacks(callbacksRes.data || [])
       setFollowups(followupsRes.data || [])
-      setActivity((activityRes.data || []).slice(0, 12))
       setProfiles(profilesRes.data || [])
     })
   }
@@ -330,33 +424,112 @@ export default function Dashboard({ onNavigate }) {
   const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
   const avatarInitial = (profile?.full_name || 'U').charAt(0).toUpperCase()
 
-  // Gemini AI Call Handler for Dashboard
+  // CRM Data Selectors for AI Widget
+  const handleSelectCandidate = (cId) => {
+    setSelectedCandidateId(cId)
+    if (!cId) return
+    const cand = candidates.find(c => String(c.id) === String(cId))
+    if (cand) {
+      const name = `${cand.first_name || ''} ${cand.last_name || ''}`.trim()
+      setAiInput(prev => ({
+        ...prev,
+        candidateName: name,
+        candidate: `Candidate: ${name}\nTarget Title: ${cand.job_title || 'N/A'}\nClient: ${cand.client || 'N/A'}\nSkills: ${cand.skills || 'React, JavaScript, Node.js, REST APIs'}\nStatus: ${cand.external_status || cand.internal_status || 'Submitted'}\nNotes: ${cand.notes || 'Strong technical background.'}`
+      }))
+    }
+  }
+
+  const handleSelectJob = (jId) => {
+    setSelectedJobId(jId)
+    if (!jId) return
+    const job = jobs.find(j => String(j.id) === String(jId))
+    if (job) {
+      setAiInput(prev => ({
+        ...prev,
+        targetRole: job.title || 'Role',
+        title: job.title || 'Role',
+        skills: job.skills || job.description || job.title,
+        jd: `Job Title: ${job.title}\nClient: ${job.client || 'N/A'}\nLocation: ${job.location || 'Remote'}\nRequirements: ${job.skills || job.description || 'Strong domain expertise & technical mastery.'}`
+      }))
+    }
+  }
+
+  // Fetch Live AI Executive Briefing from backend
+  const fetchAiBriefing = async () => {
+    setBriefingLoading(true)
+    const prompt = `Workspace Recruitment Metrics Snapshot:
+- Total Candidates: ${filteredCandidates.length}
+- Qualified Candidates: ${qualifiedCount}
+- Active Open Jobs: ${activeJobsCount}
+- Offers Extended: ${offerCount}
+- Hires Made: ${hiredCount}
+- Placement Conversion Rate: ${conversionRate}%
+- Pending Callbacks & Tasks: ${pendingCallbacks.length + dueFollowups.length} (${todaysCallbacks.length} scheduled today)
+- Overdue Tasks: ${overdueFollowups.length}
+- Top Recruiter: ${recruiterData[0]?.name || 'Team'} (${recruiterData[0]?.submissions || 0} submittals, ${recruiterData[0]?.hires || 0} hires)
+
+Provide a 2-3 sentence strategic executive briefing for the recruitment team. Highlight pipeline health, placement momentum, and 1 top priority action for today.`
+
+    try {
+      const data = await apiRequest('/ai/generate', {
+        method: 'POST',
+        body: { prompt, toolId: 'dashboard' }
+      })
+
+      if (data?.text) {
+        setAiBriefingText(data.text)
+      }
+    } catch (err) {
+      console.warn('AI Briefing request failed:', err.message)
+    } finally {
+      setBriefingLoading(false)
+    }
+  }
+
+  // AI Call Handler for Dashboard Widget
   const runAiTool = async (type) => {
     setAiLoading(true)
     setAiOutput(null)
+    setAiMetadata(null)
 
     let prompt = ''
+    let toolId = 'match'
+
     if (type === 'match') {
-      prompt = `Compare Candidate to JD. Evaluate match rating (0-100), key strengths, and missing skills.\nJD: ${aiInput.jd}\nCandidate: ${aiInput.candidate}`
+      toolId = 'match'
+      prompt = `Compare Candidate to Job Description. Evaluate match rating (0-100), key matching strengths, missing skills/gaps, and probing interview questions.\n\nJOB CRITERIA:\n${aiInput.jd}\n\nCANDIDATE PROFILE:\n${aiInput.candidate}`
     } else if (type === 'boolean') {
-      prompt = `Generate LinkedIn and X-Ray boolean search strings for Role: ${aiInput.title}, Skills: ${aiInput.skills}`
+      toolId = 'boolean'
+      prompt = `Construct precision Boolean search strings STRICTLY using ONLY:
+1. Target Job Title: ${aiInput.title}
+2. Must-Have Skills: ${aiInput.skills}
+3. Must-Have Job Description Requirements: ${aiInput.jd}
+
+EXCLUDE all optional requirements, soft skills, company culture, benefits, or filler text.`
     } else if (type === 'outreach') {
-      prompt = `Draft a personalized LinkedIn InMail outreach for Candidate: ${aiInput.candidateName}, Target Role: ${aiInput.targetRole}`
+      toolId = 'email'
+      prompt = `Draft personalized recruitment outreach InMail for Candidate: ${aiInput.candidateName}, Target Position: ${aiInput.targetRole}`
     }
 
     try {
-      const res = await fetch('http://localhost:4000/api/ai/generate', {
+      const data = await apiRequest('/ai/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, apiKey: userApiKey.trim() || undefined })
+        body: { prompt, toolId }
       })
-      const data = await res.json()
-      if (res.ok && data.text) {
+
+      if (data?.text) {
         setAiOutput(data.text)
+        setAiMetadata({
+          provider: data.provider,
+          model: data.model,
+          grounded: data.grounded,
+          cached: data.cached
+        })
       } else {
         setAiOutput(getInstantFallback(type))
       }
-    } catch {
+    } catch (err) {
+      console.warn('Dashboard AI request fallback triggered:', err.message)
       setAiOutput(getInstantFallback(type))
     } finally {
       setAiLoading(false)
@@ -365,28 +538,36 @@ export default function Dashboard({ onNavigate }) {
 
   const getInstantFallback = (type) => {
     if (type === 'match') {
-      return `### 🎯 AI Match Rating: 94 / 100
-**Strengths:** Direct alignment with React, TypeScript & REST APIs. 5+ years relevant experience.
-**Gaps:** Needs minor verification on server-side rendering (SSR) frameworks.
-**Interview Question:** "How do you handle state re-renders in large React applications?"`
+      return `### 🎯 AI Candidate Match Rating: 94 / 100
+
+#### Key Matching Strengths
+• Direct alignment with React, TypeScript & REST API requirements
+• Strong professional experience building scalable web interfaces
+
+#### Potential Gaps / Unverified Areas
+• Server-Side Rendering (Next.js) experience requires screening verification
+
+#### Probing Interview Questions
+1. How do you optimize React component re-renders in high-throughput applications?`
     } else if (type === 'boolean') {
       return `### 🔍 LinkedIn Recruiter Search String
 \`\`\`text
-("React Developer" OR "Frontend Engineer" OR "React Specialist") AND ("TypeScript" AND "Tailwind" AND "REST API")
+("${aiInput.title || 'React Developer'}") AND ("${aiInput.skills || 'TypeScript'}")
 \`\`\`
+
 ### 🌐 Google X-Ray Search String
 \`\`\`text
-site:linkedin.com/in/ ("React Developer") AND ("TypeScript") AND ("Tailwind")
+site:linkedin.com/in/ ("${aiInput.title || 'React Developer'}") AND ("${aiInput.skills || 'TypeScript'}")
 \`\`\``
     } else {
       return `### ✉️ Personalized InMail Draft
-Subject: Senior React Developer Opportunity @ TalentDesk Workspace
+Subject: ${aiInput.targetRole || 'Engineering'} Opportunity @ TalentDesk Workspace
 
-Hi ${aiInput.candidateName || 'Alex'},
+Hi ${aiInput.candidateName || 'Candidate'},
 
-I noticed your strong background in React and TypeScript. We are currently scaling our engineering team for a Lead React Architect role and your profile caught our team's eye.
+I noticed your strong technical background. We are currently recruiting for a ${aiInput.targetRole || 'Lead Engineer'} role and your experience caught our team's eye.
 
-Would you be open for a brief 10-minute intro call this week?`
+Would you be open for a brief intro call this week?`
     }
   }
 
@@ -418,12 +599,32 @@ Would you be open for a brief 10-minute intro call this week?`
         </div>
       </header>
 
-      {/* 2. Live AI Briefing Pill */}
+      {/* 2. Dynamic Live AI Briefing Pill */}
       <div className="dash-ai-briefing-pill">
-        <span className="ai-badge-icon">✨</span>
-        <div className="ai-briefing-copy">
-          <strong>Gemini AI Intelligence Briefing:</strong> Pipeline health is at <b>{pipelineHealthPct}%</b> with <b>{qualifiedCount}</b> qualified candidates in stage. You have <b>{todaysCallbacks.length}</b> call(s) today, <b>{upcomingInterviews.length}</b> interview(s), and <b>{activeJobsCount}</b> open job requisition(s).
+        <div className="ai-briefing-header">
+          <span className="ai-badge-icon">✨</span>
+          <strong>TalentDesk AI Executive Briefing:</strong>
         </div>
+        <div className="ai-briefing-copy">
+          {briefingLoading ? (
+            <span className="briefing-loading-text">Generating live executive briefing from your CRM snapshot...</span>
+          ) : aiBriefingText ? (
+            <span>{aiBriefingText}</span>
+          ) : (
+            <span>
+              Pipeline health is at <b>{pipelineHealthPct}%</b> with <b>{qualifiedCount}</b> qualified candidates in stage. You have <b>{todaysCallbacks.length}</b> call(s) today, <b>{upcomingInterviews.length}</b> interview(s), and <b>{activeJobsCount}</b> open job requisition(s).
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={fetchAiBriefing}
+          disabled={briefingLoading}
+          className="ai-briefing-refresh-btn"
+          title="Fetch fresh AI Executive Briefing based on live candidate data"
+        >
+          {briefingLoading ? '⏳ Refreshing...' : '⚡ Refresh AI Briefing'}
+        </button>
       </div>
 
       {/* 3. Unified Filter Control Bar */}
@@ -620,19 +821,30 @@ Would you be open for a brief 10-minute intro call this week?`
                     .toUpperCase()
                     .slice(0, 2)
                   const conversionPct = row.submissions > 0 ? Math.round((row.hires / row.submissions) * 100) : 0
+                  const rankIcon = index === 0 ? '👑' : index === 1 ? '⭐' : index === 2 ? '🔥' : null
+
                   return (
-                    <div className="leaderboard-card" key={row.name}>
-                      <div className="leaderboard-rank-badge">{rankDisplay}</div>
+                    <div className={`leaderboard-card rank-${index + 1}`} key={row.name}>
+                      <div className="leaderboard-card-bg" style={{ width: `${row.percentage}%` }} />
+                      <div className="leaderboard-rank-badge">
+                        {rankIcon ? <span className="rank-emoji">{rankIcon}</span> : rankDisplay}
+                      </div>
                       <div className="leaderboard-avatar-circle">{initials}</div>
                       <div className="leaderboard-info">
                         <div className="leaderboard-name-row">
-                          <strong>{row.name}</strong>
-                          <span className="leaderboard-conv-badge" title="Hire conversion rate">{conversionPct}% conversion</span>
+                          <strong className="recruiter-name">{row.name}</strong>
+                          <span className="leaderboard-conv-badge" title="Hire conversion rate">{conversionPct}% Conversion</span>
                         </div>
                         <div className="leaderboard-stats-row">
-                          <span className="leaderboard-stat-pill"><b>{row.submissions}</b> submissions</span>
-                          <span className="leaderboard-stat-pill"><b>{row.interviews}</b> interviews</span>
-                          <span className="leaderboard-stat-pill"><b>{row.hires}</b> hires</span>
+                          <span className="leaderboard-stat-pill submissions">
+                            <b>{row.submissions}</b> Submittals
+                          </span>
+                          <span className="leaderboard-stat-pill interviews">
+                            <b>{row.interviews}</b> Interviews
+                          </span>
+                          <span className="leaderboard-stat-pill hires">
+                            <b>{row.hires}</b> Hires
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -645,82 +857,101 @@ Would you be open for a brief 10-minute intro call this week?`
 
         {/* Right Column: AI Copilot & Performance Analytics */}
         <div className="dash-col">
-          {/* Panel 1: Gemini AI Sourcing Assistant Widget */}
-          <Panel title="Gemini AI Sourcing & Match Assistant" subtitle="Instant candidate evaluation, Boolean strings & outreach drafts">
-            <div className="ai-widget-wrapper">
-              <div className="ai-widget-nav">
-                <button type="button" className={`ai-nav-tab ${aiTab === 'match' ? 'active' : ''}`} onClick={() => setAiTab('match')}>
-                  🎯 Candidate Match
-                </button>
-                <button type="button" className={`ai-nav-tab ${aiTab === 'boolean' ? 'active' : ''}`} onClick={() => setAiTab('boolean')}>
-                  🔍 Boolean Generator
-                </button>
-                <button type="button" className={`ai-nav-tab ${aiTab === 'outreach' ? 'active' : ''}`} onClick={() => setAiTab('outreach')}>
-                  ✉️ InMail Draft
+          {/* Panel 1: AI Daily Notes & Recruiter To-Do Checklist */}
+          <Panel title="AI Daily Notes & Recruiter To-Do Checklist" subtitle="Track daily recruiter action items & auto-generate EOD briefings">
+            <div className="todo-panel-wrapper">
+              {/* Top Bar with Navigation Tabs & EOD Trigger */}
+              <div className="todo-nav-row">
+                <div className="todo-tabs">
+                  <button type="button" className={`todo-tab-btn ${todoTab === 'notes' ? 'active' : ''}`} onClick={() => setTodoTab('notes')}>
+                    📝 Daily Checklist ({dailyNotes.filter(n => n.done).length}/{dailyNotes.length})
+                  </button>
+                  <button type="button" className={`todo-tab-btn ${todoTab === 'eod' ? 'active' : ''}`} onClick={() => setTodoTab('eod')}>
+                    ⚡ EOD AI Briefing
+                  </button>
+                </div>
+
+                <button type="button" className="ai-eod-generate-btn" onClick={handleGenerateEODSummary} disabled={eodLoading}>
+                  {eodLoading ? '⚡ Synthesizing EOD Summary...' : '✨ Generate AI EOD Summary'}
                 </button>
               </div>
 
-              <div className="ai-widget-content">
-                {aiTab === 'match' && (
-                  <div className="ai-form-group">
-                    <div className="ai-grid-2">
-                      <div>
-                        <span className="multiselect-label">Job Requirements Snippet</span>
-                        <textarea rows="2" className="ai-widget-input" value={aiInput.jd} onChange={e => setAiInput({ ...aiInput, jd: e.target.value })} />
-                      </div>
-                      <div>
-                        <span className="multiselect-label">Candidate Resume / Background</span>
-                        <textarea rows="2" className="ai-widget-input" value={aiInput.candidate} onChange={e => setAiInput({ ...aiInput, candidate: e.target.value })} />
-                      </div>
-                    </div>
-                    <button type="button" className="ai-run-btn" onClick={() => runAiTool('match')} disabled={aiLoading}>
-                      {aiLoading ? '⚡ Evaluating Candidate...' : '🎯 Run AI Candidate Match'}
+              {todoTab === 'notes' && (
+                <div className="todo-content">
+                  {/* Add Note Input Bar */}
+                  <form className="todo-add-form" onSubmit={handleAddNote}>
+                    <select value={noteTag} onChange={e => setNoteTag(e.target.value)} className="todo-tag-select">
+                      <option value="Follow-up">📌 Follow-up</option>
+                      <option value="Call">📞 Call</option>
+                      <option value="Screening">🔍 Screening</option>
+                      <option value="Interview">📅 Interview</option>
+                      <option value="Offer">💼 Offer</option>
+                      <option value="EOD Review">📝 EOD Review</option>
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Add daily recruiter task or follow-up note..."
+                      value={newNoteText}
+                      onChange={e => setNewNoteText(e.target.value)}
+                      className="todo-input-field"
+                      required
+                    />
+                    <button type="submit" className="todo-add-btn">
+                      + Add Note
                     </button>
-                  </div>
-                )}
+                  </form>
 
-                {aiTab === 'boolean' && (
-                  <div className="ai-form-group">
-                    <div className="ai-grid-2">
-                      <div>
-                        <span className="multiselect-label">Target Job Title</span>
-                        <input type="text" className="ai-widget-input" value={aiInput.title} onChange={e => setAiInput({ ...aiInput, title: e.target.value })} />
-                      </div>
-                      <div>
-                        <span className="multiselect-label">Must-Have Skills</span>
-                        <input type="text" className="ai-widget-input" value={aiInput.skills} onChange={e => setAiInput({ ...aiInput, skills: e.target.value })} />
-                      </div>
+                  {/* Checklist Items List */}
+                  <div className="todo-items-list">
+                    {dailyNotes.length === 0 ? (
+                      <EmptyLine text="No daily notes added yet. Type a note above to get started!" />
+                    ) : (
+                      dailyNotes.map(item => (
+                        <div key={item.id} className={`todo-item-card ${item.done ? 'completed' : ''}`}>
+                          <label className="todo-checkbox-label">
+                            <input
+                              type="checkbox"
+                              checked={item.done}
+                              onChange={() => handleToggleNote(item.id)}
+                              className="todo-checkbox"
+                            />
+                            <span className={`todo-tag-pill ${item.tag.toLowerCase().replace(/\s+/g, '-')}`}>
+                              {item.tag}
+                            </span>
+                            <span className="todo-item-text">{item.text}</span>
+                          </label>
+                          <button type="button" className="todo-delete-btn" onClick={() => handleDeleteNote(item.id)} title="Delete Note">
+                            ✕
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {todoTab === 'eod' && (
+                <div className="todo-eod-content">
+                  {eodLoading && (
+                    <div className="ai-loading-box">
+                      <div className="loading-pulse" />
+                      <p>AI is synthesizing your daily accomplishments & priority EOD plan...</p>
                     </div>
-                    <button type="button" className="ai-run-btn" onClick={() => runAiTool('boolean')} disabled={aiLoading}>
-                      {aiLoading ? '⚡ Generating Strings...' : '🔍 Generate Boolean Strings'}
-                    </button>
-                  </div>
-                )}
-
-                {aiTab === 'outreach' && (
-                  <div className="ai-form-group">
-                    <div className="ai-grid-2">
-                      <div>
-                        <span className="multiselect-label">Candidate Name</span>
-                        <input type="text" className="ai-widget-input" value={aiInput.candidateName} onChange={e => setAiInput({ ...aiInput, candidateName: e.target.value })} />
-                      </div>
-                      <div>
-                        <span className="multiselect-label">Target Role Title</span>
-                        <input type="text" className="ai-widget-input" value={aiInput.targetRole} onChange={e => setAiInput({ ...aiInput, targetRole: e.target.value })} />
-                      </div>
+                  )}
+                  {!eodLoading && !eodSummaryText && (
+                    <div className="ai-placeholder-box">
+                      <div className="placeholder-icon">⚡</div>
+                      <h5>EOD AI Summary Ready</h5>
+                      <p>Click <strong>Generate AI EOD Summary</strong> to auto-synthesize your daily accomplishments and tomorrow's priority checklist.</p>
                     </div>
-                    <button type="button" className="ai-run-btn" onClick={() => runAiTool('outreach')} disabled={aiLoading}>
-                      {aiLoading ? '⚡ Writing InMail...' : '✉️ Draft Personalized InMail'}
-                    </button>
-                  </div>
-                )}
-
-                {aiOutput && (
-                  <div className="ai-widget-output">
-                    <pre>{aiOutput}</pre>
-                  </div>
-                )}
-              </div>
+                  )}
+                  {!eodLoading && eodSummaryText && (
+                    <div className="ai-output-content">
+                      <MarkdownView content={eodSummaryText} />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </Panel>
 
@@ -802,24 +1033,18 @@ function EmptyLine({ text }) {
   return <div className="dashboard-empty-line">{text}</div>
 }
 
-function formatTime(value) {
-  if (!value) return 'recently'
-  return new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-}
-
 const tooltipStyle = {
   background: '#161922',
   border: '1px solid #2c3148',
-  borderRadius: 8,
-  color: '#e8eaf2',
-  boxShadow: '0 14px 40px rgba(0,0,0,0.28)',
+  borderRadius: '8px',
+  boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
 }
 
 const tooltipLabelStyle = {
-  color: '#e8eaf2',
-  fontWeight: 700,
+  color: '#e2e8f0',
+  fontWeight: '700',
 }
 
 const tooltipItemStyle = {
-  color: '#e8eaf2',
+  color: '#94a3b8',
 }

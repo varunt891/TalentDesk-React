@@ -15,6 +15,7 @@ import Resubmit from './pages/Resubmit'
 import Admin from './pages/Admin'
 import Reports from './pages/Reports'
 import AICenter from './pages/AICenter'
+import TasksPage from './pages/TasksPage'
 import AppLayout from './components/layout/AppLayout'
 import { db } from './lib/api'
 
@@ -83,6 +84,7 @@ function MainApp() {
   const renderPage = () => {
     switch (currentPage) {
       case 'dashboard': return <Dashboard onNavigate={setCurrentPage} />
+      case 'tasks': return <TasksPage user={profile || user} onNavigate={setCurrentPage} />
       case 'ai_center': return <AICenter />
       case 'candidates': return <Candidates />
       case 'jobs': return <Jobs />

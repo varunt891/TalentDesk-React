@@ -32,6 +32,8 @@ model Organization {
   invitations UserInvitation[]
   auditLog    AdminAuditLog[]
   activityLogs ActivityLog[]
+  tasks       Task[]
+  notifications Notification[]
 
   @@map("organizations")
 }
@@ -230,4 +232,59 @@ model ActivityLog {
   organization Organization? @relation(fields: [org_id], references: [id], onDelete: Cascade)
 
   @@map("activity_logs")
+}
+
+model Task {
+  id               String   @id @default(uuid()) @db.Uuid
+  org_id           String?  @db.Uuid
+  assigned_to      String?  @db.Uuid
+  assigned_by      String?  @db.Uuid
+  assigned_to_name String?
+  assigned_by_name String?
+  title            String
+  description      String?
+  category         String   @default("Custom")
+  priority         String   @default("Medium")
+  status           String   @default("Pending")
+  req_id           String?
+  target_value     Int?
+  current_progress Int      @default(0)
+  due_date         String?
+  checklist        Json?
+  recurring_rule   String?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  organization Organization? @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  comments     TaskComment[]
+
+  @@map("tasks")
+}
+
+model TaskComment {
+  id         String   @id @default(uuid()) @db.Uuid
+  task_id    String   @db.Uuid
+  user_id    String?  @db.Uuid
+  user_name  String?
+  comment    String
+  created_at DateTime @default(now())
+
+  task Task @relation(fields: [task_id], references: [id], onDelete: Cascade)
+
+  @@map("task_comments")
+}
+
+model Notification {
+  id         String   @id @default(uuid()) @db.Uuid
+  org_id     String?  @db.Uuid
+  user_id    String   @db.Uuid
+  title      String
+  message    String
+  read       Boolean  @default(false)
+  link       String?
+  created_at DateTime @default(now())
+
+  organization Organization? @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
 }

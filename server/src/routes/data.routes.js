@@ -12,6 +12,9 @@ const tables = {
   callbacks: { model: 'callback', orgScoped: true },
   followups: { model: 'followup', orgScoped: true },
   postings: { model: 'posting', orgScoped: true },
+  tasks: { model: 'task', orgScoped: true },
+  task_comments: { model: 'taskComment', orgScoped: false },
+  notifications: { model: 'notification', orgScoped: true },
   user_invitations: { model: 'userInvitation', orgScoped: true, adminWrite: true },
   admin_audit_log: { model: 'adminAuditLog', orgScoped: true, adminWrite: true },
   activity_logs: { model: 'activityLog', orgScoped: true, readOnly: true },
@@ -84,13 +87,69 @@ async function buildWhere(req, table, config) {
     if (ownerIds) where.user_id = { in: ownerIds }
   }
 
-  if (table === 'profiles') {
-    // full_org=true: used by Team Directory — any authenticated user can see all org profiles
-    if (req.query.full_org === 'true') {
-      // already scoped to org_id above, no extra restriction
+  if (table === 'tasks') {
+    if (['admin', 'superadmin'].includes(req.profile.role)) {
+      // Admins see all tasks in org
     } else if (req.profile.role === 'manager') {
-      where.OR = [{ manager_id: req.user.id }, { id: req.user.id }]
-    } else if (!['admin', 'superadmin'].includes(req.profile.role)) {
+      const teamConditions = [
+        { manager_id: req.user.id },
+        { id: req.user.id },
+      ]
+      if (req.profile.team) teamConditions.push({ team: req.profile.team })
+      if (req.profile.department) teamConditions.push({ department: req.profile.department })
+
+      const teamProfiles = await prisma.profile.findMany({
+        where: {
+          org_id: req.profile.org_id,
+          OR: teamConditions
+        },
+        select: { id: true }
+      })
+      const teamIds = teamProfiles.map(p => p.id)
+      if (teamIds.length > 1) {
+        where.OR = [
+          { assigned_to: { in: teamIds } },
+          { assigned_by: { in: teamIds } }
+        ]
+      }
+    } else {
+      where.OR = [
+        { assigned_to: req.user.id },
+        { assigned_by: req.user.id }
+      ]
+    }
+  }
+
+  if (table === 'profiles') {
+    if (req.query.full_org === 'true' && ['admin', 'superadmin'].includes(req.profile.role)) {
+      // Admins can see full org profiles
+    } else if (['admin', 'superadmin'].includes(req.profile.role)) {
+      // Admin sees all org profiles
+    } else if (req.profile.role === 'manager') {
+      const teamConditions = [
+        { manager_id: req.user.id },
+        { id: req.user.id },
+      ]
+      if (req.profile.team) teamConditions.push({ team: req.profile.team })
+      if (req.profile.department) teamConditions.push({ department: req.profile.department })
+
+      const teamCount = await prisma.profile.count({
+        where: {
+          org_id: req.profile.org_id,
+          OR: teamConditions
+        }
+      })
+
+      if (teamCount > 1) {
+        where.OR = teamConditions
+      } else {
+        // Fallback: If manager has no direct manager_id/team links set in DB, allow seeing recruiters in org
+        where.OR = [
+          { role: 'recruiter' },
+          { id: req.user.id }
+        ]
+      }
+    } else {
       where.id = req.user.id
     }
   }

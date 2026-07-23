@@ -157,7 +157,6 @@ export default function Candidates() {
   const [sortField, setSortField] = useState('submission_date')
   const [sortDir, setSortDir] = useState(-1)
   const [showBulkStatus, setShowBulkStatus] = useState(false)
-  const [hideStats, setHideStats] = useState(false)
   const [userCollapsed, setUserCollapsed] = useState(false)
   const pageRef = useRef(null)
   const contentRef = useRef(null)

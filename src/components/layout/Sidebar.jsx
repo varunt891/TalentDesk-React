@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext'
 
 const navItems = [
   { id: 'dashboard', icon: 'dashboard', label: 'Dashboard', section: 'Main' },
+  { id: 'tasks', icon: 'tasks', label: 'Tasks & Targets', section: 'Main' },
   { id: 'ai_center', icon: 'ai', label: 'AI Center', section: 'Main' },
   { id: 'candidates', icon: 'candidates', label: 'Candidates', section: 'Main' },
   { id: 'pipeline', icon: 'pipeline', label: 'Pipeline', section: 'Main' },
@@ -24,7 +25,7 @@ const ROLE_COLORS = {
   employee: { bg: 'rgba(100,116,139,0.15)', color: '#64748b', label: 'Employee' },
 }
 
-export default function Sidebar({ currentPage, onNavigate, theme, onToggleTheme, isCollapsed, onToggleCollapse, onClose }) {
+export default function Sidebar({ currentPage, onNavigate, theme, onToggleTheme, isCollapsed, onToggleCollapse, onClose, pendingTasksCount = 0 }) {
   const { user, profile, profileError, signOut } = useAuth()
   const navigate = useNavigate()
 
@@ -74,10 +75,10 @@ export default function Sidebar({ currentPage, onNavigate, theme, onToggleTheme,
       </div>
 
       <nav className="sidebar-nav">
-        <Section title="Main" items={mainItems} currentPage={currentPage} onNavigate={onNavigate} isCollapsed={isCollapsed} />
-        <Section title="Tools" items={toolItems} currentPage={currentPage} onNavigate={onNavigate} isCollapsed={isCollapsed} />
+        <Section title="Main" items={mainItems} currentPage={currentPage} onNavigate={onNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} />
+        <Section title="Tools" items={toolItems} currentPage={currentPage} onNavigate={onNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} />
         {adminItems.length > 0 && (
-          <Section title="Admin" items={adminItems} currentPage={currentPage} onNavigate={onNavigate} isCollapsed={isCollapsed} />
+          <Section title="Admin" items={adminItems} currentPage={currentPage} onNavigate={onNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} />
         )}
       </nav>
 
@@ -158,7 +159,7 @@ export default function Sidebar({ currentPage, onNavigate, theme, onToggleTheme,
   )
 }
 
-function Section({ title, items, currentPage, onNavigate, isCollapsed }) {
+function Section({ title, items, currentPage, onNavigate, isCollapsed, pendingTasksCount }) {
   return (
     <div className="sidebar-section">
       {!isCollapsed ? (
@@ -173,24 +174,33 @@ function Section({ title, items, currentPage, onNavigate, isCollapsed }) {
           active={currentPage === item.id}
           onClick={() => onNavigate(item.id)}
           isCollapsed={isCollapsed}
+          pendingTasksCount={pendingTasksCount}
         />
       ))}
     </div>
   )
 }
 
-function NavItem({ item, active, onClick, isCollapsed }) {
+function NavItem({ item, active, onClick, isCollapsed, pendingTasksCount }) {
+  const showRedDot = item.id === 'tasks' && pendingTasksCount > 0
+
   return (
     <button
       className={`sidebar-nav-item ${active ? 'active' : ''}`}
       type="button"
       onClick={onClick}
-      title={isCollapsed ? item.label : undefined}
+      title={isCollapsed ? (showRedDot ? `${item.label} (${pendingTasksCount} pending)` : item.label) : undefined}
     >
-      <span className="sidebar-nav-icon">
+      <span className="sidebar-nav-icon" style={{ position: 'relative' }}>
         <SidebarIcon name={item.icon} />
+        {showRedDot && <span className="sidebar-red-dot-badge" />}
       </span>
-      {!isCollapsed && <span className="sidebar-nav-label">{item.label}</span>}
+      {!isCollapsed && (
+        <span className="sidebar-nav-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+          <span>{item.label}</span>
+          {showRedDot && <span className="sidebar-red-count">{pendingTasksCount}</span>}
+        </span>
+      )}
     </button>
   )
 }
@@ -204,6 +214,13 @@ function SidebarIcon({ name }) {
           <rect x="14" y="3" width="7" height="5" rx="1" />
           <rect x="14" y="12" width="7" height="9" rx="1" />
           <rect x="3" y="16" width="7" height="5" rx="1" />
+        </svg>
+      )
+    case 'tasks':
+      return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 11l3 3L22 4" />
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
         </svg>
       )
     case 'ai':
