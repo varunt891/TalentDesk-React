@@ -807,13 +807,13 @@ Would you be open for a brief intro call this week?`
           </Panel>
 
           {/* Panel 3: Recruiter Leaderboard */}
-          <Panel title="Recruiter Performance Leaderboard" subtitle="Top team members by hires and submittals">
+          <Panel title="🏆 Recruiter Yield & Performance Leaderboard" subtitle="Real-time team submittals, interviews & hire conversion rankings">
             <div className="leaderboard-container">
               {recruiterData.length === 0 ? (
                 <EmptyLine text="No recruiter submissions in this period" />
               ) : (
                 recruiterData.map((row, index) => {
-                  const rankDisplay = String(index + 1).padStart(2, '0')
+                  const rankDisplay = `#${index + 1}`
                   const initials = row.name
                     .split(' ')
                     .map(n => n[0])
@@ -821,30 +821,40 @@ Would you be open for a brief intro call this week?`
                     .toUpperCase()
                     .slice(0, 2)
                   const conversionPct = row.submissions > 0 ? Math.round((row.hires / row.submissions) * 100) : 0
-                  const rankIcon = index === 0 ? '👑' : index === 1 ? '⭐' : index === 2 ? '🔥' : null
+                  const rankBadgeClass = index === 0 ? 'gold' : index === 1 ? 'silver' : index === 2 ? 'bronze' : 'standard'
+                  const rankLabel = index === 0 ? '🥇 #1' : index === 1 ? '🥈 #2' : index === 2 ? '🥉 #3' : rankDisplay
 
                   return (
-                    <div className={`leaderboard-card rank-${index + 1}`} key={row.name}>
-                      <div className="leaderboard-card-bg" style={{ width: `${row.percentage}%` }} />
-                      <div className="leaderboard-rank-badge">
-                        {rankIcon ? <span className="rank-emoji">{rankIcon}</span> : rankDisplay}
+                    <div className={`exec-leaderboard-row rank-${rankBadgeClass}`} key={row.name}>
+                      <div className={`exec-rank-pill ${rankBadgeClass}`}>
+                        {rankLabel}
                       </div>
-                      <div className="leaderboard-avatar-circle">{initials}</div>
-                      <div className="leaderboard-info">
-                        <div className="leaderboard-name-row">
-                          <strong className="recruiter-name">{row.name}</strong>
-                          <span className="leaderboard-conv-badge" title="Hire conversion rate">{conversionPct}% Conversion</span>
+
+                      <div className="exec-avatar-circle">{initials}</div>
+
+                      <div className="exec-leaderboard-main">
+                        <div className="exec-leaderboard-top-row">
+                          <div className="exec-recruiter-identity">
+                            <strong className="exec-recruiter-name">{row.name}</strong>
+                            <span className="exec-conversion-tag">{conversionPct}% Yield Rate</span>
+                          </div>
+
+                          <div className="exec-metrics-group">
+                            <span className="exec-metric blue" title="Submittals">
+                              <b>{row.submissions}</b> Submittals
+                            </span>
+                            <span className="exec-metric purple" title="Interviews">
+                              <b>{row.interviews}</b> Interviews
+                            </span>
+                            <span className="exec-metric green" title="Hires">
+                              <b>{row.hires}</b> Hires
+                            </span>
+                          </div>
                         </div>
-                        <div className="leaderboard-stats-row">
-                          <span className="leaderboard-stat-pill submissions">
-                            <b>{row.submissions}</b> Submittals
-                          </span>
-                          <span className="leaderboard-stat-pill interviews">
-                            <b>{row.interviews}</b> Interviews
-                          </span>
-                          <span className="leaderboard-stat-pill hires">
-                            <b>{row.hires}</b> Hires
-                          </span>
+
+                        {/* Conversion Progress Track */}
+                        <div className="exec-yield-track">
+                          <div className={`exec-yield-bar ${rankBadgeClass}`} style={{ width: `${Math.max(conversionPct, 8)}%` }} />
                         </div>
                       </div>
                     </div>

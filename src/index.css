@@ -12977,3 +12977,212 @@ input, select, textarea, button {
   border-color: rgba(59, 130, 246, 0.25) !important;
 }
 
+/* ==========================================================================
+   EXECUTIVE RECRUITER PERFORMANCE LEADERBOARD (Modern Vercel Design)
+   ========================================================================== */
+
+.leaderboard-container {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  padding: 14px 18px !important;
+}
+
+.exec-leaderboard-row {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 12px 14px !important;
+  border-radius: 12px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface2) !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.exec-leaderboard-row:hover {
+  transform: translateY(-1px) !important;
+  border-color: rgba(59, 130, 246, 0.4) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Rank #1 Gold Podium Card */
+.exec-leaderboard-row.rank-gold {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(15, 23, 42, 0.8)) !important;
+  border: 1px solid rgba(245, 158, 11, 0.4) !important;
+  box-shadow: 0 0 16px rgba(245, 158, 11, 0.1) !important;
+}
+
+/* Rank #2 Silver Podium Card */
+.exec-leaderboard-row.rank-silver {
+  background: linear-gradient(135deg, rgba(148, 163, 184, 0.08), rgba(15, 23, 42, 0.8)) !important;
+  border: 1px solid rgba(148, 163, 184, 0.3) !important;
+}
+
+/* Rank #3 Bronze Podium Card */
+.exec-leaderboard-row.rank-bronze {
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.08), rgba(15, 23, 42, 0.8)) !important;
+  border: 1px solid rgba(249, 115, 22, 0.3) !important;
+}
+
+/* Rank Badge Pills */
+.exec-rank-pill {
+  font-family: var(--mono) !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  padding: 4px 10px !important;
+  border-radius: 20px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  letter-spacing: 0.5px !important;
+}
+
+.exec-rank-pill.gold {
+  background: rgba(245, 158, 11, 0.2) !important;
+  color: #fbbf24 !important;
+  border: 1px solid rgba(251, 191, 36, 0.4) !important;
+}
+
+.exec-rank-pill.silver {
+  background: rgba(148, 163, 184, 0.2) !important;
+  color: #cbd5e1 !important;
+  border: 1px solid rgba(203, 213, 225, 0.4) !important;
+}
+
+.exec-rank-pill.bronze {
+  background: rgba(249, 115, 22, 0.2) !important;
+  color: #fb923c !important;
+  border: 1px solid rgba(251, 146, 60, 0.4) !important;
+}
+
+.exec-rank-pill.standard {
+  background: var(--surface3) !important;
+  color: var(--text3) !important;
+  border: 1px solid var(--border) !important;
+}
+
+/* Recruiter Avatar */
+.exec-avatar-circle {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(135deg, #1e40af, #3b82f6) !important;
+  color: #ffffff !important;
+  font-family: var(--mono) !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3) !important;
+}
+
+/* Main Row Layout */
+.exec-leaderboard-main {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+}
+
+.exec-leaderboard-top-row {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  flex-wrap: wrap !important;
+}
+
+.exec-recruiter-identity {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.exec-recruiter-name {
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  color: var(--text) !important;
+}
+
+.exec-conversion-tag {
+  font-size: 10.5px !important;
+  font-weight: 700 !important;
+  padding: 2px 7px !important;
+  border-radius: 10px !important;
+  background: rgba(16, 185, 129, 0.15) !important;
+  color: #34d399 !important;
+  border: 1px solid rgba(52, 211, 153, 0.25) !important;
+}
+
+.exec-metrics-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  flex-wrap: wrap !important;
+}
+
+.exec-metric {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: var(--text2) !important;
+  padding: 2px 8px !important;
+  border-radius: 6px !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+}
+
+.exec-metric b {
+  font-family: var(--mono) !important;
+  font-weight: 800 !important;
+}
+
+.exec-metric.blue b { color: #60a5fa !important; }
+.exec-metric.purple b { color: #a78bfa !important; }
+.exec-metric.green b { color: #34d399 !important; }
+
+/* Conversion Progress Track */
+.exec-yield-track {
+  width: 100% !important;
+  height: 5px !important;
+  border-radius: 3px !important;
+  background: var(--surface) !important;
+  overflow: hidden !important;
+}
+
+.exec-yield-bar {
+  height: 100% !important;
+  border-radius: 3px !important;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa) !important;
+  transition: width 0.3s ease !important;
+}
+
+.exec-yield-bar.gold { background: linear-gradient(90deg, #f59e0b, #fbbf24) !important; }
+.exec-yield-bar.silver { background: linear-gradient(90deg, #64748b, #cbd5e1) !important; }
+.exec-yield-bar.bronze { background: linear-gradient(90deg, #ea580c, #fb923c) !important; }
+
+@media (max-width: 640px) {
+  .exec-leaderboard-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  .exec-rank-pill {
+    align-self: flex-start !important;
+  }
+
+  .exec-leaderboard-top-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 6px !important;
+  }
+
+  .exec-metrics-group {
+    width: 100% !important;
+    justify-content: space-between !important;
+  }
+}
+
