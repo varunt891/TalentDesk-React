@@ -12929,3 +12929,51 @@ input, select, textarea, button {
   }
 }
 
+/* ==========================================================================
+   SOOTHING VERCEL COBALT BLUE THEME SYSTEM (Zero Eye Strain)
+   ========================================================================== */
+
+/* Active Tabs - Soothing Deep Cobalt Blue Fill & Light Electric Blue Text */
+.tasks-tab-btn.active,
+.dash-time-tab.active,
+.todo-tab-btn.active,
+.dash-time-tabs button.active {
+  background: rgba(37, 99, 235, 0.22) !important;
+  color: #60a5fa !important;
+  border: 1px solid #2563eb !important;
+  box-shadow: 0 0 12px rgba(37, 99, 235, 0.2) !important;
+  font-weight: 800 !important;
+}
+
+/* Primary Buttons - Soft Vercel Blue Gradient */
+.tasks-create-btn,
+.task-modal-save,
+.ai-eod-generate-btn {
+  background: linear-gradient(135deg, #1e40af, #2563eb) !important;
+  border: 1px solid #3b82f6 !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3) !important;
+}
+
+.tasks-create-btn:hover,
+.task-modal-save:hover,
+.ai-eod-generate-btn:hover {
+  background: linear-gradient(135deg, #1d4ed8, #3b82f6) !important;
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.45) !important;
+}
+
+/* Section Badges & Category Pills */
+.tasks-badge,
+.task-category-pill,
+.sidebar-red-count {
+  background: rgba(37, 99, 235, 0.15) !important;
+  color: #60a5fa !important;
+  border: 1px solid rgba(59, 130, 246, 0.25) !important;
+}
+
+/* Task Header Banner Gradient */
+.tasks-header {
+  background: linear-gradient(135deg, rgba(29, 78, 216, 0.14), rgba(15, 23, 42, 0.8)), var(--surface) !important;
+  border-color: rgba(59, 130, 246, 0.25) !important;
+}
+
