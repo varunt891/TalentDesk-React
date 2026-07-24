@@ -2046,20 +2046,20 @@ function simpleMarkdownToHtml(text = '') {
 }
 
 const tooltipStyle = {
-  background: '#ffffff',
-  border: '1px solid #e2e8f0',
+  background: 'var(--surface)',
+  border: '1px solid var(--border)',
   borderRadius: '8px',
-  boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+  boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
   padding: '8px 12px',
 }
 
 const tooltipLabelStyle = {
-  color: '#0f172a',
+  color: 'var(--text)',
   fontWeight: '700',
   fontSize: '12px',
 }
 
 const tooltipItemStyle = {
-  color: '#475569',
-  fontSize: '11px',
+  color: 'var(--text2)',
+  fontSize: '12px',
 }
