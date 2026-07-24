@@ -16600,6 +16600,75 @@ body {
     gap: 6px;
   }
 
+  /* Manager Groups Overview — allow team names to wrap on mobile */
+  .admin-team-meta strong {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    word-break: break-word !important;
+  }
+
+  .admin-team-stat-tag {
+    justify-self: start !important;
+  }
+
+  /* Leaderboard rows — allow group names to wrap fully on mobile */
+  .admin-leaderboard-row {
+    flex-wrap: wrap !important;
+    align-items: flex-start !important;
+    gap: 6px !important;
+  }
+
+  .admin-leaderboard-info {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .admin-leaderboard-info strong {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    word-break: break-word !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+  }
+
+  /* Person mini card — stack on mobile so name is fully visible */
+  .admin-person-mini-card {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    padding: 10px 12px !important;
+    align-items: flex-start !important;
+  }
+
+  .admin-member-details {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+  }
+
+  .admin-member-name {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    word-break: break-word !important;
+    font-size: 13px !important;
+  }
+
+  .admin-member-sub {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    font-size: 11px !important;
+    line-height: 1.4 !important;
+  }
+
+  .admin-person-mini-card .admin-metric-badge-strip {
+    width: 100% !important;
+    flex-wrap: wrap !important;
+    gap: 5px !important;
+    justify-content: flex-start !important;
+  }
+
   .admin-form-grid {
     grid-template-columns: 1fr;
   }
