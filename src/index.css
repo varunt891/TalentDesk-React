@@ -7194,19 +7194,20 @@ button {
 
   .candidates-topbar {
     display: flex !important;
-    flex-direction: column !important;
-    align-items: stretch !important;
-    justify-content: flex-start !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
     border-radius: 0 !important;
     height: auto !important;
     min-height: auto !important;
-    margin: 0 -10px !important;
+    margin: 0 -10px 10px !important;
     width: calc(100% + 20px) !important;
     max-width: calc(100% + 20px) !important;
-    padding: 16px 16px 18px !important;
+    padding: 12px 14px !important;
     overflow: hidden !important;
     box-sizing: border-box !important;
     border-bottom: 1px solid var(--border) !important;
+    background: var(--surface) !important;
   }
 
   .jobs-topbar {
@@ -7223,7 +7224,13 @@ button {
     box-sizing: border-box !important;
   }
 
-  .candidates-title-block,
+  .candidates-title-block {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 !important;
+    min-width: 0 !important;
+  }
+
   .jobs-title-block {
     display: block !important;
     width: 100% !important;
@@ -7234,19 +7241,23 @@ button {
 
   .candidates-title-block p,
   .jobs-title-block p {
-    font-size: 11px !important;
+    font-size: 10px !important;
     line-height: 1.1 !important;
-    margin: 0 0 6px !important;
+    margin: 0 !important;
+    letter-spacing: 1.4px !important;
   }
 
   .candidates-title-block h1,
   .jobs-title-block h1 {
-    font-size: 26px !important;
-    line-height: 1.1 !important;
-    margin: 0 0 6px !important;
+    font-size: 20px !important;
+    line-height: 1.15 !important;
+    margin: 2px 0 0 !important;
   }
 
-  .candidates-title-block span,
+  .candidates-title-block span {
+    display: none !important;
+  }
+
   .jobs-title-block span {
     display: block !important;
     max-width: 100% !important;
@@ -7258,6 +7269,15 @@ button {
   }
 
   .candidates-toolbar {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    justify-content: flex-end !important;
+  }
+
+  .candidates-toolbar .candidates-search,
+  .candidates-toolbar .candidates-desktop-add,
+  .candidates-toolbar .candidates-desktop-export {
     display: none !important;
   }
 
@@ -7265,9 +7285,7 @@ button {
     display: none !important;
   }
 
-  .candidates-search,
   .jobs-search,
-  .candidate-btn,
   .jobs-primary-btn {
     width: 100% !important;
     min-height: 44px !important;
@@ -7277,22 +7295,28 @@ button {
     margin-bottom: 0 !important;
   }
 
-  .candidates-desktop-add,
-  .candidates-desktop-export {
-    display: none !important;
-  }
-
   .candidates-mobile-actions {
     display: grid !important;
-    grid-template-columns: 1fr !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 8px !important;
     width: 100% !important;
     max-width: 100% !important;
-    margin: 12px 0 14px !important;
+    margin: 4px 0 14px !important;
     padding: 0 !important;
     position: static !important;
     z-index: auto !important;
     box-sizing: border-box !important;
+  }
+
+  .candidates-mobile-actions .candidates-search {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    min-height: 42px !important;
+  }
+
+  .candidates-mobile-actions .candidate-btn {
+    width: 100% !important;
+    min-height: 42px !important;
   }
 
   .jobs-mobile-actions {
@@ -7305,16 +7329,6 @@ button {
     padding: 0 !important;
     position: static !important;
     z-index: auto !important;
-  }
-
-  .candidates-mobile-actions .candidate-btn,
-  .candidates-mobile-actions .candidates-search,
-  .jobs-mobile-actions .jobs-primary-btn,
-  .jobs-mobile-actions .jobs-search {
-    width: 100% !important;
-    min-height: 44px !important;
-    position: static !important;
-    transform: none !important;
   }
 
   .candidates-stat-grid {
