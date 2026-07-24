@@ -398,6 +398,35 @@ Format:
           updatedEntity: { candidate_name: candidateName }
         }
 
+      } else if (type === 'create_job' || type === 'post_job' || type === 'add_job') {
+        const jobTitle = params?.title || entityName || 'New Job Requisition'
+        const newJobData = {
+          job_id: params?.job_id || `JOB-${Math.floor(100 + Math.random() * 900)}`,
+          title: jobTitle,
+          client: params?.client || 'Internal Client',
+          location: params?.location || 'Remote',
+          type: params?.type || 'Full-time',
+          status: params?.status || 'Open',
+          rate: params?.rate || 'Competitive',
+          open_date: params?.open_date || new Date().toISOString().slice(0, 10),
+          priority: params?.priority || 'Medium',
+          fe: params?.fe || profile?.full_name || 'AI Copilot',
+          description: params?.description || `Posted via AI Action Copilot`,
+          user_id: authContext?.user?.id
+        }
+
+        const res = await db.from('jobs').insert([newJobData]).select()
+        if (res.error) throw res.error
+        fetchDashboardData()
+
+        return {
+          success: true,
+          message: successMessage || `Job requisition "${jobTitle}" posted successfully.`,
+          actionTitle: 'Job Requisition Posted',
+          actionEntityName: jobTitle,
+          updatedEntity: res.data ? res.data[0] : newJobData
+        }
+
       } else if (type === 'delete_note') {
         let deleted = false
         if (entityId) {
@@ -514,8 +543,30 @@ Format:
     setCopilotLoading(true)
 
     const openJobsCount = safeJobs.filter(j => j.status === 'Open').length
-    const candidateContextList = candidates.slice(0, 10).map(c => ({ id: c.id, name: `${c.first_name || ''} ${c.last_name || ''}`.trim(), stage: c.internal_status || c.external_status }))
-    const jobContextList = safeJobs.slice(0, 10).map(j => ({ id: j.id, title: j.title, status: j.status }))
+    const candidateContextList = candidates.slice(0, 100).map(c => {
+      const profileMatch = safeProfiles.find(p => p.id === c.user_id || p.id === c.recruiter_id)
+      const recruiter = c.recruiter_name || c.fe_name || profileMatch?.full_name || profileMatch?.name || profileMatch?.email || 'Unassigned Recruiter'
+      return {
+        id: c.id,
+        name: `${c.first_name || ''} ${c.last_name || ''}`.trim(),
+        recruiter: recruiter,
+        job: c.job_title || 'N/A',
+        client: c.client || 'N/A',
+        stage: c.internal_status || c.external_status || 'Submitted',
+        submitted_date: c.submission_date || 'N/A'
+      }
+    })
+    const jobContextList = safeJobs.slice(0, 100).map(j => ({
+      id: j.id,
+      job_id: j.job_id,
+      title: j.title,
+      client: j.client,
+      location: j.location,
+      type: j.type,
+      status: j.status,
+      rate: j.rate,
+      owner: j.fe || 'Unassigned'
+    }))
 
     // Build session conversation history so pronouns ("it", "reopen it", "that candidate") resolve cleanly
     const historyContext = copilotMessages
@@ -532,11 +583,13 @@ CONVERSATIONAL & FORMATTING RULES:
 1. Provide a direct, concise 1-2 sentence answer in "summary".
 2. DO NOT include "snapshot", "insight", or "nextBestAction" unless the user explicitly asks an analytical/metric question (e.g., "What is our pipeline status?", "Show snapshot") or asks for recommendations. For simple questions or action triggers, omit these extra fields or set them to null.
 3. Use the Recent Conversation History to resolve implicit references like "it", "reopen it", "that job", or "schedule him".
+4. When asked which recruiter submitted a candidate, search the Available Candidates context array below. Every candidate has a "recruiter" field specifying who submitted them.
 
 RULES FOR REQUEST CLASSIFICATION:
 
 1. ACTION REQUESTS:
 Detect if the user wants to perform an operation such as:
+- Post / Create Job ("post job Software Developer in New York", "add job React Engineer rate $90/hr", "create job requisition for DevOps Lead")
 - Close Job ("close senior react developer", "close job #1", "close it")
 - Reopen Job ("reopen lead devops", "reopen it")
 - Create Task / Add Note ("remind me to call Alex tomorrow", "add task review submittals")
@@ -549,12 +602,12 @@ For Action Requests, set isAction = true and populate pendingAction:
   "summary": "Short explanation of the requested operation.",
   "isAction": true,
   "pendingAction": {
-    "type": "close_job | reopen_job | create_task | log_callback | update_candidate_stage | delete_note",
+    "type": "create_job | close_job | reopen_job | create_task | log_callback | update_candidate_stage | delete_note",
     "entity": "job | candidate | callback | task",
     "entityId": "matched_id_string_or_null",
     "entityName": "name_or_title_or_text",
-    "params": { "status": "Closed", "stage": "Interview Scheduled", "text": "description" },
-    "requiresConfirmation": true_for_destructive_actions_like_close_or_delete_otherwise_false,
+    "params": { "title": "Job Title", "client": "Client Name", "location": "City/Remote", "type": "Full-time", "status": "Open", "rate": "$ salary or rate", "priority": "High", "description": "Job details", "stage": "Interview Scheduled", "text": "description" },
+    "requiresConfirmation": false,
     "confirmTitle": "Confirmation Required Title",
     "confirmPrompt": "Clear prompt asking user if they want to execute this operation.",
     "successMessage": "Action completed successfully."
@@ -567,7 +620,7 @@ For Action Requests, set isAction = true and populate pendingAction:
 }
 
 2. INFORMATIONAL / ANALYTICAL REQUESTS:
-For questions, analytics, or search queries, set isAction = false, pendingAction = null.
+For questions, analytics, candidate submittal inquiries, or search queries, set isAction = false, pendingAction = null.
 
 User Question: "${q}"
 Available Candidates: ${JSON.stringify(candidateContextList)}
