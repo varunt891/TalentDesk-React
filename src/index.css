@@ -51,7 +51,8 @@ body {
   background: var(--bg) !important;
   color: var(--text) !important;
   min-height: 100vh;
-  overflow-x: hidden;
+  /* overflow-x: hidden removed — it breaks position:fixed portal rendering.
+     Horizontal overflow is now controlled at .app-shell level. */
 }
 
 input,
@@ -79,7 +80,10 @@ button {
 .app-shell {
   display: flex;
   height: 100vh;
-  overflow: hidden;
+  height: 100dvh;
+  /* overflow: hidden removed — it clips position:fixed portal children.
+     Height constraint alone prevents page growth without clipping fixed overlays. */
+  overflow: clip; /* 'clip' does NOT create a scroll container, so fixed children escape */
   background: var(--bg);
 }
 
@@ -7488,19 +7492,14 @@ button {
 }
 
 .multiselect-dropdown-panel {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  width: 240px;
   background: var(--surface);
-  border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   padding: 8px;
-  z-index: 100;
   display: flex;
   flex-direction: column;
-  max-height: 250px;
+  max-height: 280px;
+  box-sizing: border-box;
+  width: 100%;
 }
 
 .multiselect-search-input {
@@ -13398,7 +13397,8 @@ body {
   max-width: 100vw !important;
   height: 100vh !important;
   height: 100dvh !important;
-  overflow: hidden !important;
+  /* overflow: hidden replaced with overflow: clip so position:fixed children are NOT clipped */
+  overflow: clip !important;
   background: var(--bg) !important;
 }
 
@@ -18961,4 +18961,123 @@ html, body {
   .dash-split-panel {
     flex-direction: column !important;
   }
+}
+
+/* ==========================================================================
+   DROPDOWN PANEL — inline position:absolute, no portal
+   The trigger wrapper must have: position:relative; overflow:visible
+   ========================================================================== */
+
+@keyframes dropdownEnter {
+  from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+
+/* Trigger wrapper — gives the absolute dropdown an anchor point */
+.dropdown-trigger-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  /* overflow MUST be visible so the panel escapes the wrapper */
+  overflow: visible;
+}
+
+/* Multiselect panel (inside DropdownPanel) */
+[data-dropdown-panel] .multiselect-dropdown-panel {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-height: 300px;
+  box-sizing: border-box;
+}
+
+[data-dropdown-panel] .multiselect-search-input {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #0f172a;
+  background: #f8fafc;
+  outline: none;
+  box-sizing: border-box;
+}
+
+[data-dropdown-panel] .multiselect-search-input:focus {
+  border-color: #2563eb;
+  background: #fff;
+}
+
+[data-dropdown-panel] .multiselect-options-list {
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+[data-dropdown-panel] .multiselect-option-all,
+[data-dropdown-panel] .multiselect-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: #334155;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s ease;
+}
+
+[data-dropdown-panel] .multiselect-option-all:hover,
+[data-dropdown-panel] .multiselect-option:hover {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+[data-dropdown-panel] .multiselect-option-all input,
+[data-dropdown-panel] .multiselect-option input {
+  accent-color: #2563eb;
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+[data-dropdown-panel] .multiselect-options-divider {
+  height: 1px;
+  background: #e2e8f0;
+  margin: 4px 0;
+}
+
+/* Candidate filter menu inside DropdownPanel */
+[data-dropdown-panel] .candidate-filter-menu {
+  position: relative !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+[data-dropdown-panel] .candidate-filter-search input {
+  color: #0f172a;
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+[data-dropdown-panel] .candidate-filter-option {
+  color: #334155;
+}
+
+[data-dropdown-panel] .candidate-filter-option:hover,
+[data-dropdown-panel] .candidate-filter-option.selected {
+  background: #eff6ff;
+  color: #2563eb;
 }

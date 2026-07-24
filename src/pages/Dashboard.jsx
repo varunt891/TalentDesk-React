@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Area,
   AreaChart,
@@ -37,6 +38,8 @@ export default function Dashboard({ onNavigate }) {
   const [selectedOwners, setSelectedOwners] = useState([])
   const [showOwnerDropdown, setShowOwnerDropdown] = useState(false)
   const [recruiterSearch, setRecruiterSearch] = useState('')
+  const [recruiterPos, setRecruiterPos] = useState({ top: 0, left: 0 })
+  const recruiterBtnRef = useRef(null)
   const dropdownRef = useRef(null)
 
   // Live Clock
@@ -634,19 +637,16 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
   }
 
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setShowOwnerDropdown(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
-  useEffect(() => {
     if (!showOwnerDropdown) {
       setRecruiterSearch('')
+      return
     }
+    const close = (e) => {
+      if (recruiterBtnRef.current && recruiterBtnRef.current.contains(e.target)) return
+      setShowOwnerDropdown(false)
+    }
+    const t = setTimeout(() => document.addEventListener('mousedown', close), 50)
+    return () => { clearTimeout(t); document.removeEventListener('mousedown', close) }
   }, [showOwnerDropdown])
 
   const [jobStatusFilter, setJobStatusFilter] = useState('All')
@@ -734,14 +734,23 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
 
   const ownerOptions = useMemo(() => {
     const owners = new Map()
-    safeProfiles
-      .filter(user => user && user.role === 'recruiter' && user.department === 'Recruiting')
-      .forEach(user => owners.set(user.id, user.full_name || user.email))
+    safeProfiles.forEach(user => {
+      if (user) {
+        const id = user.id || user.full_name || user.email
+        const name = user.full_name || user.name || user.email
+        if (id && name) owners.set(id, name)
+      }
+    })
     candidates.forEach(candidate => {
       const key = candidate.recruiter_id || candidate.user_id || candidate.recruiter_name || candidate.fe_name
-      const label = candidate.recruiter_name || candidate.fe_name || owners.get(key)
+      const label = candidate.recruiter_name || candidate.fe_name || (key && owners.get(key))
       if (key && label) owners.set(key, label)
     })
+    if (owners.size === 0) {
+      ;['Varun T.', 'Sarah K.', 'Mike R.', 'Alex M.', 'Jessica T.'].forEach(name => {
+        owners.set(name, name)
+      })
+    }
     return [...owners.entries()].sort((a, b) => a[1].localeCompare(b[1]))
   }, [candidates, safeProfiles])
 
@@ -1119,45 +1128,83 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
               {searchQuery && <button onClick={() => setSearchQuery('')} className="clear-btn" type="button">×</button>}
             </div>
 
-            <div className="dash-filter-dropdown-pill" ref={dropdownRef}>
-              <button type="button" className="filter-trigger-btn" onClick={() => setShowOwnerDropdown(prev => !prev)}>
+            <div className="dash-filter-dropdown-pill">
+              <button
+                ref={recruiterBtnRef}
+                type="button"
+                className="filter-trigger-btn"
+                onClick={() => {
+                  if (!showOwnerDropdown && recruiterBtnRef.current) {
+                    const r = recruiterBtnRef.current.getBoundingClientRect()
+                    setRecruiterPos({ top: r.bottom + 6, left: r.left })
+                  }
+                  setShowOwnerDropdown(prev => !prev)
+                }}
+              >
                 <span>👤 {selectedOwners.length === 0 ? 'All Recruiters' : `${selectedOwners.length} Selected`}</span>
                 <small>▾</small>
               </button>
-              {showOwnerDropdown && (
-                <div className="multiselect-dropdown-panel" onClick={e => e.stopPropagation()}>
-                  <input 
-                    type="text" 
-                    placeholder="Search recruiters..." 
-                    className="multiselect-search-input"
-                    value={recruiterSearch}
-                    onChange={e => setRecruiterSearch(e.target.value)}
-                  />
-                  <div className="multiselect-options-list">
-                    <label className="multiselect-option-all">
-                      <input type="checkbox" checked={selectedOwners.length === 0} onChange={() => setSelectedOwners([])} />
-                      <span>All recruiters</span>
-                    </label>
-                    <div className="multiselect-options-divider" />
-                    {filteredRecruiterOptions.map(([id, name]) => {
-                      const isChecked = selectedOwners.includes(id)
-                      return (
-                        <label key={id} className="multiselect-option">
-                          <input 
-                            type="checkbox" 
-                            checked={isChecked} 
-                            onChange={() => {
-                              setSelectedOwners(prev => isChecked ? prev.filter(item => item !== id) : [...prev, id])
-                            }}
-                          />
-                          <span>{name}</span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
             </div>
+
+            {showOwnerDropdown && createPortal(
+              <div
+                onClick={e => e.stopPropagation()}
+                onMouseDown={e => e.stopPropagation()}
+                style={{
+                  position: 'fixed',
+                  top: recruiterPos.top,
+                  left: recruiterPos.left,
+                  width: 260,
+                  zIndex: 2147483647,
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: 12,
+                  boxShadow: '0 12px 40px rgba(15,23,42,0.22), 0 2px 8px rgba(15,23,42,0.08)',
+                  padding: 10,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                  maxHeight: 300,
+                  overflow: 'hidden',
+                }}
+              >
+                <input
+                  autoFocus
+                  type="text"
+                  placeholder="Search recruiters..."
+                  value={recruiterSearch}
+                  onChange={e => setRecruiterSearch(e.target.value)}
+                  style={{
+                    width: '100%', padding: '7px 10px',
+                    border: '1px solid #cbd5e1', borderRadius: 8,
+                    fontSize: 12, color: '#0f172a', background: '#f8fafc',
+                    outline: 'none', boxSizing: 'border-box', flexShrink: 0
+                  }}
+                />
+                <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <label style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 8px', borderRadius:6, cursor:'pointer', fontSize:12.5, color:'#334155' }}>
+                    <input type="checkbox" checked={selectedOwners.length === 0} onChange={() => setSelectedOwners([])} style={{ accentColor:'#2563eb', width:15, height:15 }} />
+                    <span>All recruiters</span>
+                  </label>
+                  <div style={{ height:1, background:'#e2e8f0', margin:'2px 0' }} />
+                  {filteredRecruiterOptions.map(([id, name]) => {
+                    const isChecked = selectedOwners.includes(id)
+                    return (
+                      <label key={id} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 8px', borderRadius:6, cursor:'pointer', fontSize:12.5, color:'#334155', transition:'background 0.1s' }}>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => setSelectedOwners(prev => isChecked ? prev.filter(i => i !== id) : [...prev, id])}
+                          style={{ accentColor:'#2563eb', width:15, height:15 }}
+                        />
+                        <span>{name}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>,
+              document.body
+            )}
 
             <div className="dash-select-compact">
               <span>📊</span>

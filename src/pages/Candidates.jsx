@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useCandidates } from '../hooks/useCandidates'
 import { useAuth } from '../context/AuthContext'
+import { SmartDropdown } from '../components/SmartDropdown'
 import * as XLSX from 'xlsx'
 
 const STATUSES = ['Pending', 'Submitted', 'Shortlisted', 'Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired', 'Rejected', 'On Hold', 'Withdrew']
@@ -36,19 +37,12 @@ const emptyForm = {
 function MultiSelect({ label, options, selected, onChange }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
-  const ref = useRef(null)
-
-  useEffect(() => {
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
 
   const filtered = options.filter(o => o.toLowerCase().includes(search.toLowerCase()))
   const toggle = (val) => onChange(selected.includes(val) ? selected.filter(x => x !== val) : [...selected, val])
 
   return (
-    <div ref={ref} className="candidate-filter">
+    <div className="candidate-filter dropdown-trigger-wrap">
       <button
         type="button"
         onClick={() => setOpen(!open)}
@@ -65,7 +59,7 @@ function MultiSelect({ label, options, selected, onChange }) {
         <span className="candidate-filter-chevron" aria-hidden="true" />
       </button>
 
-      {open && (
+      <SmartDropdown isOpen={open} onClose={() => setOpen(false)} width={220}>
         <div className="candidate-filter-menu">
           <div className="candidate-filter-search">
             <input
@@ -90,7 +84,7 @@ function MultiSelect({ label, options, selected, onChange }) {
             <button type="button" className="primary" onClick={() => setOpen(false)}>Apply</button>
           </div>
         </div>
-      )}
+      </SmartDropdown>
     </div>
   )
 }

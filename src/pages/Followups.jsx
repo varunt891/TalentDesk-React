@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { db } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
+import { SmartDropdown } from '../components/SmartDropdown'
 
 // Helper Styles & Utilities defined at top to prevent TDZ Hoisting Errors
 const emptyForm = { candidate_name: '', date: new Date().toISOString().slice(0,10), type: 'General Check-in', status: 'pending', priority: 'Medium', notes: '', next_action: '' }
@@ -29,16 +30,6 @@ function SearchableCandidateSelector({ candidates, value, onChange, onSelectCand
   const [search, setSearch] = useState('')
   const dropdownRef = useRef(null)
   const searchInputRef = useRef(null)
-
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setIsOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
 
   useEffect(() => {
     if (isOpen && searchInputRef.current) {
@@ -133,20 +124,10 @@ function SearchableCandidateSelector({ candidates, value, onChange, onSelectCand
         </button>
       </div>
 
-      {isOpen && (
+      <SmartDropdown isOpen={isOpen} onClose={() => setIsOpen(false)} width={320}>
         <div
           style={{
-            position: 'absolute',
-            top: 'calc(100% + 6px)',
-            left: 0,
-            minWidth: '320px',
-            width: 'max(100%, 340px)',
-            maxWidth: '90vw',
-            zIndex: 1300,
-            background: 'var(--surface)',
-            border: '1px solid var(--border)',
-            borderRadius: '12px',
-            boxShadow: '0 16px 40px rgba(0,0,0,0.35)',
+            width: '100%',
             padding: '10px',
             display: 'flex',
             flexDirection: 'column',
@@ -233,7 +214,7 @@ function SearchableCandidateSelector({ candidates, value, onChange, onSelectCand
             )}
           </div>
         </div>
-      )}
+      </SmartDropdown>
     </div>
   )
 }
