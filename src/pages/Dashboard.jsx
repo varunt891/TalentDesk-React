@@ -1756,9 +1756,9 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
         </button>
       )}
 
-      {copilotState === 'expanded' && (
+      {(copilotState === 'expanded' || copilotState === 'maximized') && (
         <div className="copilot-slideout-overlay" onClick={() => setCopilotState('minimized')}>
-          <div className="copilot-slideout-panel" onClick={e => e.stopPropagation()}>
+          <div className={`copilot-slideout-panel ${copilotState === 'maximized' ? 'maximized' : ''}`} onClick={e => e.stopPropagation()}>
             {/* ENHANCED COPILOT HEADER WITH NEW CHAT (🧹), MINIMIZE (—), POP-OUT (□), AND CLOSE (×) */}
             <div className="copilot-window-header">
               <div className="title-group">
@@ -1784,11 +1784,11 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
                 </button>
                 <button 
                   className="header-ctrl-btn popout" 
-                  onClick={() => setCopilotState('minimized')} 
+                  onClick={() => setCopilotState(prev => prev === 'maximized' ? 'expanded' : 'maximized')} 
                   type="button" 
-                  title="Toggle view (□)"
+                  title={copilotState === 'maximized' ? "Restore floating window (❐)" : "Maximize window (□)"}
                 >
-                  □
+                  {copilotState === 'maximized' ? '❐' : '□'}
                 </button>
                 <button 
                   className="header-ctrl-btn close" 

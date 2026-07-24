@@ -18540,6 +18540,17 @@ body {
   position: relative !important;
   margin-left: auto !important;
   animation: copilot-panel-float-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.copilot-slideout-panel.maximized {
+  width: calc(100vw - 48px) !important;
+  height: calc(100dvh - 48px) !important;
+  max-width: 100vw !important;
+  max-height: 100dvh !important;
+  margin: auto !important;
+  border-radius: 16px !important;
+  box-shadow: 0 32px 96px rgba(15, 23, 42, 0.45) !important;
 }
 
 @keyframes copilot-panel-float-in {
@@ -19406,22 +19417,52 @@ body {
     -webkit-overflow-scrolling: touch !important;
   }
 
-  /* FULL SCREEN AI COPILOT ON MOBILE */
+  /* FLOATING AI COPILOT ON MOBILE */
   .copilot-slideout-overlay {
-    padding: 0 !important;
+    padding: 12px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
   }
 
   .copilot-slideout-panel {
+    width: calc(100vw - 24px) !important;
+    height: calc(100dvh - 32px) !important;
+    max-width: 480px !important;
+    max-height: calc(100dvh - 32px) !important;
+    border-radius: 18px !important;
+    border: 1px solid rgba(226, 232, 240, 0.9) !important;
+    margin: auto !important;
+    box-shadow: 0 16px 48px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.5) inset !important;
+    flex-direction: column !important;
+  }
+
+  .copilot-slideout-panel.maximized {
     width: 100vw !important;
-    height: 100vh !important;
+    height: 100dvh !important;
     max-width: 100vw !important;
-    max-height: 100vh !important;
+    max-height: 100dvh !important;
     border-radius: 0 !important;
     border: none !important;
   }
 
+  .copilot-window-header {
+    height: 52px !important;
+    padding: 0 14px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .copilot-messages-box {
+    padding: 12px !important;
+    gap: 12px !important;
+    flex: 1 !important;
+    min-height: 0 !important;
+  }
+
   .copilot-input-box {
-    margin: 10px 12px 12px 12px !important;
+    margin: 8px 12px 12px 12px !important;
+    padding: 4px 6px 4px 12px !important;
+    flex-shrink: 0 !important;
   }
 
   .copilot-minimized-pill-btn {
