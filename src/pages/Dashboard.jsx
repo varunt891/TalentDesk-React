@@ -355,6 +355,152 @@ Format:
           updatedEntity: targetCandidates
         }
 
+      } else if (type === 'delete_candidate' || type === 'remove_candidate') {
+        let targetCandidates = []
+        if (entityId) {
+          targetCandidates = candidates.filter(c => String(c.id) === String(entityId))
+        } else if (searchName) {
+          targetCandidates = candidates.filter(c => 
+            `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase().includes(searchName) ||
+            (c.email && c.email.toLowerCase().includes(searchName))
+          )
+        }
+
+        if (!targetCandidates.length) {
+          return { success: false, error: `The candidate record "${entityName || 'specified'}" could not be found.` }
+        }
+
+        for (const candidate of targetCandidates) {
+          const res = await db.from('candidates').delete().eq('id', candidate.id)
+          if (res.error) throw res.error
+        }
+        fetchDashboardData()
+
+        return {
+          success: true,
+          message: successMessage || `Candidate record permanently removed.`,
+          actionTitle: 'Candidate Removed',
+          actionEntityName: targetCandidates.map(c => `${c.first_name || ''} ${c.last_name || ''}`).join(', '),
+          updatedEntity: null
+        }
+
+      } else if (type === 'delete_job' || type === 'remove_job') {
+        let targetJobs = []
+        if (entityId) {
+          targetJobs = safeJobs.filter(j => String(j.id) === String(entityId))
+        } else if (searchName) {
+          targetJobs = safeJobs.filter(j => (j.title || '').toLowerCase().includes(searchName))
+        }
+
+        if (!targetJobs.length) {
+          return { success: false, error: `The job requisition "${entityName || 'specified'}" could not be found.` }
+        }
+
+        for (const job of targetJobs) {
+          const res = await db.from('jobs').delete().eq('id', job.id)
+          if (res.error) throw res.error
+        }
+        fetchDashboardData()
+
+        return {
+          success: true,
+          message: successMessage || `Job requisition permanently deleted.`,
+          actionTitle: 'Job Requisition Deleted',
+          actionEntityName: targetJobs.map(j => j.title).join(', '),
+          updatedEntity: null
+        }
+
+      } else if (type === 'hold_job' || type === 'fill_job') {
+        const newStatus = type === 'hold_job' ? 'On Hold' : 'Filled'
+        let targetJobs = safeJobs.filter(j => (j.title || '').toLowerCase().includes(searchName))
+        if (!targetJobs.length && safeJobs.length > 0) targetJobs = [safeJobs[0]]
+
+        for (const job of targetJobs) {
+          const res = await db.from('jobs').update({ status: newStatus }).eq('id', job.id)
+          if (res.error) throw res.error
+        }
+        fetchDashboardData()
+
+        return {
+          success: true,
+          message: `Job requisition status updated to ${newStatus}.`,
+          actionTitle: `Job Requisition Updated`,
+          actionEntityName: targetJobs.map(j => j.title).join(', '),
+          updatedEntity: targetJobs
+        }
+
+      } else if (type === 'add_candidate' || type === 'create_candidate') {
+        const nameParts = (params?.name || entityName || 'New Candidate').split(' ')
+        const firstName = nameParts[0] || 'New'
+        const lastName = nameParts.slice(1).join(' ') || 'Candidate'
+
+        const newCand = {
+          first_name: firstName,
+          last_name: lastName,
+          email: params?.email || `${firstName.toLowerCase()}.${lastName.toLowerCase()}@example.com`,
+          job_title: params?.job_title || 'Software Developer',
+          client: params?.client || 'Internal Client',
+          internal_status: params?.stage || 'Submitted',
+          external_status: params?.stage || 'Submitted',
+          submission_date: new Date().toISOString().slice(0, 10),
+          recruiter_name: profile?.full_name || 'AI Copilot'
+        }
+
+        const res = await db.from('candidates').insert([newCand]).select()
+        if (res.error) throw res.error
+        fetchDashboardData()
+
+        return {
+          success: true,
+          message: `Candidate ${firstName} ${lastName} added successfully.`,
+          actionTitle: 'Candidate Added',
+          actionEntityName: `${firstName} ${lastName}`,
+          updatedEntity: res.data ? res.data[0] : newCand
+        }
+
+      } else if (type === 'complete_callback' || type === 'delete_callback') {
+        let cb = safeCallbacks.find(c => (c.candidate_name || '').toLowerCase().includes(searchName))
+        if (!cb && safeCallbacks.length > 0) cb = safeCallbacks[0]
+
+        if (cb) {
+          if (type === 'complete_callback') {
+            await db.from('callbacks').update({ status: 'done' }).eq('id', cb.id)
+          } else {
+            await db.from('callbacks').delete().eq('id', cb.id)
+          }
+          fetchDashboardData()
+        }
+
+        return {
+          success: true,
+          message: type === 'complete_callback' ? 'Callback marked as completed.' : 'Callback removed.',
+          actionTitle: 'Callback Updated',
+          actionEntityName: searchName || 'Candidate Callback',
+          updatedEntity: null
+        }
+
+      } else if (type === 'create_followup' || type === 'complete_followup' || type === 'delete_followup') {
+        if (type === 'create_followup') {
+          await db.from('followups').insert({
+            title: entityName || 'Follow up with candidate',
+            date: new Date().toISOString().slice(0, 10),
+            status: 'pending'
+          })
+        } else if (type === 'complete_followup' && safeFollowups.length > 0) {
+          await db.from('followups').update({ status: 'done' }).eq('id', safeFollowups[0].id)
+        } else if (type === 'delete_followup' && safeFollowups.length > 0) {
+          await db.from('followups').delete().eq('id', safeFollowups[0].id)
+        }
+        fetchDashboardData()
+
+        return {
+          success: true,
+          message: 'Follow-up task updated successfully.',
+          actionTitle: 'Follow-up Updated',
+          actionEntityName: entityName || 'Follow-up',
+          updatedEntity: null
+        }
+
       } else if (type === 'create_task' || type === 'create_note') {
         const taskText = params?.text || entityName || 'New Recruiter Task'
         const newNote = {
@@ -607,7 +753,7 @@ For Action Requests, set isAction = true and populate pendingAction:
     "entityId": "matched_id_string_or_null",
     "entityName": "name_or_title_or_text",
     "params": { "title": "Job Title", "client": "Client Name", "location": "City/Remote", "type": "Full-time", "status": "Open", "rate": "$ salary or rate", "priority": "High", "description": "Job details", "stage": "Interview Scheduled", "text": "description" },
-    "requiresConfirmation": false,
+    "requiresConfirmation": true,
     "confirmTitle": "Confirmation Required Title",
     "confirmPrompt": "Clear prompt asking user if they want to execute this operation.",
     "successMessage": "Action completed successfully."
@@ -641,14 +787,80 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
         structuredContent = JSON.parse(cleanJsonText)
       } catch (parseErr) {
         const cleanText = rawReply.replace(/```|\*\*|###|---/g, '').trim()
+        const lowerQ = q.toLowerCase()
+
+        let fallbackAction = null
+        if (lowerQ.includes('close job') || lowerQ.includes('archive job')) {
+          const targetTitle = q.replace(/close job|archive job/gi, '').trim()
+          fallbackAction = {
+            type: 'close_job',
+            entity: 'job',
+            entityName: targetTitle || 'specified job',
+            requiresConfirmation: true,
+            confirmTitle: 'Confirm Closing Job Requisition',
+            confirmPrompt: `Are you sure you want to change the status of "${targetTitle || 'selected job'}" to Closed?`,
+            successMessage: `Requisition "${targetTitle || 'selected job'}" closed.`
+          }
+        } else if (lowerQ.includes('delete candidate') || lowerQ.includes('remove candidate')) {
+          const candName = q.replace(/delete candidate|remove candidate/gi, '').trim()
+          fallbackAction = {
+            type: 'delete_candidate',
+            entity: 'candidate',
+            entityName: candName || 'specified candidate',
+            requiresConfirmation: true,
+            confirmTitle: 'Confirm Candidate Deletion',
+            confirmPrompt: `Are you sure you want to permanently delete candidate record "${candName || 'selected candidate'}"?`,
+            successMessage: `Candidate record for "${candName || 'selected candidate'}" permanently removed.`
+          }
+        } else if (lowerQ.includes('delete job') || lowerQ.includes('remove job')) {
+          const targetTitle = q.replace(/delete job|remove job/gi, '').trim()
+          fallbackAction = {
+            type: 'delete_job',
+            entity: 'job',
+            entityName: targetTitle || 'specified job',
+            requiresConfirmation: true,
+            confirmTitle: 'Confirm Job Deletion',
+            confirmPrompt: `Are you sure you want to permanently delete job requisition "${targetTitle || 'selected job'}"?`,
+            successMessage: `Job requisition "${targetTitle || 'selected job'}" deleted.`
+          }
+        } else if (lowerQ.includes('schedule callback') || lowerQ.includes('log callback')) {
+          const candName = q.replace(/schedule callback for|log callback for|schedule callback|log callback/gi, '').trim()
+          fallbackAction = {
+            type: 'log_callback',
+            entity: 'callback',
+            entityName: candName || 'Candidate',
+            requiresConfirmation: false,
+            successMessage: `Scheduled callback logged for ${candName || 'Candidate'}.`
+          }
+        } else if (lowerQ.includes('move candidate') || lowerQ.includes('to offer extended') || lowerQ.includes('to interview') || lowerQ.includes('to rejected')) {
+          const candMatch = q.match(/candidate\s+([A-Za-z\s]+?)\s+to/i) || q.match(/move\s+([A-Za-z\s]+?)\s+to/i)
+          const candName = candMatch ? candMatch[1].trim() : 'Candidate'
+          let stage = 'Screening'
+          if (lowerQ.includes('offer')) stage = 'Offer Extended'
+          else if (lowerQ.includes('interview')) stage = 'Interview Scheduled'
+          else if (lowerQ.includes('reject')) stage = 'Rejected'
+          else if (lowerQ.includes('hired')) stage = 'Hired'
+
+          fallbackAction = {
+            type: 'update_candidate_stage',
+            entity: 'candidate',
+            entityName: candName,
+            params: { stage },
+            requiresConfirmation: true,
+            confirmTitle: 'Confirm Candidate Stage Update',
+            confirmPrompt: `Move candidate "${candName}" to ${stage}?`,
+            successMessage: `Candidate "${candName}" moved to ${stage}.`
+          }
+        }
+
         structuredContent = {
-          summary: cleanText || `Here is your Copilot response for "${q}".`,
-          isAction: false,
-          pendingAction: null,
+          summary: fallbackAction ? `I have prepared your request: "${q}". Please review and confirm below.` : (cleanText || `Here is your Copilot response for "${q}".`),
+          isAction: !!fallbackAction,
+          pendingAction: fallbackAction,
           snapshot: null,
           insight: null,
           nextBestAction: null,
-          actions: [],
+          actions: fallbackAction ? [{ label: "Confirm Action", action: "confirm_action" }] : [],
           followup: null
         }
       }
@@ -662,11 +874,9 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }
 
-        // Auto-execute non-confirmation actions
-        if (structuredContent.isAction && structuredContent.pendingAction && !structuredContent.pendingAction.requiresConfirmation) {
-          setTimeout(() => {
-            handleExecutePendingAction(structuredContent.pendingAction, targetIdx)
-          }, 400)
+        // Ensure all actions require explicit user confirmation click before database execution
+        if (structuredContent.isAction && structuredContent.pendingAction) {
+          structuredContent.pendingAction.requiresConfirmation = true
         }
 
         return [...prev, newAiMsg]
@@ -771,6 +981,32 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
     return list
   }, [candidates, selectedOwners, stageFilter, timeRange, searchQuery])
 
+  // Dynamic Today's Focus calculation from live database state
+  const todaysFocus = useMemo(() => {
+    const activeCallbacks = safeCallbacks.filter(c => c.status === 'pending')
+    if (activeCallbacks && activeCallbacks.length > 0) {
+      const cb = activeCallbacks[0]
+      return {
+        title: `Follow up with ${cb.candidate_name || 'Candidate'}`,
+        desc: `Scheduled callback for ${cb.date || 'today'}.`
+      }
+    }
+    if (candidates && candidates.length > 0) {
+      const c = candidates.find(item => ['Offer Extended', 'Interview Scheduled', 'Interview Done', 'Submitted', 'Screening'].includes(item.internal_status || item.external_status)) || candidates[0]
+      const name = `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Candidate'
+      const role = c.job_title || 'open requisition'
+      const stage = c.internal_status || c.external_status || 'In Progress'
+      return {
+        title: `Follow up with ${name}`,
+        desc: `${role} - ${stage} stage.`
+      }
+    }
+    return {
+      title: 'Review Active Requisitions',
+      desc: 'All candidate callbacks and pipeline tasks are up to date.'
+    }
+  }, [safeCallbacks, candidates])
+
   const filteredJobs = useMemo(() => {
     let list = safeJobs
     if (jobStatusFilter !== 'All') list = list.filter(job => (job.status || 'Unassigned') === jobStatusFilter)
@@ -812,6 +1048,15 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
     const q = recruiterSearch.toLowerCase()
     return ownerOptions.filter(opt => opt[1].toLowerCase().includes(q))
   }, [ownerOptions, recruiterSearch])
+
+  const selectedOwnerNamesStr = useMemo(() => {
+    if (selectedOwners.length === 0) return ''
+    return selectedOwners.map(id => {
+      const match = ownerOptions.find(([optId]) => optId === id)
+      return match ? match[1] : id
+    }).join(', ')
+  }, [selectedOwners, ownerOptions])
+
 
   const stageOptions = useMemo(() => {
     const stages = new Set(['All', ...STAGES])
@@ -1098,13 +1343,13 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
           <div className="ai-radar-grid">
             <div className="ai-radar-card blue">
               <span className="radar-tag">TODAY'S FOCUS</span>
-              <strong>Follow up with Alex Rivera</strong>
-              <p>Senior React Developer offer letter pending client signature.</p>
+              <strong>{todaysFocus.title}</strong>
+              <p>{todaysFocus.desc}</p>
             </div>
             <div className="ai-radar-card red">
               <span className="radar-tag">CANDIDATES AT RISK</span>
-              <strong>3 Stalled Interviews</strong>
-              <p>Candidates in 'Interview Done' for &gt; 48 hours without feedback.</p>
+              <strong>{candidates.filter(c => ['Interview Scheduled', 'Interview Done'].includes(c.internal_status || c.external_status)).length} Active Interviews</strong>
+              <p>Candidates in interview funnel requiring recruiter feedback.</p>
             </div>
             <div className="ai-radar-card green">
               <span className="radar-tag">PIPELINE HEALTH</span>
@@ -1113,8 +1358,8 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
             </div>
             <div className="ai-radar-card amber">
               <span className="radar-tag">RECOMMENDED ACTION</span>
-              <strong>Source #FE-102 Job</strong>
-              <p>Requisition needs 2 additional submittals before Friday.</p>
+              <strong>Source #{safeJobs[0]?.job_id || 'FE-102'} Job</strong>
+              <p>Requisition needs additional submittals this week.</p>
             </div>
           </div>
 
@@ -1448,7 +1693,37 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
           </Panel>
 
           {/* Recruiter Performance Table */}
-          <Panel title="Recruiter Performance Analytics Table" subtitle="Real-time team submittals, interviews & placement conversion rankings">
+          <Panel 
+            title="Recruiter Performance Analytics Table" 
+            subtitle="Real-time team submittals, interviews & placement conversion rankings"
+            action={
+              selectedOwners.length > 0 && (
+                <button 
+                  type="button" 
+                  className="dash-table-reset-btn"
+                  onClick={() => setSelectedOwners([])}
+                  title="Clear recruiter selection to view all recruiters"
+                >
+                  ↺ Reset View ({selectedOwners.length} Selected)
+                </button>
+              )
+            }
+          >
+            {selectedOwners.length > 0 && (
+              <div className="table-active-filter-banner">
+                <div className="filter-banner-info">
+                  <span className="filter-badge-icon">🔍</span>
+                  <span>Filtered analytics for: <strong>{selectedOwnerNamesStr}</strong></span>
+                </div>
+                <button 
+                  type="button" 
+                  className="filter-banner-clear-btn"
+                  onClick={() => setSelectedOwners([])}
+                >
+                  ✕ Clear Filter (Show All)
+                </button>
+              </div>
+            )}
             <div className="leaderboard-table-wrapper">
               <table className="leaderboard-table">
                 <thead>
@@ -1466,32 +1741,54 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
                 <tbody>
                   {recruiterData.length === 0 ? (
                     <tr>
-                      <td colSpan="8" className="empty-td">No submittals in selected timeframe</td>
+                      <td colSpan="8" className="empty-td">
+                        No submittals in selected timeframe
+                        {selectedOwners.length > 0 && (
+                          <div style={{ marginTop: 8 }}>
+                            <button 
+                              type="button" 
+                              className="dash-table-reset-btn"
+                              onClick={() => setSelectedOwners([])}
+                            >
+                              ↺ Reset Filter
+                            </button>
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   ) : (
-                    recruiterData.map(row => (
-                      <tr 
-                        key={row.name} 
-                        className="clickable-row"
-                        onClick={() => {
-                          const ownerMatch = ownerOptions.find(([id, name]) => name === row.name)
-                          if (ownerMatch) setSelectedOwners([ownerMatch[0]])
-                        }}
-                      >
-                        <td><span className="rank-pill">#{row.rank}</span></td>
-                        <td>
-                          <div className="recruiter-name-cell">
-                            <strong>{row.name}</strong>
-                          </div>
-                        </td>
-                        <td><b>{row.submissions}</b></td>
-                        <td>{row.interviews}</td>
-                        <td>{row.offers}</td>
-                        <td><b className="green-text">{row.hires}</b></td>
-                        <td><span className="yield-badge">{row.fillRate}%</span></td>
-                        <td><span className="ai-score-pill">⚡ {row.aiScore}</span></td>
-                      </tr>
-                    ))
+                    recruiterData.map(row => {
+                      const ownerMatch = ownerOptions.find(([id, name]) => name === row.name)
+                      const ownerId = ownerMatch ? ownerMatch[0] : null
+                      const isSelected = ownerId && selectedOwners.includes(ownerId)
+
+                      return (
+                        <tr 
+                          key={row.name} 
+                          className={`clickable-row ${isSelected ? 'selected-row' : ''}`}
+                          onClick={() => {
+                            if (ownerId) {
+                              setSelectedOwners(prev => prev.includes(ownerId) ? [] : [ownerId])
+                            }
+                          }}
+                          title={isSelected ? "Click to deselect and view all recruiters" : `Click to filter analytics by ${row.name}`}
+                        >
+                          <td><span className="rank-pill">#{row.rank}</span></td>
+                          <td>
+                            <div className="recruiter-name-cell">
+                              <strong>{row.name}</strong>
+                              {isSelected && <span className="selected-active-pill">Active</span>}
+                            </div>
+                          </td>
+                          <td><b>{row.submissions}</b></td>
+                          <td>{row.interviews}</td>
+                          <td>{row.offers}</td>
+                          <td><b className="green-text">{row.hires}</b></td>
+                          <td><span className="yield-badge">{row.fillRate}%</span></td>
+                          <td><span className="ai-score-pill">⚡ {row.aiScore}</span></td>
+                        </tr>
+                      )
+                    })
                   )}
                 </tbody>
               </table>
@@ -2045,13 +2342,13 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
           </div>
           <div className="notif-drawer-list">
             <div className="notif-item unread">
-              <strong>🔔 Callback Due: Alex Rivera</strong>
-              <span>Scheduled phone interview at 2:00 PM today.</span>
-              <small>10m ago</small>
+              <strong>🔔 Priority Focus: {todaysFocus.title}</strong>
+              <span>{todaysFocus.desc}</span>
+              <small>Live update</small>
             </div>
             <div className="notif-item unread">
-              <strong>💼 New Job Requisition: Lead DevOps</strong>
-              <span>Acme Corp submitted a new requisition.</span>
+              <strong>💼 Active Requisition: {safeJobs[0]?.title || 'Open Requisition'}</strong>
+              <span>{safeJobs[0]?.client || 'Client'} • Status: {safeJobs[0]?.status || 'Open'}</span>
               <small>1h ago</small>
             </div>
             <div className="notif-item">
@@ -2066,12 +2363,15 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
   )
 }
 
-function Panel({ title, subtitle, children }) {
+function Panel({ title, subtitle, action, children }) {
   return (
     <article className="dashboard-panel">
       <div className="dashboard-panel-head">
-        <h2>{title}</h2>
-        <p>{subtitle}</p>
+        <div>
+          <h2>{title}</h2>
+          {subtitle && <p>{subtitle}</p>}
+        </div>
+        {action && <div className="dashboard-panel-action">{action}</div>}
       </div>
       {children}
     </article>

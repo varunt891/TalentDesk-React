@@ -523,10 +523,9 @@ PROMPT: ${copilotPrompt}`
     <div className="ai-center-page">
       {/* Header Banner */}
       <header className="ai-center-header">
-        <div className="ai-header-content">
+        <div className="ai-header-info">
           <div className="ai-badge">
-            <span className="ai-sparkle">✨</span>
-            <span>TALENTDESK RECRUITER AI SUITE</span>
+            <span>✨ TALENTDESK RECRUITER AI SUITE</span>
           </div>
           <h1>Recruiter AI Innovation Center</h1>
           <p>7 specialized AI intelligence tools for sourcing, resume formatting, email outreach, candidate evaluation, and salary benchmarks.</p>
@@ -541,15 +540,16 @@ PROMPT: ${copilotPrompt}`
         </div>
       </header>
 
-      {apiNotice && (
-        <div className="ai-notice-banner">
-          <span>{apiNotice}</span>
-          <button type="button" onClick={() => setApiNotice(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
-        </div>
-      )}
+      <div className="ai-center-body">
+        {apiNotice && (
+          <div className="ai-notice-banner">
+            <span>{apiNotice}</span>
+            <button type="button" onClick={() => setApiNotice(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontWeight: 'bold' }}>✕</button>
+          </div>
+        )}
 
-      {/* Grid Tool Selector Tiles */}
-      <div className="ai-tools-grid">
+        {/* Grid Tool Selector Tiles */}
+        <div className="ai-tools-grid">
         {tools.map(t => (
           <button
             key={t.id}
@@ -1059,6 +1059,7 @@ PROMPT: ${copilotPrompt}`
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }

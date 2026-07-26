@@ -104,7 +104,25 @@ const Icons = {
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
     </svg>
-  )
+  ),
+  Trash: () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+    </svg>
+  ),
+  Globe: () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </svg>
+  ),
+  Warning: () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+      <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  ),
 }
 
 export default function Admin() {
@@ -129,6 +147,13 @@ export default function Admin() {
   // Superadmin org switching
   const [allOrgs, setAllOrgs] = useState([])
   const [selectedOrgId, setSelectedOrgId] = useState(null)
+  const [deletingOrgId, setDeletingOrgId] = useState(null)
+  // Platform tab state
+  const [platformOp, setPlatformOp] = useState(null) // which danger op is confirming
+  const [platformConfirmText, setPlatformConfirmText] = useState('')
+  const [platformTargetOrgId, setPlatformTargetOrgId] = useState('')
+  const [newOrgForm, setNewOrgForm] = useState({ name: '', slug: '', email_domain: '' })
+  const [creatingOrg, setCreatingOrg] = useState(false)
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type })
@@ -233,8 +258,8 @@ export default function Admin() {
         return {
           key: manager.id,
           team: manager.team || `${manager.full_name} Team`,
-          title: manager.manager_id 
-            ? `${manager.full_name} (${manager.department} Account Manager)` 
+          title: manager.manager_id
+            ? `${manager.full_name} (${manager.department} Account Manager)`
             : `${manager.full_name} (${manager.department} Recruitment Manager)`,
           department: manager.department || 'Unassigned',
           managers: [manager],
@@ -401,6 +426,82 @@ export default function Admin() {
     showToast('Organization settings saved')
   }
 
+  // ── Platform Operations (superadmin only) ──
+  const handleCreateOrg = async () => {
+    if (!newOrgForm.name.trim()) return showToast('Org name is required', 'error')
+    setCreatingOrg(true)
+    try {
+      const { data, error } = await db.from('organizations').insert({
+        name: newOrgForm.name.trim(),
+        slug: newOrgForm.slug.trim() || newOrgForm.name.toLowerCase().replace(/\s+/g, '-'),
+        email_domain: newOrgForm.email_domain.trim() || null,
+      })
+      if (error) throw error
+      const created = Array.isArray(data) ? data[0] : data
+      if (created) setAllOrgs(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
+      setNewOrgForm({ name: '', slug: '', email_domain: '' })
+      showToast(`Organization "${newOrgForm.name.trim()}" created successfully`)
+    } catch (err) {
+      showToast(err.message || 'Create org failed', 'error')
+    } finally {
+      setCreatingOrg(false)
+    }
+  }
+
+  const handlePlatformDanger = async () => {
+    const target = allOrgs.find(o => o.id === platformTargetOrgId)
+    if (!target) return showToast('Please select an organization first.', 'error')
+    if (platformConfirmText !== target.name) {
+      return showToast('Org name did not match. Operation cancelled.', 'error')
+    }
+    setSaving(true)
+    try {
+      if (platformOp === 'delete_org') {
+        if (target.id === orgId) return showToast('Cannot delete your own org.', 'error')
+        const { error } = await db.from('organizations').delete().eq('id', target.id)
+        if (error) throw error
+        setAllOrgs(prev => prev.filter(o => o.id !== target.id))
+        if (selectedOrgId === target.id) setSelectedOrgId(orgId)
+        showToast(`Organization "${target.name}" permanently deleted.`)
+      } else if (platformOp === 'purge_members') {
+        if (target.id === orgId) return showToast('Cannot purge members of your own org this way. Use Members tab.', 'error')
+        const { error } = await db.from('profiles').delete().eq('org_id', target.id)
+        if (error) throw error
+        showToast(`All members of "${target.name}" removed.`)
+      } else if (platformOp === 'purge_candidates') {
+        const { error } = await db.from('candidates').delete().eq('org_id', target.id)
+        if (error) throw error
+        showToast(`All candidates of "${target.name}" purged.`)
+      }
+      setPlatformOp(null)
+      setPlatformConfirmText('')
+      setPlatformTargetOrgId('')
+      await fetchAdminData()
+    } catch (err) {
+      showToast(err.message || 'Operation failed', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSwitchMyOrg = async (targetOrg) => {
+    if (!profile?.id) return
+    setSaving(true)
+    try {
+      const { error } = await db.from('profiles').update({ org_id: targetOrg.id }).eq('id', profile.id)
+      if (error) throw error
+      localStorage.removeItem('talentdesk_session')
+      showToast(`Switched your profile organization to "${targetOrg.name}". Reloading workspace...`)
+      setTimeout(() => {
+        window.location.reload()
+      }, 800)
+    } catch (err) {
+      showToast(err.message || 'Failed to switch organization', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (!isAdmin) {
     return (
       <div className="admin-page">
@@ -415,6 +516,7 @@ export default function Admin() {
     'Members': Icons.Members,
     'Access': Icons.Access,
     'Company': Icons.Company,
+    'Platform': Icons.Globe,
   }
 
   return (
@@ -438,19 +540,19 @@ export default function Admin() {
           </div>
         </div>
         <div className="admin-header-actions">
-          <button 
-            className="admin-btn admin-btn-secondary" 
-            onClick={fetchAdminData} 
-            disabled={loading || saving} 
+          <button
+            className="admin-btn admin-btn-secondary"
+            onClick={fetchAdminData}
+            disabled={loading || saving}
             type="button"
           >
             <Icons.Refresh className={loading ? 'admin-spin' : ''} />
             <span>Refresh</span>
           </button>
-          <button 
-            className="admin-btn admin-btn-primary" 
-            onClick={seedDemoProfiles} 
-            disabled={saving} 
+          <button
+            className="admin-btn admin-btn-primary"
+            onClick={seedDemoProfiles}
+            disabled={saving}
             type="button"
           >
             <Icons.Plus />
@@ -487,38 +589,38 @@ export default function Admin() {
 
       {/* Identical Uniform KPI Command Cards */}
       <section className="admin-command-grid">
-        <Stat 
-          label="ACTIVE MEMBERS" 
-          value={analytics.activeUsers} 
-          helper={`${analytics.totalUsers} total registered`} 
+        <Stat
+          label="ACTIVE MEMBERS"
+          value={analytics.activeUsers}
+          helper={`${analytics.totalUsers} total registered`}
           icon={Icons.UsersStat}
           accent="blue"
         />
-        <Stat 
-          label="MANAGER GROUPS" 
-          value={analytics.teams} 
-          helper={`${analytics.managers} active managers`} 
+        <Stat
+          label="MANAGER GROUPS"
+          value={analytics.teams}
+          helper={`${analytics.managers} active managers`}
           icon={Icons.GroupStat}
           accent="purple"
         />
-        <Stat 
-          label="SUBMISSION RECRUITERS" 
-          value={analytics.recruiters} 
-          helper="Recruiting focus" 
+        <Stat
+          label="SUBMISSION RECRUITERS"
+          value={analytics.recruiters}
+          helper="Recruiting focus"
           icon={Icons.RecruiterStat}
           accent="teal"
         />
-        <Stat 
-          label="OPEN JOBS" 
-          value={analytics.openJobs} 
-          helper={`${analytics.candidates} candidates in funnel`} 
+        <Stat
+          label="OPEN JOBS"
+          value={analytics.openJobs}
+          helper={`${analytics.candidates} candidates in funnel`}
           icon={Icons.JobStat}
           accent="amber"
         />
-        <Stat 
-          label="TOTAL HIRES" 
-          value={analytics.hires} 
-          helper="Organization wide" 
+        <Stat
+          label="TOTAL HIRES"
+          value={analytics.hires}
+          helper="Organization wide"
           icon={Icons.HireStat}
           accent="emerald"
         />
@@ -531,10 +633,10 @@ export default function Admin() {
             const TabIcon = tabIconMap[tab]
             const isActive = activeTab === tab
             return (
-              <button 
-                key={tab} 
-                className={`admin-tab-btn ${isActive ? 'active' : ''}`} 
-                onClick={() => setActiveTab(tab)} 
+              <button
+                key={tab}
+                className={`admin-tab-btn ${isActive ? 'active' : ''}`}
+                onClick={() => setActiveTab(tab)}
                 type="button"
               >
                 {TabIcon && <TabIcon />}
@@ -542,6 +644,17 @@ export default function Admin() {
               </button>
             )
           })}
+          {/* Platform tab — superadmin only */}
+          {isSuperAdmin && (
+            <button
+              className={`admin-tab-btn admin-tab-danger ${activeTab === 'Platform' ? 'active' : ''}`}
+              onClick={() => setActiveTab('Platform')}
+              type="button"
+            >
+              <Icons.Globe />
+              <span>Platform</span>
+            </button>
+          )}
         </div>
       </nav>
 
@@ -582,28 +695,46 @@ export default function Admin() {
             />
           )}
           {activeTab === 'Org Chart' && (
-            <TeamsTab 
-              onAssignManager={assignManager} 
-              onMoveMember={moveMemberToTeam} 
-              saving={saving} 
-              teamGroups={teamGroups} 
-              userStats={userStats} 
-              users={users} 
+            <TeamsTab
+              onAssignManager={assignManager}
+              onMoveMember={moveMemberToTeam}
+              saving={saving}
+              teamGroups={teamGroups}
+              userStats={userStats}
+              users={users}
             />
           )}
           {activeTab === 'Access' && (
-            <PermissionsTab 
-              onUpdateUser={updateUser} 
-              saving={saving} 
-              users={users} 
+            <PermissionsTab
+              onUpdateUser={updateUser}
+              saving={saving}
+              users={users}
             />
           )}
           {activeTab === 'Company' && (
-            <OrgSettingsTab 
-              form={orgForm} 
-              onChange={setOrgForm} 
-              onSave={saveOrgSettings} 
-              saving={saving} 
+            <OrgSettingsTab
+              form={orgForm}
+              onChange={setOrgForm}
+              onSave={saveOrgSettings}
+              saving={saving}
+            />
+          )}
+          {activeTab === 'Platform' && isSuperAdmin && (
+            <PlatformTab
+              allOrgs={allOrgs}
+              orgId={orgId}
+              newOrgForm={newOrgForm}
+              onNewOrgFormChange={setNewOrgForm}
+              onCreateOrg={handleCreateOrg}
+              creatingOrg={creatingOrg}
+              platformOp={platformOp}
+              platformTargetOrgId={platformTargetOrgId}
+              platformConfirmText={platformConfirmText}
+              onSetPlatformOp={(op, targetId) => { setPlatformOp(op); setPlatformTargetOrgId(targetId || ''); setPlatformConfirmText('') }}
+              onPlatformConfirmTextChange={setPlatformConfirmText}
+              onExecuteDanger={handlePlatformDanger}
+              onSwitchMyOrg={handleSwitchMyOrg}
+              saving={saving}
             />
           )}
         </main>
@@ -775,18 +906,18 @@ function PeopleTab({ departments, filteredUsers, invite, managers, memberFilters
         <div className="admin-card-body">
           <div className="admin-form-group">
             <label className="admin-label">Email Address</label>
-            <input 
-              className="admin-input" 
-              value={invite.email} 
-              onChange={e => onInviteChange({ ...invite, email: e.target.value })} 
-              placeholder="colleague@company.com" 
+            <input
+              className="admin-input"
+              value={invite.email}
+              onChange={e => onInviteChange({ ...invite, email: e.target.value })}
+              placeholder="colleague@company.com"
             />
           </div>
           <div className="admin-form-group">
             <label className="admin-label">Workspace Role</label>
-            <select 
-              className="admin-select" 
-              value={invite.role} 
+            <select
+              className="admin-select"
+              value={invite.role}
               onChange={e => onInviteChange({ ...invite, role: e.target.value })}
             >
               {ROLES.filter(r => r !== 'superadmin').map(role => (
@@ -796,29 +927,29 @@ function PeopleTab({ departments, filteredUsers, invite, managers, memberFilters
           </div>
           <div className="admin-form-group">
             <label className="admin-label">Team Group</label>
-            <input 
-              className="admin-input" 
-              value={invite.team} 
-              onChange={e => onInviteChange({ ...invite, team: e.target.value })} 
-              list="admin-team-list" 
-              placeholder="e.g. Front-End Team" 
+            <input
+              className="admin-input"
+              value={invite.team}
+              onChange={e => onInviteChange({ ...invite, team: e.target.value })}
+              list="admin-team-list"
+              placeholder="e.g. Front-End Team"
             />
           </div>
           <div className="admin-form-group">
             <label className="admin-label">Department</label>
-            <input 
-              className="admin-input" 
-              value={invite.department} 
-              onChange={e => onInviteChange({ ...invite, department: e.target.value })} 
-              list="admin-department-list" 
-              placeholder="e.g. Recruiting" 
+            <input
+              className="admin-input"
+              value={invite.department}
+              onChange={e => onInviteChange({ ...invite, department: e.target.value })}
+              list="admin-department-list"
+              placeholder="e.g. Recruiting"
             />
           </div>
           <div className="admin-form-group">
             <label className="admin-label">Reporting Manager</label>
-            <select 
-              className="admin-select" 
-              value={invite.manager_id} 
+            <select
+              className="admin-select"
+              value={invite.manager_id}
               onChange={e => onInviteChange({ ...invite, manager_id: e.target.value })}
             >
               <option value="">Unassigned (Direct Root)</option>
@@ -827,9 +958,9 @@ function PeopleTab({ departments, filteredUsers, invite, managers, memberFilters
               ))}
             </select>
           </div>
-          <button 
-            className="admin-btn admin-btn-primary admin-btn-full" 
-            onClick={onSendInvite} 
+          <button
+            className="admin-btn admin-btn-primary admin-btn-full"
+            onClick={onSendInvite}
             disabled={saving}
           >
             {saving ? 'Processing...' : 'Send Invitation'}
@@ -851,16 +982,16 @@ function PeopleTab({ departments, filteredUsers, invite, managers, memberFilters
           <div className="admin-filter-bar">
             <div className="admin-search-wrapper">
               <Icons.Search />
-              <input 
-                className="admin-search-input" 
-                value={search} 
-                onChange={e => onSearch(e.target.value)} 
-                placeholder="Search name, email, role, team..." 
+              <input
+                className="admin-search-input"
+                value={search}
+                onChange={e => onSearch(e.target.value)}
+                placeholder="Search name, email, role, team..."
               />
             </div>
-            <select 
-              className="admin-filter-select" 
-              value={memberFilters.department} 
+            <select
+              className="admin-filter-select"
+              value={memberFilters.department}
               onChange={e => onFilterChange(prev => ({ ...prev, department: e.target.value }))}
             >
               <option value="All">All Departments</option>
@@ -868,9 +999,9 @@ function PeopleTab({ departments, filteredUsers, invite, managers, memberFilters
                 <option key={department} value={department}>{department}</option>
               ))}
             </select>
-            <select 
-              className="admin-filter-select" 
-              value={memberFilters.role} 
+            <select
+              className="admin-filter-select"
+              value={memberFilters.role}
               onChange={e => onFilterChange(prev => ({ ...prev, role: e.target.value }))}
             >
               <option value="All">All Roles</option>
@@ -883,14 +1014,14 @@ function PeopleTab({ departments, filteredUsers, invite, managers, memberFilters
         <div className="admin-card-body">
           <div className="admin-member-grid">
             {filteredUsers.map(user => (
-              <MemberCard 
-                key={user.id} 
-                departments={departments} 
-                managers={managers} 
-                onAssignManager={onAssignManager} 
-                onUpdateUser={onUpdateUser} 
-                saving={saving} 
-                user={user} 
+              <MemberCard
+                key={user.id}
+                departments={departments}
+                managers={managers}
+                onAssignManager={onAssignManager}
+                onUpdateUser={onUpdateUser}
+                saving={saving}
+                user={user}
               />
             ))}
           </div>
@@ -953,18 +1084,18 @@ function MemberCard({ departments, managers, onAssignManager, onUpdateUser, savi
           </div>
         </div>
         <div className="admin-member-action-col">
-          <button 
-            className={`admin-toggle-switch ${user.is_active === false ? 'off' : 'on'}`} 
-            onClick={() => onUpdateUser(user.id, { is_active: user.is_active === false })} 
+          <button
+            className={`admin-toggle-switch ${user.is_active === false ? 'off' : 'on'}`}
+            onClick={() => onUpdateUser(user.id, { is_active: user.is_active === false })}
             type="button"
             title="Toggle account active status"
           >
             <span className="admin-toggle-thumb" />
             <span className="admin-toggle-text">{user.is_active === false ? 'Inactive' : 'Active'}</span>
           </button>
-          <button 
-            className={`admin-btn-ghost ${expanded ? 'active' : ''}`} 
-            type="button" 
+          <button
+            className={`admin-btn-ghost ${expanded ? 'active' : ''}`}
+            type="button"
             onClick={() => setExpanded(prev => !prev)}
           >
             {expanded ? 'Close' : 'Edit'}
@@ -977,10 +1108,10 @@ function MemberCard({ departments, managers, onAssignManager, onUpdateUser, savi
           <div className="admin-drawer-grid">
             <div className="admin-form-group">
               <label className="admin-label">Role</label>
-              <select 
-                className="admin-select" 
-                value={user.role || 'recruiter'} 
-                disabled={saving} 
+              <select
+                className="admin-select"
+                value={user.role || 'recruiter'}
+                disabled={saving}
                 onChange={e => onUpdateUser(user.id, { role: e.target.value })}
               >
                 {ROLES.map(r => <option key={r} value={r}>{r.toUpperCase()}</option>)}
@@ -996,10 +1127,10 @@ function MemberCard({ departments, managers, onAssignManager, onUpdateUser, savi
             </div>
             <div className="admin-form-group">
               <label className="admin-label">Reporting Manager</label>
-              <select 
-                className="admin-select" 
-                value={user.manager_id || ''} 
-                disabled={saving} 
+              <select
+                className="admin-select"
+                value={user.manager_id || ''}
+                disabled={saving}
                 onChange={e => onAssignManager(user, e.target.value)}
               >
                 <option value="">Unassigned (Direct Root)</option>
@@ -1095,25 +1226,25 @@ function TeamsTab({ onAssignManager, saving, userStats, users }) {
         <div className="admin-tree-toolbar-actions">
           <div className="admin-search-wrapper">
             <Icons.Search />
-            <input 
-              className="admin-search-input" 
-              value={query} 
-              onChange={e => setQuery(e.target.value)} 
-              placeholder="Search tree members..." 
+            <input
+              className="admin-search-input"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search tree members..."
             />
           </div>
           <button className="admin-btn admin-btn-secondary admin-btn-sm" onClick={expandAll} type="button">Expand All</button>
           <button className="admin-btn admin-btn-secondary admin-btn-sm" onClick={collapseAll} type="button">Collapse All</button>
         </div>
       </div>
-      
+
       <div className="admin-card-body">
         {treeRoots.length === 0 ? (
           <EmptyState title="No organizational hierarchy defined" body="Assign reporting managers under the Members tab to build reporting trees." />
         ) : (
           <div className="org-tree-root-container">
             {treeRoots.map(root => (
-              <TreeNode 
+              <TreeNode
                 key={root.id}
                 user={root}
                 allUsers={hierarchyUsers}
@@ -1138,18 +1269,18 @@ function TeamsTab({ onAssignManager, saving, userStats, users }) {
 function TreeNode({ user, allUsers, userStats, onAssignManager, query, level, expandedNodes, toggleExpand, getDescendantsMatch, saving }) {
   const children = useMemo(() => allUsers.filter(u => u.manager_id === user.id), [allUsers, user.id])
   const term = query.toLowerCase().trim()
-  
+
   const isMatch = !term || (user.full_name || '').toLowerCase().includes(term) || (user.email || '').toLowerCase().includes(term)
   const hasMatchingDescendant = getDescendantsMatch(user.id, term)
-  
+
   if (term && !isMatch && !hasMatchingDescendant) return null
-  
+
   const isOpen = expandedNodes.has(user.id)
   const hasChildren = children.length > 0
-  
+
   const stats = userStats.get(user.id) || { submissions: 0, interviews: 0, hires: 0 }
   const initialsText = initials(user.full_name || user.email)
-  
+
   const countReports = (uid) => {
     const direct = allUsers.filter(u => u.manager_id === uid)
     let total = direct.length
@@ -1158,9 +1289,9 @@ function TreeNode({ user, allUsers, userStats, onAssignManager, query, level, ex
     })
     return total
   }
-  
+
   const reportsCount = countReports(user.id)
-  
+
   const avatarGradients = [
     'linear-gradient(135deg, #3b82f6, #6366f1)',
     'linear-gradient(135deg, #8b5cf6, #d946ef)',
@@ -1174,7 +1305,7 @@ function TreeNode({ user, allUsers, userStats, onAssignManager, query, level, ex
     <div className="org-tree-node-wrapper">
       <div className={`org-tree-node-row level-${level}`}>
         {hasChildren ? (
-          <button 
+          <button
             className={`org-tree-node-toggle ${isOpen ? 'expanded' : ''}`}
             onClick={() => toggleExpand(user.id)}
             type="button"
@@ -1184,16 +1315,16 @@ function TreeNode({ user, allUsers, userStats, onAssignManager, query, level, ex
         ) : (
           <span className="org-tree-node-spacer" />
         )}
-        
+
         <div className="org-tree-node-avatar" style={{ background: avatarBg }}>
           {initialsText}
         </div>
-        
+
         <div className="org-tree-node-details">
           <span className="org-tree-node-name">{user.full_name || 'Unnamed User'}</span>
           <span className={`org-tree-node-role-badge ${user.department?.toLowerCase() || 'operations'}`}>
-            {user.role === 'recruiter' 
-              ? `${user.department || ''} Recruiter` 
+            {user.role === 'recruiter'
+              ? `${user.department || ''} Recruiter`
               : user.role === 'manager'
                 ? (user.manager_id ? `${user.department || ''} Account Manager` : `${user.department || ''} Recruitment Manager`)
                 : `${user.department || ''} ${user.role}`}
@@ -1205,18 +1336,18 @@ function TreeNode({ user, allUsers, userStats, onAssignManager, query, level, ex
             </span>
           )}
         </div>
-        
+
         <div className="org-tree-node-metrics">
           <span className="org-tree-metric-pill"><b>{stats.submissions}</b> Sub</span>
           <span className="org-tree-metric-pill"><b>{stats.interviews}</b> Int</span>
           <span className="org-tree-metric-pill"><b>{stats.hires}</b> Hires</span>
         </div>
-        
+
         <div className="org-tree-node-actions">
-          <select 
+          <select
             className="admin-select admin-select-sm"
-            value={user.manager_id || ''} 
-            disabled={saving} 
+            value={user.manager_id || ''}
+            disabled={saving}
             onChange={e => onAssignManager(user, e.target.value)}
           >
             <option value="">No manager (Root Node)</option>
@@ -1228,11 +1359,11 @@ function TreeNode({ user, allUsers, userStats, onAssignManager, query, level, ex
           </select>
         </div>
       </div>
-      
+
       {hasChildren && isOpen && (
         <div className="org-tree-children-container">
           {children.map(child => (
-            <TreeNode 
+            <TreeNode
               key={child.id}
               user={child}
               allUsers={allUsers}
@@ -1281,10 +1412,10 @@ function PermissionsTab({ onUpdateUser, saving, users }) {
                   <strong className="admin-member-name">{user.full_name || user.email}</strong>
                   <span className="admin-member-sub">{user.email}</span>
                 </div>
-                <select 
-                  className="admin-select" 
-                  value={user.role || 'admin'} 
-                  disabled={saving || user.role === 'superadmin'} 
+                <select
+                  className="admin-select"
+                  value={user.role || 'admin'}
+                  disabled={saving || user.role === 'superadmin'}
                   onChange={e => onUpdateUser(user.id, { role: e.target.value })}
                 >
                   <option value="admin">ADMIN</option>
@@ -1320,10 +1451,10 @@ function PermissionsTab({ onUpdateUser, saving, users }) {
                   <strong className="admin-member-name">{user.full_name || user.email}</strong>
                   <span className="admin-member-sub">{user.team || 'No team'} · {user.department || 'No department'}</span>
                 </div>
-                <select 
-                  className="admin-select" 
-                  value={user.role || 'employee'} 
-                  disabled={saving} 
+                <select
+                  className="admin-select"
+                  value={user.role || 'employee'}
+                  disabled={saving}
                   onChange={e => onUpdateUser(user.id, { role: e.target.value })}
                 >
                   <option value="employee">EMPLOYEE</option>
@@ -1470,6 +1601,232 @@ function EmptyState({ title, body }) {
       <div className="admin-empty-icon">!</div>
       <strong>{title}</strong>
       <span>{body}</span>
+    </div>
+  )
+}
+
+/* ========================================================
+   PLATFORM TAB — Superadmin-only Org Management Console
+   ======================================================== */
+function PlatformTab({
+  allOrgs, orgId, newOrgForm, onNewOrgFormChange, onCreateOrg, creatingOrg,
+  platformOp, platformTargetOrgId, platformConfirmText,
+  onSetPlatformOp, onPlatformConfirmTextChange, onExecuteDanger, onSwitchMyOrg, saving,
+}) {
+  const DANGER_OPS = [
+    {
+      id: 'delete_org',
+      label: 'Delete Organization',
+      icon: '🗑️',
+      color: 'red',
+      description: 'Permanently removes the organization and all associated settings. This cannot be undone.',
+      warning: 'Members and candidates of this org may become orphaned. Remove them first.',
+      btnLabel: 'Delete Organization',
+    },
+    {
+      id: 'purge_members',
+      label: 'Purge All Members',
+      icon: '👥',
+      color: 'orange',
+      description: 'Removes all user profiles linked to the selected organization from the system.',
+      warning: 'This will sign out and permanently delete all member accounts in this org.',
+      btnLabel: 'Purge All Members',
+    },
+    {
+      id: 'purge_candidates',
+      label: 'Purge All Candidates',
+      icon: '📋',
+      color: 'amber',
+      description: 'Deletes all candidate records, pipeline entries, and submission data for this org.',
+      warning: 'All pipeline history, interview notes, and candidate data will be gone permanently.',
+      btnLabel: 'Purge All Candidates',
+    },
+  ]
+
+  const activeOp = DANGER_OPS.find(op => op.id === platformOp)
+  const targetOrg = allOrgs.find(o => o.id === platformTargetOrgId)
+  const canExecute = platformConfirmText === targetOrg?.name && platformTargetOrgId
+
+  return (
+    <div className="platform-tab">
+
+      {/* ── Section 1: Platform Overview ── */}
+      <section className="platform-section">
+        <div className="platform-section-header">
+          <div className="platform-section-title">
+            <Icons.Globe />
+            <span>Platform Organization Overview</span>
+          </div>
+          <span className="platform-section-badge">{allOrgs.length} Organizations</span>
+        </div>
+        <div className="platform-org-table">
+          <div className="platform-org-table-head">
+            <span>Organization</span>
+            <span>Slug</span>
+            <span>Email Domain</span>
+            <span>Status</span>
+            <span>Action</span>
+          </div>
+          {allOrgs.map(o => (
+            <div key={o.id} className={`platform-org-row ${o.id === orgId ? 'own-org' : ''}`}>
+              <div className="platform-org-name-cell">
+                <span className="platform-org-color-dot" />
+                <strong>{o.name}</strong>
+                {o.id === orgId && <span className="platform-your-badge">YOUR ORG</span>}
+              </div>
+              <span className="platform-org-meta">{o.slug || '—'}</span>
+              <span className="platform-org-meta">{o.email_domain || '—'}</span>
+              <span className="platform-status-pill active">Active</span>
+              <div>
+                {o.id !== orgId ? (
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn-secondary admin-btn-sm"
+                    onClick={() => onSwitchMyOrg(o)}
+                    disabled={saving}
+                  >
+                    Set as My Org
+                  </button>
+                ) : (
+                  <span style={{ fontSize: '11px', color: '#2563eb', fontWeight: 600 }}>Active Workspace</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Section 2: Create New Organization ── */}
+      <section className="platform-section">
+        <div className="platform-section-header">
+          <div className="platform-section-title">
+            <Icons.Plus />
+            <span>Create New Organization</span>
+          </div>
+        </div>
+        <div className="platform-create-form">
+          <div className="admin-form-group">
+            <label className="admin-label">Organization Name <span className="platform-required">*</span></label>
+            <input
+              className="admin-input"
+              placeholder="e.g. Acme Corp"
+              value={newOrgForm.name}
+              onChange={e => onNewOrgFormChange({ ...newOrgForm, name: e.target.value })}
+            />
+          </div>
+          <div className="admin-form-group">
+            <label className="admin-label">Slug <span className="platform-hint">(auto-generated if blank)</span></label>
+            <input
+              className="admin-input"
+              placeholder="e.g. acme-corp"
+              value={newOrgForm.slug}
+              onChange={e => onNewOrgFormChange({ ...newOrgForm, slug: e.target.value })}
+            />
+          </div>
+          <div className="admin-form-group">
+            <label className="admin-label">Email Domain <span className="platform-hint">(optional)</span></label>
+            <input
+              className="admin-input"
+              placeholder="e.g. acmecorp.com"
+              value={newOrgForm.email_domain}
+              onChange={e => onNewOrgFormChange({ ...newOrgForm, email_domain: e.target.value })}
+            />
+          </div>
+          <button
+            type="button"
+            className="admin-btn admin-btn-primary"
+            onClick={onCreateOrg}
+            disabled={creatingOrg || !newOrgForm.name.trim()}
+          >
+            <Icons.Plus />
+            <span>{creatingOrg ? 'Creating…' : 'Create Organization'}</span>
+          </button>
+        </div>
+      </section>
+
+      {/* ── Section 3: Danger Zone ── */}
+      <section className="platform-section platform-danger-section">
+        <div className="platform-section-header">
+          <div className="platform-section-title platform-danger-title">
+            <Icons.Warning />
+            <span>Danger Zone — Irreversible Operations</span>
+          </div>
+          <span className="platform-danger-badge">⚠️ Superadmin Only</span>
+        </div>
+        <p className="platform-danger-intro">
+          These operations are permanent and cannot be undone. All actions require you to select a target organization
+          and type its exact name as confirmation before executing.
+        </p>
+
+        {/* Danger Op Cards */}
+        <div className="platform-danger-grid">
+          {DANGER_OPS.map(op => (
+            <div key={op.id} className={`platform-danger-card ${op.color} ${platformOp === op.id ? 'expanded' : ''}`}>
+              <div className="platform-danger-card-top">
+                <div className="platform-danger-card-info">
+                  <div className="platform-danger-icon">{op.icon}</div>
+                  <div>
+                    <strong className="platform-danger-label">{op.label}</strong>
+                    <p className="platform-danger-desc">{op.description}</p>
+                    <p className="platform-danger-warn">⚠️ {op.warning}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={`admin-btn platform-danger-trigger-btn ${op.color}`}
+                  onClick={() => onSetPlatformOp(platformOp === op.id ? null : op.id, platformTargetOrgId)}
+                >
+                  {platformOp === op.id ? 'Cancel' : 'Configure →'}
+                </button>
+              </div>
+
+              {/* Expanded Confirmation Panel */}
+              {platformOp === op.id && (
+                <div className="platform-danger-confirm-panel">
+                  <div className="platform-confirm-step">
+                    <label className="admin-label">Step 1 — Select Target Organization</label>
+                    <select
+                      className="admin-select"
+                      value={platformTargetOrgId}
+                      onChange={e => onSetPlatformOp(platformOp, e.target.value)}
+                    >
+                      <option value="">— Select an organization —</option>
+                      {allOrgs
+                        .filter(o => op.id !== 'delete_org' || o.id !== orgId)
+                        .map(o => (
+                          <option key={o.id} value={o.id}>{o.name}{o.id === orgId ? ' (your org)' : ''}</option>
+                        ))
+                      }
+                    </select>
+                  </div>
+                  {platformTargetOrgId && (
+                    <div className="platform-confirm-step">
+                      <label className="admin-label">
+                        Step 2 — Type <strong>"{targetOrg?.name}"</strong> to confirm
+                      </label>
+                      <input
+                        className={`admin-input platform-confirm-input ${canExecute ? 'valid' : ''}`}
+                        placeholder={`Type: ${targetOrg?.name}`}
+                        value={platformConfirmText}
+                        onChange={e => onPlatformConfirmTextChange(e.target.value)}
+                      />
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className={`admin-btn platform-execute-btn ${op.color}`}
+                    onClick={onExecuteDanger}
+                    disabled={!canExecute || saving}
+                  >
+                    <Icons.Trash />
+                    <span>{saving ? 'Executing…' : `⚡ Execute: ${op.btnLabel}`}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   )
 }

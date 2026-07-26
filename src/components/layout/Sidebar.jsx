@@ -31,7 +31,7 @@ export default function Sidebar({ currentPage, onNavigate, theme, onToggleTheme,
 
   const role = profile?.role || 'recruiter'
   const roleStyle = ROLE_COLORS[role] || ROLE_COLORS.recruiter
-  const orgName = profile?.organizations?.name || '22nd Century Tech'
+  const orgName = 'Recruiter CRM'
 
   const visibleItems = navItems.filter(item => {
     if (item.adminOnly) return role === 'admin' || role === 'superadmin'
