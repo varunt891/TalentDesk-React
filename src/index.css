@@ -17541,7 +17541,7 @@ body {
 .dash-ai-executive-panel {
   background: transparent !important;
   border: none !important;
-  border-radius: 0 !important;
+  border-radius: 10 !important;
   padding: 0 !important;
   box-shadow: none !important;
   display: flex !important;
@@ -19623,4 +19623,822 @@ body {
 [data-dropdown-panel] .candidate-filter-option.selected {
   background: #eff6ff;
   color: #2563eb;
+}
+
+/* ==========================================================================
+   DARK MODE RESTORE
+   Keep the newer screens on one calm Vercel-style dark surface instead of
+   mixing hard-coded light cards into dark mode.
+   ========================================================================== */
+
+html[data-theme="dark"] {
+  --bg: #000000;
+  --surface: #0a0a0a;
+  --surface2: #111111;
+  --surface3: #1a1a1a;
+  --border: #2a2a2a;
+  --border-light: rgba(255, 255, 255, 0.08);
+  --text: #f5f5f5;
+  --text2: #a1a1aa;
+  --text3: #71717a;
+}
+
+html[data-theme="dark"] body,
+html[data-theme="dark"] .app-shell,
+html[data-theme="dark"] .app-main,
+html[data-theme="dark"] .dashboard-page,
+html[data-theme="dark"] .ai-command-center-page,
+html[data-theme="dark"] .admin-page,
+html[data-theme="dark"] .ai-center-page,
+html[data-theme="dark"] .tasks-page,
+html[data-theme="dark"] .candidates-page,
+html[data-theme="dark"] .jobs-page {
+  background: #000000 !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .app-sidebar {
+  background: #050505 !important;
+  border-color: var(--border) !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] .mobile-topbar {
+  background: #000000 !important;
+  border-color: var(--border) !important;
+}
+
+html[data-theme="dark"] .dash-executive-bar,
+html[data-theme="dark"] .dash-unified-command-center,
+html[data-theme="dark"] .dash-ai-executive-panel,
+html[data-theme="dark"] .dashboard-panel,
+html[data-theme="dark"] .dash-stat-card,
+html[data-theme="dark"] .dash-kpi-card,
+html[data-theme="dark"] .dash-control-card,
+html[data-theme="dark"] .dash-focus-card,
+html[data-theme="dark"] .dashboard-welcome-panel,
+html[data-theme="dark"] .dashboard-control-bar,
+html[data-theme="dark"] .dashboard-stat,
+html[data-theme="dark"] .dashboard-quick-actions,
+html[data-theme="dark"] .dashboard-focus-strip,
+html[data-theme="dark"] .admin-header-toolbar,
+html[data-theme="dark"] .admin-stat-card,
+html[data-theme="dark"] .admin-panel,
+html[data-theme="dark"] .admin-section-card,
+html[data-theme="dark"] .admin-card,
+html[data-theme="dark"] .admin-tabs-shell,
+html[data-theme="dark"] .admin-person-mini-card,
+html[data-theme="dark"] .admin-manager-card,
+html[data-theme="dark"] .admin-group-row,
+html[data-theme="dark"] .admin-table-card,
+html[data-theme="dark"] .ai-center-header,
+html[data-theme="dark"] .ai-tool-tile,
+html[data-theme="dark"] .ai-form-card,
+html[data-theme="dark"] .ai-results-card,
+html[data-theme="dark"] .tasks-header,
+html[data-theme="dark"] .tasks-control-bar,
+html[data-theme="dark"] .task-kpi-card,
+html[data-theme="dark"] .task-card,
+html[data-theme="dark"] .candidates-topbar,
+html[data-theme="dark"] .candidates-filters,
+html[data-theme="dark"] .candidate-stat,
+html[data-theme="dark"] .candidates-table-card,
+html[data-theme="dark"] .jobs-topbar,
+html[data-theme="dark"] .jobs-filterbar,
+html[data-theme="dark"] .jobs-list,
+html[data-theme="dark"] .job-card,
+html[data-theme="dark"] .job-summary-card {
+  background: #0a0a0a !important;
+  border-color: #2a2a2a !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] .dashboard-panel,
+html[data-theme="dark"] .dash-stat-card,
+html[data-theme="dark"] .dash-kpi-card,
+html[data-theme="dark"] .admin-stat-card,
+html[data-theme="dark"] .admin-section-card,
+html[data-theme="dark"] .ai-tool-tile,
+html[data-theme="dark"] .candidate-stat,
+html[data-theme="dark"] .job-card {
+  background: #111111 !important;
+}
+
+html[data-theme="dark"] .dash-search-compact,
+html[data-theme="dark"] .dash-select-compact,
+html[data-theme="dark"] .dash-filter-dropdown-pill .filter-trigger-btn,
+html[data-theme="dark"] .dash-command-trigger,
+html[data-theme="dark"] .dash-notif-trigger,
+html[data-theme="dark"] .quick-action-item,
+html[data-theme="dark"] .todo-tag-select,
+html[data-theme="dark"] .todo-input-field,
+html[data-theme="dark"] .pipeline-flow-chip.compact,
+html[data-theme="dark"] .todo-item-card.enhanced,
+html[data-theme="dark"] .completed-tasks-collapsible,
+html[data-theme="dark"] .completed-tasks-summary,
+html[data-theme="dark"] .task-options-dropdown,
+html[data-theme="dark"] .admin-tabs-shell button,
+html[data-theme="dark"] .admin-member-select,
+html[data-theme="dark"] .admin-search-input,
+html[data-theme="dark"] .ai-field input,
+html[data-theme="dark"] .ai-field textarea,
+html[data-theme="dark"] .ai-output-content,
+html[data-theme="dark"] .candidates-search,
+html[data-theme="dark"] .candidate-filter-trigger,
+html[data-theme="dark"] .jobs-search,
+html[data-theme="dark"] .job-status-tab {
+  background: #111111 !important;
+  border-color: #2a2a2a !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea {
+  background-color: #111111 !important;
+  border-color: #2a2a2a !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder {
+  color: #737373 !important;
+}
+
+html[data-theme="dark"] h1,
+html[data-theme="dark"] h2,
+html[data-theme="dark"] h3,
+html[data-theme="dark"] h4,
+html[data-theme="dark"] strong,
+html[data-theme="dark"] .dash-greeting-box h1,
+html[data-theme="dark"] .dashboard-panel-head h2,
+html[data-theme="dark"] .pipeline-flow-chip.compact .chip-metrics .count,
+html[data-theme="dark"] .admin-member-name,
+html[data-theme="dark"] .admin-stat-value {
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] p,
+html[data-theme="dark"] small,
+html[data-theme="dark"] span,
+html[data-theme="dark"] label,
+html[data-theme="dark"] .dash-greeting-sub,
+html[data-theme="dark"] .dashboard-panel-head p,
+html[data-theme="dark"] .admin-member-sub,
+html[data-theme="dark"] .admin-stat-label {
+  color: var(--text2) !important;
+}
+
+html[data-theme="dark"] .activity-feed-item,
+html[data-theme="dark"] .activity-item,
+html[data-theme="dark"] .activity-card,
+html[data-theme="dark"] .feed-item,
+html[data-theme="dark"] .dashboard-activity-item,
+html[data-theme="dark"] .workspace-activity-item {
+  background: #111111 !important;
+  border: 1px solid #2a2a2a !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .dash-kpi-chip.green,
+html[data-theme="dark"] .status-pill.open,
+html[data-theme="dark"] .status-badge.active {
+  background: rgba(16, 185, 129, 0.12) !important;
+  border-color: rgba(16, 185, 129, 0.28) !important;
+  color: #34d399 !important;
+}
+
+html[data-theme="dark"] .dash-kpi-chip.purple,
+html[data-theme="dark"] .quick-action-item.ai {
+  background: rgba(124, 58, 237, 0.14) !important;
+  border-color: rgba(124, 58, 237, 0.3) !important;
+  color: #a78bfa !important;
+}
+
+html[data-theme="dark"] .dash-kpi-chip.orange {
+  background: rgba(245, 158, 11, 0.12) !important;
+  border-color: rgba(245, 158, 11, 0.3) !important;
+  color: #fbbf24 !important;
+}
+
+html[data-theme="dark"] .admin-group-row,
+html[data-theme="dark"] .admin-person-mini-card {
+  overflow: hidden !important;
+}
+
+html[data-theme="dark"] .ai-radar-card,
+html[data-theme="dark"] .job-health-card {
+  background: #111111 !important;
+  border: 1px solid #2a2a2a !important;
+  color: #f5f5f5 !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] .ai-radar-card.blue,
+html[data-theme="dark"] .job-health-card.blue {
+  background: rgba(37, 99, 235, 0.1) !important;
+  border-color: rgba(59, 130, 246, 0.32) !important;
+}
+
+html[data-theme="dark"] .ai-radar-card.red,
+html[data-theme="dark"] .job-health-card.red {
+  background: rgba(239, 68, 68, 0.09) !important;
+  border-color: rgba(239, 68, 68, 0.34) !important;
+}
+
+html[data-theme="dark"] .ai-radar-card.green,
+html[data-theme="dark"] .job-health-card.green {
+  background: rgba(16, 185, 129, 0.1) !important;
+  border-color: rgba(16, 185, 129, 0.34) !important;
+}
+
+html[data-theme="dark"] .ai-radar-card.amber,
+html[data-theme="dark"] .job-health-card.amber {
+  background: rgba(245, 158, 11, 0.1) !important;
+  border-color: rgba(245, 158, 11, 0.34) !important;
+}
+
+html[data-theme="dark"] .ai-radar-card strong,
+html[data-theme="dark"] .job-health-card h3,
+html[data-theme="dark"] .job-health-card strong {
+  color: #f5f5f5 !important;
+}
+
+html[data-theme="dark"] .ai-radar-card p,
+html[data-theme="dark"] .job-health-card p,
+html[data-theme="dark"] .job-health-stats,
+html[data-theme="dark"] .job-health-stats span {
+  color: #a1a1aa !important;
+}
+
+html[data-theme="dark"] .radar-tag,
+html[data-theme="dark"] .priority-badge {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+html[data-theme="dark"] .ai-radar-card.blue .radar-tag {
+  color: #93c5fd !important;
+}
+
+html[data-theme="dark"] .ai-radar-card.red .radar-tag,
+html[data-theme="dark"] .priority-badge.urgent {
+  color: #fca5a5 !important;
+}
+
+html[data-theme="dark"] .ai-radar-card.green .radar-tag,
+html[data-theme="dark"] .priority-badge.normal {
+  color: #6ee7b7 !important;
+}
+
+html[data-theme="dark"] .ai-radar-card.amber .radar-tag,
+html[data-theme="dark"] .priority-badge.high {
+  color: #fcd34d !important;
+}
+
+/* ==========================================================================
+   COPILOT THEME RESTORE
+   Dark shell in dark mode, crisp white cards in light mode.
+   ========================================================================== */
+
+html[data-theme="dark"] .copilot-slideout-overlay {
+  background: rgba(0, 0, 0, 0.58) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+}
+
+html[data-theme="dark"] .copilot-slideout-panel {
+  background: #050505 !important;
+  border: 1px solid #2a2a2a !important;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.72) !important;
+}
+
+html[data-theme="dark"] .copilot-window-header {
+  background: #050505 !important;
+  border-bottom: 1px solid #242424 !important;
+}
+
+html[data-theme="dark"] .copilot-window-header strong {
+  color: #f5f5f5 !important;
+}
+
+html[data-theme="dark"] .header-ctrl-btn {
+  background: #111111 !important;
+  border-color: #2a2a2a !important;
+  color: #a1a1aa !important;
+}
+
+html[data-theme="dark"] .header-ctrl-btn:hover {
+  background: #1a1a1a !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="dark"] .copilot-messages-box {
+  background: #080808 !important;
+}
+
+html[data-theme="dark"] .copilot-msg-card.ai,
+html[data-theme="dark"] .typing-indicator-card {
+  background: #111111 !important;
+  border: 1px solid #2a2a2a !important;
+  color: #f5f5f5 !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] .copilot-msg-bubble.user {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(59, 130, 246, 0.45) !important;
+}
+
+html[data-theme="dark"] .copilot-summary,
+html[data-theme="dark"] .copilot-msg-card.ai p,
+html[data-theme="dark"] .copilot-msg-card.ai strong {
+  color: #f5f5f5 !important;
+}
+
+html[data-theme="dark"] .copilot-msg-card.ai small,
+html[data-theme="dark"] .copilot-followup-text,
+html[data-theme="dark"] .copilot-time-tag {
+  color: #a1a1aa !important;
+}
+
+html[data-theme="dark"] .copilot-snapshot-card,
+html[data-theme="dark"] .snapshot-badge,
+html[data-theme="dark"] .copilot-action-confirm-card,
+html[data-theme="dark"] .copilot-insights-accordion,
+html[data-theme="dark"] .accordion-content-body {
+  background: #0a0a0a !important;
+  border-color: #2a2a2a !important;
+  color: #f5f5f5 !important;
+}
+
+html[data-theme="dark"] .copilot-insight-pill {
+  background: rgba(37, 99, 235, 0.12) !important;
+  border-color: rgba(59, 130, 246, 0.3) !important;
+}
+
+html[data-theme="dark"] .copilot-recommendation-box,
+html[data-theme="dark"] .copilot-success-card {
+  background: rgba(16, 185, 129, 0.12) !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+html[data-theme="dark"] .copilot-prompts-strip {
+  background: #050505 !important;
+  border-top: 1px solid #242424 !important;
+}
+
+html[data-theme="dark"] .copilot-prompts-strip button,
+html[data-theme="dark"] .copilot-rendered-action-btn {
+  background: rgba(37, 99, 235, 0.14) !important;
+  border-color: rgba(59, 130, 246, 0.35) !important;
+  color: #93c5fd !important;
+}
+
+html[data-theme="dark"] .copilot-prompts-strip button:hover,
+html[data-theme="dark"] .copilot-rendered-action-btn:hover {
+  background: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="dark"] .copilot-input-box {
+  background: #111111 !important;
+  border: 1px solid #2a2a2a !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02) inset !important;
+}
+
+html[data-theme="dark"] .copilot-input-box:focus-within {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18) !important;
+}
+
+html[data-theme="dark"] .copilot-input-box input {
+  background: transparent !important;
+  color: #f5f5f5 !important;
+}
+
+html[data-theme="dark"] .copilot-input-box input::placeholder {
+  color: #737373 !important;
+}
+
+html[data-theme="dark"] .copilot-input-box button {
+  background: #2563eb !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] .copilot-floating-trigger-btn,
+html[data-theme="dark"] .copilot-minimized-pill-btn {
+  background: #111111 !important;
+  border: 1px solid #2a2a2a !important;
+  color: #f5f5f5 !important;
+  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.55) !important;
+}
+
+html[data-theme="light"] .dashboard-panel,
+html[data-theme="light"] .dash-stat-card,
+html[data-theme="light"] .dash-kpi-card,
+html[data-theme="light"] .admin-stat-card,
+html[data-theme="light"] .admin-section-card,
+html[data-theme="light"] .ai-tool-tile,
+html[data-theme="light"] .ai-form-card,
+html[data-theme="light"] .ai-results-card,
+html[data-theme="light"] .candidate-stat,
+html[data-theme="light"] .job-card,
+html[data-theme="light"] .copilot-msg-card.ai,
+html[data-theme="light"] .typing-indicator-card {
+  background: #ffffff !important;
+  border-color: #dbe3f0 !important;
+  color: #0f172a !important;
+}
+
+/* ==========================================================================
+   VERCEL-CALIBRATED DARK THEME RESTORE
+   Final layer for the calm black UI pass requested before the later CSS drift.
+   ========================================================================== */
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #000000;
+  --surface: #0a0a0a;
+  --surface2: #111111;
+  --surface3: #181818;
+  --border: #2b2b2b;
+  --text: #ededed;
+  --text2: #a1a1aa;
+  --text3: #737373;
+  --accent: #3b82f6;
+}
+
+html[data-theme="dark"],
+html[data-theme="dark"] body,
+html[data-theme="dark"] #root,
+html[data-theme="dark"] .app-shell,
+html[data-theme="dark"] .app-main {
+  background: #000000 !important;
+  color: #ededed !important;
+}
+
+html[data-theme="dark"] .app-main {
+  box-shadow: inset 1px 0 0 #1f1f1f !important;
+}
+
+html[data-theme="dark"] .app-sidebar,
+html[data-theme="dark"] .sidebar-logo,
+html[data-theme="dark"] .sidebar-footer {
+  background: #050505 !important;
+  border-color: #242424 !important;
+}
+
+html[data-theme="dark"] .sidebar-nav-item,
+html[data-theme="dark"] .sidebar-nav-icon,
+html[data-theme="dark"] .theme-slider-container,
+html[data-theme="dark"] .user-card {
+  background: transparent !important;
+  border-color: #242424 !important;
+  color: #a1a1aa !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] .sidebar-nav-item:hover,
+html[data-theme="dark"] .sidebar-nav-item.active {
+  background: #111827 !important;
+  border-color: rgba(59, 130, 246, 0.35) !important;
+  color: #f5f5f5 !important;
+}
+
+html[data-theme="dark"] .dashboard-page,
+html[data-theme="dark"] .ai-command-center-page,
+html[data-theme="dark"] .admin-page,
+html[data-theme="dark"] .tasks-page,
+html[data-theme="dark"] .ai-center-page,
+html[data-theme="dark"] .candidates-page,
+html[data-theme="dark"] .jobs-page,
+html[data-theme="dark"] .reports-page,
+html[data-theme="dark"] .pipeline-page,
+html[data-theme="dark"] .callbacks-page,
+html[data-theme="dark"] .directory-page,
+html[data-theme="dark"] .followups-page,
+html[data-theme="dark"] .postings-page,
+html[data-theme="dark"] .resubmit-page {
+  background: #000000 !important;
+  color: #ededed !important;
+}
+
+html[data-theme="dark"] .dash-executive-bar,
+html[data-theme="dark"] .dash-unified-command-center,
+html[data-theme="dark"] .dash-ai-executive-panel,
+html[data-theme="dark"] .dashboard-panel,
+html[data-theme="dark"] .dashboard-welcome-panel,
+html[data-theme="dark"] .dashboard-hero-metrics,
+html[data-theme="dark"] .dashboard-control-bar,
+html[data-theme="dark"] .dashboard-stat,
+html[data-theme="dark"] .dashboard-quick-actions,
+html[data-theme="dark"] .dashboard-focus-strip,
+html[data-theme="dark"] .dash-control-card,
+html[data-theme="dark"] .dash-stat-card,
+html[data-theme="dark"] .dash-kpi-card,
+html[data-theme="dark"] .dash-focus-card,
+html[data-theme="dark"] .tasks-header,
+html[data-theme="dark"] .tasks-control-bar,
+html[data-theme="dark"] .task-kpi-card,
+html[data-theme="dark"] .task-card,
+html[data-theme="dark"] .ai-center-header,
+html[data-theme="dark"] .ai-tool-tile,
+html[data-theme="dark"] .ai-form-card,
+html[data-theme="dark"] .ai-results-card,
+html[data-theme="dark"] .candidates-topbar,
+html[data-theme="dark"] .candidates-filters,
+html[data-theme="dark"] .candidates-table-card,
+html[data-theme="dark"] .candidate-stat,
+html[data-theme="dark"] .jobs-topbar,
+html[data-theme="dark"] .jobs-filterbar,
+html[data-theme="dark"] .jobs-list,
+html[data-theme="dark"] .job-card,
+html[data-theme="dark"] .job-summary-card,
+html[data-theme="dark"] .admin-header-toolbar,
+html[data-theme="dark"] .admin-stat-card,
+html[data-theme="dark"] .admin-panel,
+html[data-theme="dark"] .admin-section-card,
+html[data-theme="dark"] .admin-card,
+html[data-theme="dark"] .admin-tabs-shell,
+html[data-theme="dark"] .admin-person-mini-card,
+html[data-theme="dark"] .admin-manager-card,
+html[data-theme="dark"] .admin-group-row,
+html[data-theme="dark"] .admin-table-card,
+html[data-theme="dark"] .reports-card,
+html[data-theme="dark"] .report-card,
+html[data-theme="dark"] .pipeline-card,
+html[data-theme="dark"] .callback-card,
+html[data-theme="dark"] .followup-card {
+  background: #0a0a0a !important;
+  border: 1px solid #2b2b2b !important;
+  color: #ededed !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] .dash-executive-bar,
+html[data-theme="dark"] .dash-unified-command-center,
+html[data-theme="dark"] .admin-header-toolbar,
+html[data-theme="dark"] .ai-center-header,
+html[data-theme="dark"] .tasks-header,
+html[data-theme="dark"] .candidates-topbar,
+html[data-theme="dark"] .jobs-topbar {
+  background: #050505 !important;
+}
+
+html[data-theme="dark"] .dash-kpi-card,
+html[data-theme="dark"] .dash-stat-card,
+html[data-theme="dark"] .dashboard-panel,
+html[data-theme="dark"] .admin-stat-card,
+html[data-theme="dark"] .task-kpi-card,
+html[data-theme="dark"] .candidate-stat,
+html[data-theme="dark"] .job-card,
+html[data-theme="dark"] .ai-tool-tile,
+html[data-theme="dark"] .ai-radar-card,
+html[data-theme="dark"] .job-health-card {
+  background: #111111 !important;
+}
+
+html[data-theme="dark"] .dash-search-compact,
+html[data-theme="dark"] .dash-command-trigger,
+html[data-theme="dark"] .dash-notif-trigger,
+html[data-theme="dark"] .dash-select-compact,
+html[data-theme="dark"] .dash-filter-dropdown-pill .filter-trigger-btn,
+html[data-theme="dark"] .dash-filter-btn,
+html[data-theme="dark"] .dash-filter-select,
+html[data-theme="dark"] .dash-master-search-input,
+html[data-theme="dark"] .dash-master-filter-btn,
+html[data-theme="dark"] .dash-master-select,
+html[data-theme="dark"] .quick-action-item,
+html[data-theme="dark"] .todo-tag-select,
+html[data-theme="dark"] .todo-input-field,
+html[data-theme="dark"] .task-options-dropdown,
+html[data-theme="dark"] .completed-tasks-summary,
+html[data-theme="dark"] .completed-tasks-collapsible,
+html[data-theme="dark"] .candidate-filter-trigger,
+html[data-theme="dark"] .candidates-search,
+html[data-theme="dark"] .jobs-search,
+html[data-theme="dark"] .job-status-tab,
+html[data-theme="dark"] .admin-search-input,
+html[data-theme="dark"] .admin-member-select,
+html[data-theme="dark"] .ai-field input,
+html[data-theme="dark"] .ai-field textarea,
+html[data-theme="dark"] .ai-output-content,
+html[data-theme="dark"] [data-dropdown-panel],
+html[data-theme="dark"] [data-dropdown-panel] .multiselect-dropdown-panel,
+html[data-theme="dark"] [data-dropdown-panel] .candidate-filter-menu,
+html[data-theme="dark"] [data-dropdown-panel] .multiselect-search-input,
+html[data-theme="dark"] [data-dropdown-panel] .candidate-filter-search input {
+  background: #111111 !important;
+  border-color: #2b2b2b !important;
+  color: #ededed !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] button {
+  border-color: #2b2b2b;
+}
+
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea {
+  background-color: #111111 !important;
+  color: #ededed !important;
+}
+
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder {
+  color: #737373 !important;
+}
+
+html[data-theme="dark"] h1,
+html[data-theme="dark"] h2,
+html[data-theme="dark"] h3,
+html[data-theme="dark"] h4,
+html[data-theme="dark"] h5,
+html[data-theme="dark"] h6,
+html[data-theme="dark"] strong,
+html[data-theme="dark"] .title,
+html[data-theme="dark"] .name,
+html[data-theme="dark"] .dash-greeting-box h1,
+html[data-theme="dark"] .dashboard-panel-head h2,
+html[data-theme="dark"] .admin-member-name,
+html[data-theme="dark"] .admin-stat-value,
+html[data-theme="dark"] .job-title,
+html[data-theme="dark"] .candidate-name {
+  color: #ededed !important;
+}
+
+html[data-theme="dark"] p,
+html[data-theme="dark"] small,
+html[data-theme="dark"] label,
+html[data-theme="dark"] .subtitle,
+html[data-theme="dark"] .muted,
+html[data-theme="dark"] .dash-greeting-sub,
+html[data-theme="dark"] .dashboard-panel-head p,
+html[data-theme="dark"] .admin-member-sub,
+html[data-theme="dark"] .admin-stat-label,
+html[data-theme="dark"] .job-meta,
+html[data-theme="dark"] .candidate-meta {
+  color: #a1a1aa !important;
+}
+
+html[data-theme="dark"] table,
+html[data-theme="dark"] thead,
+html[data-theme="dark"] tbody,
+html[data-theme="dark"] tr,
+html[data-theme="dark"] th,
+html[data-theme="dark"] td {
+  background-color: transparent !important;
+  border-color: #2b2b2b !important;
+  color: #d4d4d8 !important;
+}
+
+html[data-theme="dark"] th {
+  color: #a1a1aa !important;
+}
+
+html[data-theme="dark"] .activity-feed-item,
+html[data-theme="dark"] .activity-item,
+html[data-theme="dark"] .activity-card,
+html[data-theme="dark"] .feed-item,
+html[data-theme="dark"] .dashboard-activity-item,
+html[data-theme="dark"] .workspace-activity-item,
+html[data-theme="dark"] .notif-dropdown,
+html[data-theme="dark"] .notif-item,
+html[data-theme="dark"] .todo-item-card.enhanced,
+html[data-theme="dark"] .pipeline-flow-chip.compact {
+  background: #111111 !important;
+  border-color: #2b2b2b !important;
+  color: #ededed !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] .ai-radar-card.blue,
+html[data-theme="dark"] .job-health-card.blue {
+  background: #0b1324 !important;
+  border-color: #1d3b72 !important;
+}
+
+html[data-theme="dark"] .ai-radar-card.red,
+html[data-theme="dark"] .job-health-card.red {
+  background: #1b0d0d !important;
+  border-color: #4a1f1f !important;
+}
+
+html[data-theme="dark"] .ai-radar-card.green,
+html[data-theme="dark"] .job-health-card.green {
+  background: #07170f !important;
+  border-color: #174430 !important;
+}
+
+html[data-theme="dark"] .ai-radar-card.amber,
+html[data-theme="dark"] .job-health-card.amber {
+  background: #1c1305 !important;
+  border-color: #4b330c !important;
+}
+
+html[data-theme="dark"] .ai-radar-card *,
+html[data-theme="dark"] .job-health-card * {
+  color: inherit;
+}
+
+html[data-theme="dark"] .ai-radar-card strong,
+html[data-theme="dark"] .job-health-card h3,
+html[data-theme="dark"] .job-health-card strong {
+  color: #f5f5f5 !important;
+}
+
+html[data-theme="dark"] .ai-radar-card p,
+html[data-theme="dark"] .job-health-card p,
+html[data-theme="dark"] .job-health-stats,
+html[data-theme="dark"] .job-health-stats span {
+  color: #a1a1aa !important;
+}
+
+html[data-theme="dark"] .dash-kpi-chip,
+html[data-theme="dark"] .status-pill,
+html[data-theme="dark"] .status-badge,
+html[data-theme="dark"] .priority-badge,
+html[data-theme="dark"] .radar-tag {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html[data-theme="dark"] .quick-action-item:hover,
+html[data-theme="dark"] .ai-tool-tile:hover,
+html[data-theme="dark"] .job-card:hover,
+html[data-theme="dark"] .task-card:hover,
+html[data-theme="dark"] .candidate-row:hover,
+html[data-theme="dark"] .notif-item:hover {
+  background: #171717 !important;
+  border-color: #3a3a3a !important;
+}
+
+html[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #333333 !important;
+}
+
+/* Admin overview rows restored to the Vercel-style dark system */
+html[data-theme="dark"] .admin-team-health-list {
+  background: transparent !important;
+}
+
+html[data-theme="dark"] .admin-team-row,
+html[data-theme="dark"] .admin-leaderboard-row {
+  background: #111111 !important;
+  border: 1px solid #2b2b2b !important;
+  color: #ededed !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] .admin-team-row:hover,
+html[data-theme="dark"] .admin-leaderboard-row:hover {
+  background: #171717 !important;
+  border-color: #3a3a3a !important;
+}
+
+html[data-theme="dark"] .admin-team-meta strong,
+html[data-theme="dark"] .admin-leaderboard-info strong,
+html[data-theme="dark"] .admin-card-title,
+html[data-theme="dark"] .admin-card-title span {
+  color: #ededed !important;
+}
+
+html[data-theme="dark"] .admin-team-meta span,
+html[data-theme="dark"] .admin-leaderboard-info span,
+html[data-theme="dark"] .admin-card-subtitle,
+html[data-theme="dark"] .admin-team-stat-tag {
+  color: #a1a1aa !important;
+}
+
+html[data-theme="dark"] .admin-team-bar-wrapper {
+  background: #242424 !important;
+}
+
+html[data-theme="dark"] .admin-team-bar {
+  background: #3b82f6 !important;
+}
+
+html[data-theme="dark"] .admin-metric-tag,
+html[data-theme="dark"] .org-tree-metric-pill {
+  background: #111111 !important;
+  border: 1px solid #2b2b2b !important;
+  color: #a1a1aa !important;
+}
+
+/* Soften the Gemini command center divider in dark mode */
+html[data-theme="dark"] .dash-command-divider {
+  height: 1px !important;
+  background: #242424 !important;
+  border: 0 !important;
+  opacity: 0.55 !important;
 }
