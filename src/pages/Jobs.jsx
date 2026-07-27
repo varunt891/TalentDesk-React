@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 
 const emptyForm = {
   job_id: '', title: '', client: '', location: '', type: 'Contract',
-  status: 'Open', rate: '', open_date: new Date().toISOString().slice(0,10),
+  status: 'Open', rate: '', open_date: new Date().toISOString().slice(0, 10),
   priority: 'Medium', fe: '', skills: [], description: ''
 }
 
@@ -41,9 +41,9 @@ export default function Jobs() {
     }
   }, [user])
 
-  useEffect(() => { 
+  useEffect(() => {
     console.log('[Jobs] useEffect triggered, user:', user?.id)
-    if (user) fetchJobs() 
+    if (user) fetchJobs()
   }, [user, fetchJobs])
 
   const showToast = (msg, type = 'success') => {
@@ -60,7 +60,7 @@ export default function Jobs() {
 
   const openAdd = () => { setForm(emptyForm); setEditingId(null); setSkillInput(''); setShowModal(true) }
   const openEdit = (j) => {
-    setForm({ job_id: j.job_id||'', title: j.title||'', client: j.client||'', location: j.location||'', type: j.type||'Contract', status: j.status||'Open', rate: j.rate||'', open_date: j.open_date||new Date().toISOString().slice(0,10), priority: j.priority||'Medium', fe: j.fe||'', skills: j.skills||[], description: j.description||'' })
+    setForm({ job_id: j.job_id || '', title: j.title || '', client: j.client || '', location: j.location || '', type: j.type || 'Contract', status: j.status || 'Open', rate: j.rate || '', open_date: j.open_date || new Date().toISOString().slice(0, 10), priority: j.priority || 'Medium', fe: j.fe || '', skills: j.skills || [], description: j.description || '' })
     setEditingId(j.id); setSkillInput(''); setShowModal(true)
   }
 
@@ -139,7 +139,7 @@ export default function Jobs() {
 
       <div className="jobs-filterbar">
         <div className="jobs-status-tabs">
-          {['Open','Filled','On Hold','Closed'].map(s => (
+          {['Open', 'Filled', 'On Hold', 'Closed'].map(s => (
             <button
               key={s}
               onClick={() => setStatusFilter(statusFilter === s ? '' : s)}
@@ -155,48 +155,48 @@ export default function Jobs() {
 
       <div className="jobs-content">
         {loading ? <div style={emptyState}>Loading jobs...</div> :
-         filtered.length === 0 ? (
-          <div className="jobs-empty">
-            <strong>No jobs found</strong>
-            <span>{search || statusFilter ? 'Try changing the search or status filter.' : 'Create your first job to start tracking client demand.'}</span>
-            {!search && !statusFilter && <button onClick={openAdd} className="jobs-primary-btn">New Job</button>}
-          </div>
-        ) : (
-          <div className="jobs-list">
-            <div className="jobs-list-header">
-              <span>Role</span>
-              <span>Status</span>
-              <span>Location</span>
-              <span>Type</span>
-              <span>Rate</span>
-              <span>Owner</span>
-              <span>Actions</span>
+          filtered.length === 0 ? (
+            <div className="jobs-empty">
+              <strong>No jobs found</strong>
+              <span>{search || statusFilter ? 'Try changing the search or status filter.' : 'Create your first job to start tracking client demand.'}</span>
+              {!search && !statusFilter && <button onClick={openAdd} className="jobs-primary-btn">New Job</button>}
             </div>
-            {filtered.map(j => (
-              <article
-                key={j.id}
-                className="jobs-row"
-                onClick={() => setShowDetail(j)}
-              >
-                <div className="jobs-role">
-                  <strong>{j.title || 'Untitled role'}</strong>
-                  <span>{j.job_id || 'No Job ID'} - {j.client || 'Client n/a'}</span>
-                </div>
-                <span className="jobs-status-pill" style={{ '--job-status-color': STATUS_COLORS[j.status] || 'var(--text3)' }}>{j.status || 'Open'}</span>
-                <div className="jobs-row-details">
-                  <span className="jobs-cell"><span className="jobs-mobile-label">Location: </span>{j.location || 'Location n/a'}</span>
-                  <span className="jobs-cell"><span className="jobs-mobile-label">Type: </span>{j.type || 'Type n/a'}</span>
-                  <span className="jobs-cell jobs-rate"><span className="jobs-mobile-label">Rate: </span>{j.rate || 'Rate n/a'}</span>
-                  <span className="jobs-cell"><span className="jobs-mobile-label">Owner: </span>{j.fe || 'No owner'}</span>
-                </div>
-                <div className="jobs-row-actions">
-                  <button onClick={(e) => { e.stopPropagation(); openEdit(j) }}>Edit</button>
-                  <button className="danger" onClick={(e) => { e.stopPropagation(); setDeleteId(j.id) }}>Delete</button>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
+          ) : (
+            <div className="jobs-list">
+              <div className="jobs-list-header">
+                <span>Role</span>
+                <span>Status</span>
+                <span>Location</span>
+                <span>Type</span>
+                <span>Rate</span>
+                <span>Owner</span>
+                <span>Actions</span>
+              </div>
+              {filtered.map(j => (
+                <article
+                  key={j.id}
+                  className="jobs-row"
+                  onClick={() => setShowDetail(j)}
+                >
+                  <div className="jobs-role">
+                    <strong>{j.title || 'Untitled role'}</strong>
+                    <span>{j.job_id || 'No Job ID'} - {j.client || 'Client n/a'}</span>
+                  </div>
+                  <span className="jobs-status-pill" style={{ '--job-status-color': STATUS_COLORS[j.status] || 'var(--text3)' }}>{j.status || 'Open'}</span>
+                  <div className="jobs-row-details">
+                    <span className="jobs-cell"><span className="jobs-mobile-label">Location: </span>{j.location || 'Location n/a'}</span>
+                    <span className="jobs-cell"><span className="jobs-mobile-label">Type: </span>{j.type || 'Type n/a'}</span>
+                    <span className="jobs-cell jobs-rate"><span className="jobs-mobile-label">Rate: </span>{j.rate || 'Rate n/a'}</span>
+                    <span className="jobs-cell"><span className="jobs-mobile-label">Owner: </span>{j.fe || 'No owner'}</span>
+                  </div>
+                  <div className="jobs-row-actions">
+                    <button onClick={(e) => { e.stopPropagation(); openEdit(j) }}>Edit</button>
+                    <button className="danger" onClick={(e) => { e.stopPropagation(); setDeleteId(j.id) }}>Delete</button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
       </div>
 
       {showModal && (
@@ -214,19 +214,19 @@ export default function Jobs() {
                 <Field label="Location"><input {...inp('location')} placeholder="New York, NY / Remote" /></Field>
                 <Field label="Type">
                   <select {...inp('type')} style={inputStyle}>
-                    {['Contract','Full-time','Contract-to-Hire','Part-time'].map(o => <option key={o}>{o}</option>)}
+                    {['Contract', 'Full-time', 'Contract-to-Hire', 'Part-time'].map(o => <option key={o}>{o}</option>)}
                   </select>
                 </Field>
                 <Field label="Status">
                   <select {...inp('status')} style={inputStyle}>
-                    {['Open','Filled','On Hold','Closed'].map(o => <option key={o}>{o}</option>)}
+                    {['Open', 'Filled', 'On Hold', 'Closed'].map(o => <option key={o}>{o}</option>)}
                   </select>
                 </Field>
                 <Field label="Rate"><input {...inp('rate')} placeholder="$80-100/hr" /></Field>
                 <Field label="Open Date"><input {...inp('open_date')} type="date" /></Field>
                 <Field label="Priority">
                   <select {...inp('priority')} style={inputStyle}>
-                    {['High','Medium','Low'].map(o => <option key={o}>{o}</option>)}
+                    {['High', 'Medium', 'Low'].map(o => <option key={o}>{o}</option>)}
                   </select>
                 </Field>
                 <Field label="Front End"><input {...inp('fe')} placeholder="Sarah K." /></Field>

@@ -350,7 +350,7 @@ export default function Candidates() {
               strokeWidth="2.5"
               style={{ transform: userCollapsed ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}
             >
-              <path d="M18 15l-6-6-6 6"/>
+              <path d="M18 15l-6-6-6 6" />
             </svg>
             {userCollapsed ? 'Show Stats' : 'Collapse Stats'}
           </button>
