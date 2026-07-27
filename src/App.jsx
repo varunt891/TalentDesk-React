@@ -57,12 +57,18 @@ function MainApp() {
         if (!callbacks || callbacks.length === 0) return
 
         const now = new Date()
-        const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-        const currentDate = now.toISOString().slice(0, 10)
 
         for (const callback of callbacks) {
-          // Check if callback time has been reached (within the current minute)
-          if (callback.date === currentDate && callback.time === currentTime && !notifiedCallbacks.has(callback.id)) {
+          if (!callback.date || !callback.time || notifiedCallbacks.has(callback.id)) continue
+
+          // Compare full timestamps (not exact-minute string equality) so a check that
+          // runs late still catches it — mobile browsers suspend background tabs, so a
+          // locked screen can make the interval skip the exact scheduled minute entirely.
+          const scheduledAt = new Date(`${callback.date}T${callback.time}:00`)
+          const msOverdue = now - scheduledAt
+
+          // Reached or just passed, but not stale (ignore anything over a day overdue).
+          if (msOverdue >= 0 && msOverdue <= 24 * 60 * 60 * 1000) {
             setCallbackAlert(callback)
             setNotifiedCallbacks(prev => new Set([...prev, callback.id]))
             // Auto-dismiss after 10 seconds
@@ -78,7 +84,18 @@ function MainApp() {
     const interval = setInterval(checkCallbacks, 60000)
     checkCallbacks() // Initial check
 
-    return () => clearInterval(interval)
+    // Re-check the moment the app is foregrounded again — background tabs on
+    // mobile get frozen, so this is what actually catches a missed reminder
+    // once the user unlocks their phone.
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') checkCallbacks()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
   }, [user, notifiedCallbacks])
 
   const renderPage = () => {

@@ -1674,10 +1674,10 @@ function PlatformTab({
                 <strong>{o.name}</strong>
                 {o.id === orgId && <span className="platform-your-badge">YOUR ORG</span>}
               </div>
-              <span className="platform-org-meta">{o.slug || '—'}</span>
-              <span className="platform-org-meta">{o.email_domain || '—'}</span>
-              <span className="platform-status-pill active">Active</span>
-              <div>
+              <span className="platform-org-meta" data-label="Slug">{o.slug || '—'}</span>
+              <span className="platform-org-meta" data-label="Email Domain">{o.email_domain || '—'}</span>
+              <span className="platform-status-pill active" data-label="Status">Active</span>
+              <div className="platform-org-action-cell">
                 {o.id !== orgId ? (
                   <button
                     type="button"

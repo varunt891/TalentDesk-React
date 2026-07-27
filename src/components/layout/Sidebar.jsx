@@ -1,19 +1,24 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 
 const navItems = [
+  // Main: the core day-to-day recruiting workflow
   { id: 'dashboard', icon: 'dashboard', label: 'Dashboard', section: 'Main' },
-  { id: 'tasks', icon: 'tasks', label: 'Tasks & Targets', section: 'Main' },
-  { id: 'ai_center', icon: 'ai', label: 'AI Center', section: 'Main' },
   { id: 'candidates', icon: 'candidates', label: 'Candidates', section: 'Main' },
   { id: 'pipeline', icon: 'pipeline', label: 'Pipeline', section: 'Main' },
   { id: 'jobs', icon: 'jobs', label: 'Jobs', section: 'Main' },
+  { id: 'tasks', icon: 'tasks', label: 'Tasks & Targets', section: 'Main' },
+  // Tools: supporting utilities used situationally, not the core object screens
   { id: 'callbacks', icon: 'callbacks', label: 'Callbacks', section: 'Tools' },
-  { id: 'reports', icon: 'reports', label: 'Reports', section: 'Tools' },
-  { id: 'resubmit', icon: 'resubmit', label: 'Re-submit Finder', section: 'Tools' },
   { id: 'followups', icon: 'followups', label: 'Follow-ups', section: 'Tools' },
+  { id: 'resubmit', icon: 'resubmit', label: 'Re-submit Finder', section: 'Tools' },
+  { id: 'ai_center', icon: 'ai', label: 'AI Center', section: 'Tools' },
+  { id: 'reports', icon: 'reports', label: 'Reports', section: 'Tools' },
   { id: 'postings', icon: 'postings', label: 'Job Postings', section: 'Tools' },
-  { id: 'directory', icon: 'directory', label: 'Team Directory', section: 'Tools' },
+  // Workspace: org/people reference, not a recruiting-workflow tool
+  { id: 'directory', icon: 'directory', label: 'Team Directory', section: 'Workspace' },
+  // Admin: role-gated
   { id: 'admin', icon: 'admin', label: 'Admin Panel', section: 'Admin', adminOnly: true },
 ]
 
@@ -25,9 +30,49 @@ const ROLE_COLORS = {
   employee: { bg: 'rgba(100,116,139,0.15)', color: '#64748b', label: 'Employee' },
 }
 
+function readJson(key, fallback) {
+  try {
+    const saved = localStorage.getItem(key)
+    const parsed = saved ? JSON.parse(saved) : fallback
+    return parsed ?? fallback
+  } catch {
+    return fallback
+  }
+}
+
 export default function Sidebar({ currentPage, onNavigate, theme, onToggleTheme, isCollapsed, onToggleCollapse, onClose, pendingTasksCount = 0 }) {
   const { user, profile, profileError, signOut } = useAuth()
   const navigate = useNavigate()
+
+  const [favorites, setFavorites] = useState(() => readJson('td_sidebar_favorites', []))
+  const [recentPages, setRecentPages] = useState(() => readJson('td_sidebar_recents', []))
+  const [collapsedSections, setCollapsedSections] = useState(() => readJson('td_sidebar_section_state', {}))
+
+  const toggleFavorite = (id, e) => {
+    e.stopPropagation()
+    setFavorites(prev => {
+      const next = prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]
+      try { localStorage.setItem('td_sidebar_favorites', JSON.stringify(next)) } catch { /* ignore quota errors */ }
+      return next
+    })
+  }
+
+  const toggleSectionCollapse = (title) => {
+    setCollapsedSections(prev => {
+      const next = { ...prev, [title]: !prev[title] }
+      try { localStorage.setItem('td_sidebar_section_state', JSON.stringify(next)) } catch { /* ignore quota errors */ }
+      return next
+    })
+  }
+
+  const handleNavigate = (id) => {
+    setRecentPages(prev => {
+      const next = [id, ...prev.filter(p => p !== id)].slice(0, 3)
+      try { localStorage.setItem('td_sidebar_recents', JSON.stringify(next)) } catch { /* ignore quota errors */ }
+      return next
+    })
+    onNavigate(id)
+  }
 
   const role = profile?.role || 'recruiter'
   const roleStyle = ROLE_COLORS[role] || ROLE_COLORS.recruiter
@@ -40,7 +85,16 @@ export default function Sidebar({ currentPage, onNavigate, theme, onToggleTheme,
 
   const mainItems = visibleItems.filter(i => i.section === 'Main')
   const toolItems = visibleItems.filter(i => i.section === 'Tools')
+  const workspaceItems = visibleItems.filter(i => i.section === 'Workspace')
   const adminItems = visibleItems.filter(i => i.section === 'Admin')
+
+  const favoriteItems = visibleItems.filter(i => favorites.includes(i.id))
+  const recentItems = recentPages
+    .map(id => visibleItems.find(i => i.id === id))
+    .filter(i => i && i.id !== currentPage && !favorites.includes(i.id))
+    .slice(0, 3)
+
+  const showFavoritesAndRecents = !isCollapsed && (favoriteItems.length > 0 || recentItems.length > 0)
 
   return (
     <aside className={`app-sidebar ${isCollapsed ? 'collapsed' : ''}`}>
@@ -75,10 +129,60 @@ export default function Sidebar({ currentPage, onNavigate, theme, onToggleTheme,
       </div>
 
       <nav className="sidebar-nav">
-        <Section title="Main" items={mainItems} currentPage={currentPage} onNavigate={onNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} />
-        <Section title="Tools" items={toolItems} currentPage={currentPage} onNavigate={onNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} />
+        {showFavoritesAndRecents && (
+          <div className="sidebar-section">
+            <div className="sidebar-section-label static">Favorites & Recent</div>
+            {favoriteItems.map(item => (
+              <NavItem
+                key={`fav-${item.id}`}
+                item={item}
+                active={currentPage === item.id}
+                onClick={() => handleNavigate(item.id)}
+                isCollapsed={isCollapsed}
+                pendingTasksCount={pendingTasksCount}
+                isFavorite
+                onToggleFavorite={(e) => toggleFavorite(item.id, e)}
+              />
+            ))}
+            {recentItems.map(item => (
+              <NavItem
+                key={`recent-${item.id}`}
+                item={item}
+                active={false}
+                onClick={() => handleNavigate(item.id)}
+                isCollapsed={isCollapsed}
+                pendingTasksCount={pendingTasksCount}
+                isFavorite={false}
+                onToggleFavorite={(e) => toggleFavorite(item.id, e)}
+                muted
+              />
+            ))}
+          </div>
+        )}
+
+        <Section
+          title="Main" items={mainItems} currentPage={currentPage} onNavigate={handleNavigate} isCollapsed={isCollapsed}
+          pendingTasksCount={pendingTasksCount} favorites={favorites} onToggleFavorite={toggleFavorite}
+          collapsed={!!collapsedSections['Main']} onToggleCollapse={() => toggleSectionCollapse('Main')}
+        />
+        <Section
+          title="Tools" items={toolItems} currentPage={currentPage} onNavigate={handleNavigate} isCollapsed={isCollapsed}
+          pendingTasksCount={pendingTasksCount} favorites={favorites} onToggleFavorite={toggleFavorite}
+          collapsed={!!collapsedSections['Tools']} onToggleCollapse={() => toggleSectionCollapse('Tools')}
+        />
+        {workspaceItems.length > 0 && (
+          <Section
+            title="Workspace" items={workspaceItems} currentPage={currentPage} onNavigate={handleNavigate} isCollapsed={isCollapsed}
+            pendingTasksCount={pendingTasksCount} favorites={favorites} onToggleFavorite={toggleFavorite}
+            collapsed={!!collapsedSections['Workspace']} onToggleCollapse={() => toggleSectionCollapse('Workspace')}
+          />
+        )}
         {adminItems.length > 0 && (
-          <Section title="Admin" items={adminItems} currentPage={currentPage} onNavigate={onNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} />
+          <Section
+            title="Admin" items={adminItems} currentPage={currentPage} onNavigate={handleNavigate} isCollapsed={isCollapsed}
+            pendingTasksCount={pendingTasksCount} favorites={favorites} onToggleFavorite={toggleFavorite}
+            collapsed={!!collapsedSections['Admin']} onToggleCollapse={() => toggleSectionCollapse('Admin')}
+          />
         )}
       </nav>
 
@@ -159,15 +263,20 @@ export default function Sidebar({ currentPage, onNavigate, theme, onToggleTheme,
   )
 }
 
-function Section({ title, items, currentPage, onNavigate, isCollapsed, pendingTasksCount }) {
+function Section({ title, items, currentPage, onNavigate, isCollapsed, pendingTasksCount, favorites, onToggleFavorite, collapsed, onToggleCollapse }) {
   return (
     <div className="sidebar-section">
       {!isCollapsed ? (
-        <div className="sidebar-section-label">{title}</div>
+        <button type="button" className="sidebar-section-label" onClick={onToggleCollapse} aria-expanded={!collapsed}>
+          <span>{title}</span>
+          <svg className={`sidebar-section-chevron ${collapsed ? 'collapsed' : ''}`} width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
       ) : (
         <div className="sidebar-section-divider" />
       )}
-      {items.map(item => (
+      {!collapsed && items.map(item => (
         <NavItem
           key={item.id}
           item={item}
@@ -175,33 +284,51 @@ function Section({ title, items, currentPage, onNavigate, isCollapsed, pendingTa
           onClick={() => onNavigate(item.id)}
           isCollapsed={isCollapsed}
           pendingTasksCount={pendingTasksCount}
+          isFavorite={favorites?.includes(item.id)}
+          onToggleFavorite={onToggleFavorite ? (e) => onToggleFavorite(item.id, e) : undefined}
         />
       ))}
     </div>
   )
 }
 
-function NavItem({ item, active, onClick, isCollapsed, pendingTasksCount }) {
+function NavItem({ item, active, onClick, isCollapsed, pendingTasksCount, isFavorite, onToggleFavorite, muted }) {
   const showRedDot = item.id === 'tasks' && pendingTasksCount > 0
 
   return (
-    <button
-      className={`sidebar-nav-item ${active ? 'active' : ''}`}
-      type="button"
-      onClick={onClick}
-      title={isCollapsed ? (showRedDot ? `${item.label} (${pendingTasksCount} pending)` : item.label) : undefined}
-    >
-      <span className="sidebar-nav-icon" style={{ position: 'relative' }}>
-        <SidebarIcon name={item.icon} />
-        {showRedDot && <span className="sidebar-red-dot-badge" />}
-      </span>
-      {!isCollapsed && (
-        <span className="sidebar-nav-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-          <span>{item.label}</span>
-          {showRedDot && <span className="sidebar-red-count">{pendingTasksCount}</span>}
+    <div className="sidebar-nav-item-row">
+      <button
+        className={`sidebar-nav-item ${active ? 'active' : ''} ${muted ? 'muted' : ''}`}
+        type="button"
+        onClick={onClick}
+        title={isCollapsed ? (showRedDot ? `${item.label} (${pendingTasksCount} pending)` : item.label) : undefined}
+      >
+        <span className="sidebar-nav-icon" style={{ position: 'relative' }}>
+          <SidebarIcon name={item.icon} />
+          {showRedDot && <span className="sidebar-red-dot-badge" />}
         </span>
+        {!isCollapsed && (
+          <span className="sidebar-nav-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+            <span>{item.label}</span>
+            {showRedDot && <span className="sidebar-red-count">{pendingTasksCount}</span>}
+          </span>
+        )}
+      </button>
+      {/* Sibling button, not nested inside the nav button — buttons can't contain
+          interactive content, and a nested one would be unreachable by keyboard. */}
+      {!isCollapsed && onToggleFavorite && (
+        <button
+          type="button"
+          className={`sidebar-favorite-star ${isFavorite ? 'active' : ''}`}
+          onClick={onToggleFavorite}
+          title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+          aria-label={isFavorite ? `Remove ${item.label} from favorites` : `Add ${item.label} to favorites`}
+          aria-pressed={!!isFavorite}
+        >
+          {isFavorite ? '★' : '☆'}
+        </button>
       )}
-    </button>
+    </div>
   )
 }
 

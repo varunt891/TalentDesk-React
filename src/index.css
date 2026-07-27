@@ -19,6 +19,32 @@
   --text3: #64748b;
   --mono: 'Geist Mono', 'Space Mono', monospace;
   --sans: 'Inter', 'DM Sans', sans-serif;
+
+  /* ===== PREMIUM POLISH DESIGN FOUNDATION ===== */
+  /* Semantic AI accent — distinct from primary/success/warning/danger roles above */
+  --ai: #8b5cf6;
+  --ai-soft: rgba(139, 92, 246, 0.12);
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 48px;
+
+  /* Radius scale */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+
+  /* Soft elevation shadows (dark surfaces) */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.24);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.32);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.40);
 }
 
 [data-theme="light"] {
@@ -30,6 +56,11 @@
   --text: #1a1d2e;
   --text2: #4a5068;
   --text3: #2f323d;
+
+  --ai-soft: rgba(139, 92, 246, 0.08);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 16px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
 }
 
 *,
@@ -7277,7 +7308,8 @@ button {
 
   .candidates-toolbar .candidates-search,
   .candidates-toolbar .candidates-desktop-add,
-  .candidates-toolbar .candidates-desktop-export {
+  .candidates-toolbar .candidates-desktop-export,
+  .candidates-toolbar .candidates-desktop-collapse {
     display: none !important;
   }
 
@@ -8193,6 +8225,92 @@ button {
     margin-left: 8px !important;
     padding-left: 8px !important;
     border-left: 1px dashed rgba(148, 163, 184, 0.45) !important;
+  }
+
+  /* Platform Tab: stack the org table into cards instead of a fixed 5-col grid */
+  .platform-org-table-head {
+    display: none !important;
+  }
+
+  .platform-org-row {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+    padding: 14px 16px !important;
+  }
+
+  .platform-org-name-cell {
+    width: 100% !important;
+    flex-wrap: wrap !important;
+  }
+
+  .platform-org-meta {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    width: 100% !important;
+    word-break: break-all !important;
+  }
+
+  .platform-org-meta::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    min-width: 92px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text3, #94a3b8);
+  }
+
+  .platform-status-pill {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    width: 100% !important;
+  }
+
+  .platform-status-pill::before {
+    content: attr(data-label);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text3, #94a3b8);
+    background: none;
+    padding: 0;
+    min-width: 92px;
+  }
+
+  .platform-org-action-cell {
+    width: 100% !important;
+  }
+
+  .platform-org-action-cell .admin-btn {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* Platform Tab: create-org form collapses to a single column */
+  .platform-create-form {
+    grid-template-columns: 1fr !important;
+  }
+
+  .platform-create-form .admin-btn {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* Platform Tab: danger zone cards stack instead of squeezing the trigger button */
+  .platform-danger-card-top {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .platform-danger-trigger-btn {
+    width: 100% !important;
+    justify-content: center !important;
   }
 }
 
@@ -18147,6 +18265,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 2px;
 }
 
 .activity-feed-item {
@@ -20416,6 +20537,11 @@ body {
     min-width: 140px !important;
   }
 
+  .dash-filter-dropdown-pill .filter-trigger-btn {
+    width: 100% !important;
+    justify-content: space-between !important;
+  }
+
   /* Mission Board Compact & Organized Mobile Layout */
   .todo-panel-wrapper {
     gap: 10px !important;
@@ -20665,6 +20791,11 @@ body {
     flex: 1 1 calc(50% - 4px) !important;
     width: calc(50% - 4px) !important;
     min-width: 0 !important;
+  }
+
+  .dash-filter-dropdown-pill .filter-trigger-btn {
+    width: 100% !important;
+    justify-content: space-between !important;
   }
 
   .job-health-grid {
@@ -21835,4 +21966,881 @@ html[data-theme="dark"] .pipeline-flow-chip.compact .chip-metrics .pct,
 html[data-theme="dark"] .pipeline-flow-arrow,
 [data-theme="dark"] .pipeline-flow-arrow {
   color: #94a3b8 !important;
+}
+
+/* ============================================================
+   DASHBOARD PREMIUM POLISH — PHASE 1
+   Unified "Today's Recruiting Brief" hero, tiered quick actions,
+   richer KPI cards. Written entirely against var(--...) tokens so
+   it is theme-safe by construction — no separate dark-mode patch
+   block required for anything defined here.
+   ============================================================ */
+
+.ai-executive-header {
+  justify-content: flex-start !important;
+}
+
+/* --- Today's Recruiting Brief --- */
+.ai-brief-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: var(--space-2) !important;
+  list-style: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.ai-brief-item {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: var(--space-2) !important;
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+  color: var(--text) !important;
+}
+
+.ai-brief-item.muted {
+  color: var(--text2) !important;
+}
+
+.brief-dot {
+  flex-shrink: 0 !important;
+  display: inline-block !important;
+  width: 7px !important;
+  height: 7px !important;
+  border-radius: 50% !important;
+  margin-top: 5px !important;
+  background: var(--accent) !important;
+}
+
+.brief-dot.red { background: var(--red) !important; }
+.brief-dot.amber { background: var(--yellow) !important; }
+.brief-dot.green { background: var(--green) !important; }
+.brief-dot.purple { background: var(--ai) !important; }
+.brief-dot.blue { background: var(--accent) !important; }
+
+.ai-brief-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: var(--space-2) !important;
+  flex-wrap: wrap !important;
+  margin-top: var(--space-1) !important;
+}
+
+.ai-brief-action-btn {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  padding: 7px 14px !important;
+  border-radius: var(--radius-sm) !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface2) !important;
+  color: var(--text) !important;
+  cursor: pointer !important;
+  transition: transform 0.12s ease, background 0.12s ease, opacity 0.12s ease !important;
+}
+
+.ai-brief-action-btn:hover {
+  transform: translateY(-1px) !important;
+}
+
+.ai-brief-action-btn:disabled {
+  opacity: 0.6 !important;
+  cursor: default !important;
+  transform: none !important;
+}
+
+.ai-brief-action-btn.primary {
+  background: var(--accent) !important;
+  border-color: transparent !important;
+  color: #ffffff !important;
+}
+
+.ai-brief-action-btn.ai {
+  background: var(--ai-soft) !important;
+  border-color: transparent !important;
+  color: var(--ai) !important;
+}
+
+/* --- Tiered Quick Actions --- */
+.quick-actions-group {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: var(--space-2) !important;
+  flex-shrink: 0 !important;
+}
+
+.quick-actions-group.secondary-group {
+  padding-left: var(--space-3) !important;
+  margin-left: var(--space-1) !important;
+  border-left: 1px solid var(--border) !important;
+}
+
+/* Specificity note: html[data-theme="dark"] .quick-action-item (0,2,1) already
+   beats a plain .quick-action-item.primary (0,2,0) rule regardless of source
+   order, so these are scoped through the parent bar to win in dark mode too. */
+.dash-quick-actions-bar .quick-action-item.primary {
+  background: var(--accent) !important;
+  border-color: transparent !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+}
+
+.dash-quick-actions-bar .quick-action-item.primary:hover {
+  background: var(--accent) !important;
+  color: #ffffff !important;
+  opacity: 0.9 !important;
+  transform: translateY(-1px) !important;
+}
+
+.dash-quick-actions-bar .quick-action-item.secondary {
+  background: transparent !important;
+  border-color: var(--border) !important;
+  color: var(--text2) !important;
+  box-shadow: none !important;
+}
+
+.dash-quick-actions-bar .quick-action-item.secondary:hover {
+  background: var(--surface2) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+.dash-quick-actions-bar .quick-action-item.secondary.ai {
+  background: var(--ai-soft) !important;
+  border-color: transparent !important;
+  color: var(--ai) !important;
+}
+
+.dash-quick-actions-bar .quick-action-item.secondary.ai:hover {
+  background: var(--ai-soft) !important;
+  color: var(--ai) !important;
+  opacity: 0.85 !important;
+}
+
+/* --- KPI card insight progress bar --- */
+.kpi-progress-track {
+  width: 100% !important;
+  height: 4px !important;
+  border-radius: 999px !important;
+  background: var(--surface3) !important;
+  overflow: hidden !important;
+  margin-top: var(--space-2) !important;
+}
+
+.kpi-progress-fill {
+  height: 100% !important;
+  border-radius: 999px !important;
+  background: var(--accent) !important;
+  transition: width 0.4s ease !important;
+}
+
+/* ============================================================
+   DASHBOARD PREMIUM POLISH — PHASE 2
+   Command palette (grouped results, recent searches, keyboard
+   nav), pipeline progressive-disclosure detail rail, and the
+   two extra requisition-priority badge tones the real-data fix
+   can now produce (Medium/Low, from the real job.priority field).
+   ============================================================ */
+
+/* --- Requisition priority badges: real job.priority can be Medium/Low too --- */
+.priority-badge.medium {
+  background: var(--ai-soft) !important;
+  color: var(--ai) !important;
+}
+
+.priority-badge.low {
+  background: var(--surface3) !important;
+  color: var(--text2) !important;
+}
+
+/* --- Pipeline progressive-disclosure detail rail --- */
+.pipeline-detail-rail {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: var(--space-4) !important;
+  min-height: 28px !important;
+  margin: var(--space-1) 2px var(--space-2) !important;
+  padding-top: var(--space-1) !important;
+  border-top: 1px dashed var(--border) !important;
+  font-size: 11.5px !important;
+  color: var(--text2) !important;
+}
+
+.pipeline-detail-stage {
+  font-weight: 800 !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.4px !important;
+}
+
+.pipeline-detail-metric b {
+  color: var(--text) !important;
+  font-weight: 700 !important;
+}
+
+.pipeline-detail-hint {
+  color: var(--text3) !important;
+  font-style: italic !important;
+}
+
+/* --- Command palette: theme-safe surface (previously hardcoded light-only),
+   plus grouped sections, recent searches, and keyboard-active row --- */
+.dash-command-modal-content {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+
+.command-modal-input-row {
+  border-bottom: 1px solid var(--border) !important;
+}
+
+.command-modal-input-row input {
+  background: transparent !important;
+  color: var(--text) !important;
+}
+
+.command-modal-input-row input::placeholder {
+  color: var(--text3) !important;
+}
+
+.cmd-esc-tag {
+  color: var(--text3) !important;
+  background: var(--surface2) !important;
+}
+
+.command-modal-section-label {
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.6px !important;
+  color: var(--text3) !important;
+  padding: var(--space-3) var(--space-2) var(--space-1) !important;
+}
+
+.command-modal-item {
+  border-left: 2px solid transparent !important;
+}
+
+.command-modal-item strong {
+  color: var(--text) !important;
+}
+
+.command-modal-item span {
+  color: var(--text3) !important;
+}
+
+.command-modal-item:hover {
+  background: var(--surface2) !important;
+}
+
+.command-modal-item.active {
+  background: var(--surface2) !important;
+  border-left-color: var(--accent) !important;
+}
+
+.command-modal-empty {
+  color: var(--text3) !important;
+}
+
+.command-recent-chips {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: var(--space-2) !important;
+  justify-content: center !important;
+  margin-top: var(--space-3) !important;
+}
+
+.command-recent-chip {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  padding: 6px 12px !important;
+  border-radius: 999px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface2) !important;
+  color: var(--text2) !important;
+  cursor: pointer !important;
+}
+
+.command-recent-chip:hover {
+  background: var(--surface3) !important;
+  color: var(--text) !important;
+}
+
+/* ============================================================
+   DASHBOARD PREMIUM POLISH — PHASE 3
+   Mission board task meta (priority/effort/due + quick actions),
+   real-data activity feed (filters + date-group headers), and a
+   shared empty-state style (previously entirely unstyled, despite
+   already being used by the Action Center panel).
+   ============================================================ */
+
+/* --- Mission board task card: priority/effort/due meta + hover quick actions --- */
+.task-meta-row {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: var(--space-2) !important;
+  margin-top: 2px !important;
+}
+
+.task-effort-chip,
+.task-due-chip {
+  font-size: 10.5px !important;
+  font-weight: 600 !important;
+  color: var(--text3) !important;
+}
+
+.task-quick-actions {
+  display: none !important;
+  align-items: center !important;
+  gap: 4px !important;
+  flex-shrink: 0 !important;
+}
+
+.todo-item-card.enhanced:hover .task-quick-actions {
+  display: flex !important;
+}
+
+.task-quick-actions button {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  padding: 2px 8px !important;
+  border-radius: var(--radius-sm) !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--accent) !important;
+  cursor: pointer !important;
+}
+
+/* --- Activity feed: type filters + date-group headers --- */
+.activity-feed-filters {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: var(--space-2) !important;
+  margin-bottom: var(--space-3) !important;
+}
+
+.activity-filter-chip {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  padding: 5px 11px !important;
+  border-radius: 999px !important;
+  border: 1px solid var(--border) !important;
+  background: transparent !important;
+  color: var(--text2) !important;
+  cursor: pointer !important;
+}
+
+.activity-filter-chip:hover {
+  background: var(--surface2) !important;
+  color: var(--text) !important;
+}
+
+.activity-filter-chip.active {
+  background: var(--accent) !important;
+  border-color: transparent !important;
+  color: #ffffff !important;
+}
+
+.activity-filter-chip.ai {
+  margin-left: auto !important;
+  background: var(--ai-soft) !important;
+  border-color: transparent !important;
+  color: var(--ai) !important;
+}
+
+.activity-filter-chip.ai:hover {
+  opacity: 0.85 !important;
+}
+
+.activity-feed-group-label {
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.6px !important;
+  color: var(--text3) !important;
+  padding: var(--space-2) 2px var(--space-1) !important;
+}
+
+/* --- Shared empty state (Action Center + Activity Feed) --- */
+.dash-empty-action-center {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  text-align: center !important;
+  gap: 2px !important;
+  padding: var(--space-6) var(--space-4) !important;
+}
+
+.empty-celebrate-icon {
+  font-size: 28px !important;
+  margin-bottom: var(--space-1) !important;
+}
+
+.dash-empty-action-center strong {
+  font-size: 13px !important;
+  color: var(--text) !important;
+}
+
+.dash-empty-action-center p {
+  font-size: 12px !important;
+  color: var(--text3) !important;
+  margin: 0 !important;
+}
+
+.empty-suggested-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  gap: var(--space-2) !important;
+  margin-top: var(--space-3) !important;
+}
+
+.empty-suggested-actions button {
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  padding: 6px 12px !important;
+  border-radius: var(--radius-sm) !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface2) !important;
+  color: var(--text2) !important;
+  cursor: pointer !important;
+}
+
+.empty-suggested-actions button:hover {
+  background: var(--surface3) !important;
+  color: var(--text) !important;
+}
+
+/* ============================================================
+   DASHBOARD PREMIUM POLISH — PHASE 4
+   Performance table (theme-safe surface, sticky header, sortable
+   columns, rank medals, expandable funnel-breakdown row) and
+   chart legends (submissions trend previous-period line + donut
+   legend — both previously had no legend or dark-mode support).
+   ============================================================ */
+
+/* --- Performance table: theme-safe surface (previously hardcoded light-only) --- */
+.leaderboard-table-wrapper {
+  max-height: 360px !important;
+  overflow-y: auto !important;
+}
+
+.leaderboard-table th {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 1 !important;
+  background: var(--surface) !important;
+  border-bottom: 1px solid var(--border) !important;
+  color: var(--text3) !important;
+}
+
+.leaderboard-table td {
+  border-bottom: 1px solid var(--border) !important;
+  color: var(--text2) !important;
+}
+
+.leaderboard-table tr.clickable-row:hover {
+  background: var(--surface2) !important;
+}
+
+.sortable-th {
+  cursor: pointer !important;
+  user-select: none !important;
+  white-space: nowrap !important;
+}
+
+.sortable-th:hover {
+  color: var(--text) !important;
+}
+
+.expand-th {
+  width: 28px !important;
+}
+
+.row-expand-btn {
+  font-size: 10px !important;
+  width: 22px !important;
+  height: 22px !important;
+  border-radius: var(--radius-sm) !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface2) !important;
+  color: var(--text2) !important;
+  cursor: pointer !important;
+}
+
+.row-expand-btn:hover {
+  background: var(--surface3) !important;
+  color: var(--text) !important;
+}
+
+.rank-pill.medal {
+  background: transparent !important;
+  padding: 0 !important;
+  font-size: 15px !important;
+}
+
+.row-expand-detail td {
+  background: var(--surface2) !important;
+  padding: var(--space-3) var(--space-4) !important;
+}
+
+.recruiter-mini-trend {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  max-width: 420px !important;
+}
+
+.mini-trend-bar-row {
+  display: grid !important;
+  grid-template-columns: 70px minmax(0, 1fr) 28px !important;
+  align-items: center !important;
+  gap: var(--space-2) !important;
+}
+
+.mini-trend-label {
+  font-size: 10.5px !important;
+  font-weight: 600 !important;
+  color: var(--text3) !important;
+}
+
+.mini-trend-track {
+  height: 6px !important;
+  border-radius: 999px !important;
+  background: var(--surface3) !important;
+  overflow: hidden !important;
+}
+
+.mini-trend-fill {
+  height: 100% !important;
+  border-radius: 999px !important;
+}
+
+.mini-trend-fill.blue { background: var(--accent) !important; }
+.mini-trend-fill.purple { background: var(--ai) !important; }
+.mini-trend-fill.yellow { background: var(--yellow) !important; }
+.mini-trend-fill.green { background: var(--green) !important; }
+
+.mini-trend-value {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: var(--text) !important;
+  text-align: right !important;
+}
+
+/* --- Donut chart legend --- */
+.donut-column {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: var(--space-2) !important;
+}
+
+.donut-legend {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+  width: 100% !important;
+}
+
+.donut-legend-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 10.5px !important;
+  color: var(--text2) !important;
+}
+
+.donut-legend-item b {
+  margin-left: auto !important;
+  color: var(--text) !important;
+}
+
+.donut-legend-dot {
+  width: 7px !important;
+  height: 7px !important;
+  border-radius: 50% !important;
+  flex-shrink: 0 !important;
+  color: var(--text) !important;
+}
+
+/* ============================================================
+   DASHBOARD PREMIUM POLISH — PHASE 5
+   AI-in-every-panel affordances, sidebar polish (collapsible
+   sections, favorites, recents), responsive breakpoints,
+   accessibility (:focus-visible), and micro-interaction cleanup.
+   ============================================================ */
+
+/* --- Panel-header "Explain with AI" affordance, reused across panels --- */
+.panel-ai-action-btn {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  padding: 5px 11px !important;
+  border-radius: var(--radius-sm) !important;
+  border: 1px solid transparent !important;
+  background: var(--ai-soft) !important;
+  color: var(--ai) !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+  transition: opacity 0.15s ease, transform 0.12s ease !important;
+}
+
+.panel-ai-action-btn:hover {
+  opacity: 0.85 !important;
+  transform: translateY(-1px) !important;
+}
+
+/* --- Sidebar: collapsible section headers --- */
+.sidebar-section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sidebar-section-label:hover {
+  color: var(--text2);
+}
+
+.sidebar-section-label.static {
+  cursor: default;
+}
+
+.sidebar-section-label.static:hover {
+  color: var(--text3);
+}
+
+.sidebar-section-chevron {
+  opacity: 0.5;
+  transition: transform 0.2s ease, opacity 0.15s ease;
+}
+
+.sidebar-section-label:hover .sidebar-section-chevron {
+  opacity: 0.9;
+}
+
+.sidebar-section-chevron.collapsed {
+  transform: rotate(-90deg);
+}
+
+/* --- Sidebar: nav item row + favorite star (sibling buttons, not nested) --- */
+.sidebar-nav-item-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.sidebar-nav-item-row .sidebar-nav-item {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.app-sidebar.collapsed .sidebar-nav-item-row {
+  display: contents;
+}
+
+.sidebar-favorite-star {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text3);
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.sidebar-nav-item-row:hover .sidebar-favorite-star,
+.sidebar-favorite-star.active {
+  opacity: 1;
+}
+
+.sidebar-favorite-star:hover {
+  background: var(--surface2);
+}
+
+.sidebar-favorite-star.active {
+  color: #f5c842;
+}
+
+.sidebar-nav-item.muted {
+  opacity: 0.72;
+}
+
+/* --- Focus-visible states for keyboard navigation (accessibility) --- */
+.sidebar-nav-item:focus-visible,
+.sidebar-favorite-star:focus-visible,
+.sidebar-section-label:focus-visible,
+.quick-action-item:focus-visible,
+.ai-brief-action-btn:focus-visible,
+.activity-filter-chip:focus-visible,
+.sortable-th:focus-visible,
+.row-expand-btn:focus-visible,
+.command-modal-item:focus-visible,
+.panel-ai-action-btn:focus-visible,
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 2px !important;
+}
+
+/* --- Responsive: wide desktop / ultrawide reflow --- */
+@media (min-width: 1920px) {
+  .dash-main-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    max-width: 1800px !important;
+    margin: 0 auto !important;
+  }
+
+  .dash-kpi-grid {
+    max-width: 1800px !important;
+    margin: 0 auto 16px !important;
+  }
+}
+
+@media (min-width: 1440px) and (max-width: 1919px) {
+  .dash-main-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+/* ============================================================
+   DASHBOARD PREMIUM POLISH — DARK MODE FIX
+   .dash-ai-executive-panel (the "Today's Recruiting Brief" hero)
+   is meant to sit transparently *inside* the .dash-unified-command-
+   center card — same as it does in light mode. A broad dark-mode
+   rule written for standalone panels (dashboard-panel, dash-kpi-
+   card, etc.) also matched this selector and gave it its own card
+   background/border, so it rendered as a nested box instead of
+   blending in. Same selector, later in the file, wins for the
+   properties that caused it.
+   ============================================================ */
+html[data-theme="dark"] .dash-ai-executive-panel {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+/* ============================================================
+   PRIMARY BUTTON CONTRAST FIX
+   Flat var(--accent) fill read as washed-out/low-contrast against
+   the near-black dashboard background. Primary CTAs (quick actions,
+   "Start Working") now get a soft colored glow — the same technique
+   Linear/Stripe use to make a solid-color button pop on dark UI —
+   instead of relying on the fill color alone for contrast.
+   ============================================================ */
+.dash-quick-actions-bar .quick-action-item.primary,
+.ai-brief-action-btn.primary {
+  box-shadow: 0 2px 12px rgba(59, 130, 246, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+}
+
+.dash-quick-actions-bar .quick-action-item.primary:hover,
+.ai-brief-action-btn.primary:hover {
+  box-shadow: 0 4px 18px rgba(59, 130, 246, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.18) !important;
+}
+
+[data-theme="light"] .dash-quick-actions-bar .quick-action-item.primary,
+[data-theme="light"] .ai-brief-action-btn.primary {
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.28) !important;
+}
+
+[data-theme="light"] .dash-quick-actions-bar .quick-action-item.primary:hover,
+[data-theme="light"] .ai-brief-action-btn.primary:hover {
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.36) !important;
+}
+
+/* ============================================================
+   SYSTEMIC DARK-MODE TEXT FIX
+   html[data-theme="dark"] p/small/span/label {color: var(--text2)}
+   is a broad catch-all (meant as a default for generic secondary
+   text) that DIRECTLY matches any bare <p>/<span>/<small>/<label>,
+   which beats inherited color from a parent regardless of the
+   parent's own specificity. Any single-class rule of mine that
+   targeted one of those four tags lost to it silently, greying out
+   text that was meant to be white/tinted (quick-action button
+   labels, AI brief bullets, copilot chat bubbles, command palette
+   meta, mission-board chips, mini-trend labels, donut legend,
+   pipeline stage color). Fix: re-declare with 2+ class specificity
+   (which beats it regardless of its extra type-selector weight) —
+   mostly `color: inherit`, so each already-correct parent color
+   flows through instead of duplicating values here.
+   ============================================================ */
+.dash-quick-actions-bar .quick-action-item span {
+  color: inherit !important;
+}
+
+.dash-ai-executive-panel .ai-brief-item span {
+  color: inherit !important;
+}
+
+.copilot-msg-bubble.user p {
+  color: inherit !important;
+}
+
+.dash-command-modal-content .command-modal-item span {
+  color: var(--text3) !important;
+}
+
+.todo-item-card .task-effort-chip,
+.todo-item-card .task-due-chip {
+  color: var(--text3) !important;
+}
+
+.recruiter-mini-trend .mini-trend-label {
+  color: var(--text3) !important;
+}
+
+.recruiter-mini-trend .mini-trend-value {
+  color: var(--text) !important;
+}
+
+.donut-legend .donut-legend-item {
+  color: var(--text2) !important;
+}
+
+.pipeline-detail-rail .pipeline-detail-stage {
+  color: var(--stage-hue) !important;
+}
+
+.pipeline-detail-rail .pipeline-detail-metric {
+  color: var(--text2) !important;
+}
+
+.pipeline-detail-rail .pipeline-detail-hint {
+  color: var(--text3) !important;
+}
+
+/* --- Time badge + "AI COPILOT" tag: were hardcoded light-only pills
+   (light-blue / light-lavender backgrounds) with no dark handling at
+   all, so they rendered as bright white-ish badges in dark mode. --- */
+html[data-theme="dark"] .dash-time-badge {
+  color: #60a5fa !important;
+  background: rgba(59, 130, 246, 0.14) !important;
+  border: 1px solid rgba(59, 130, 246, 0.3) !important;
+}
+
+html[data-theme="dark"] .ai-tag-live {
+  color: var(--ai) !important;
+  background: var(--ai-soft) !important;
+  border: 1px solid rgba(139, 92, 246, 0.35) !important;
 }

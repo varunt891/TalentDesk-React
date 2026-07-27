@@ -336,7 +336,7 @@ export default function Candidates() {
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name, job, client, skill..." />
           </div>
           <button
-            className="candidate-btn ghost compact"
+            className="candidate-btn ghost compact candidates-desktop-collapse"
             onClick={() => setUserCollapsed(prev => !prev)}
             title={userCollapsed ? "Expand cards" : "Collapse cards"}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}

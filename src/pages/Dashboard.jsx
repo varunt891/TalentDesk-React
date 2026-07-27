@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from 'react'
+import { Fragment, useEffect, useMemo, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Area,
@@ -7,6 +7,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Legend,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -20,6 +21,37 @@ import { useCandidates } from '../hooks/useCandidates'
 
 const STAGES = ['Submitted', 'Screening', 'Interview Scheduled', 'Client Review', 'Offer Extended', 'Hired', 'Rejected']
 const COLORS = ['#2563eb', '#8b5cf6', '#f59e0b', '#06b6d4', '#10b981', '#059669', '#ef4444']
+// Presentational-only effort estimate, keyed off the mission board's task tag — there is no
+// effort-tracking field in the data model, so this is a heuristic display, not real duration data.
+const TASK_EFFORT_MINUTES = { 'Follow-up': 10, 'Call': 15, 'Screening': 25, 'Interview': 30, 'Offer': 15, 'EOD Review': 20 }
+
+function formatRelativeTime(dateStr) {
+  if (!dateStr) return ''
+  const then = new Date(dateStr)
+  if (Number.isNaN(then.getTime())) return ''
+  const diffMs = new Date().getTime() - then.getTime()
+  const diffMin = Math.floor(diffMs / 60000)
+  if (diffMin < 1) return 'Just now'
+  if (diffMin < 60) return `${diffMin}m ago`
+  const diffHr = Math.floor(diffMin / 60)
+  if (diffHr < 24) return `${diffHr}h ago`
+  const diffDay = Math.floor(diffHr / 24)
+  return `${diffDay}d ago`
+}
+
+function getActivityDateBucket(dateStr) {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const startOfYesterday = new Date(startOfToday)
+  startOfYesterday.setDate(startOfYesterday.getDate() - 1)
+  const startOfWeek = new Date(startOfToday)
+  startOfWeek.setDate(startOfWeek.getDate() - 7)
+  if (date >= startOfToday) return 'Today'
+  if (date >= startOfYesterday) return 'Yesterday'
+  if (date >= startOfWeek) return 'This Week'
+  return 'Earlier'
+}
 
 export default function Dashboard({ onNavigate }) {
   const authContext = useAuth() || {}
@@ -35,6 +67,11 @@ export default function Dashboard({ onNavigate }) {
   const [profiles, setProfiles] = useState([])
   const [timeRange, setTimeRange] = useState('all')
   const [stageFilter, setStageFilter] = useState('All')
+  const [hoveredStage, setHoveredStage] = useState(null)
+  const [activityFilter, setActivityFilter] = useState('all')
+  const [tableSortKey, setTableSortKey] = useState(null)
+  const [tableSortDir, setTableSortDir] = useState('desc')
+  const [expandedRecruiterName, setExpandedRecruiterName] = useState(null)
   const [selectedOwners, setSelectedOwners] = useState([])
   const [showOwnerDropdown, setShowOwnerDropdown] = useState(false)
   const [recruiterSearch, setRecruiterSearch] = useState('')
@@ -52,6 +89,24 @@ export default function Dashboard({ onNavigate }) {
   // Ctrl+K Command Palette Launcher State
   const [commandOpen, setCommandOpen] = useState(false)
   const [commandQuery, setCommandQuery] = useState('')
+  const [commandActiveIndex, setCommandActiveIndex] = useState(0)
+  const [recentSearches, setRecentSearches] = useState(() => {
+    try {
+      const saved = localStorage.getItem('td_recent_searches')
+      const parsed = saved ? JSON.parse(saved) : []
+      return Array.isArray(parsed) ? parsed : []
+    } catch (e) { return [] }
+  })
+
+  const commitRecentSearch = (term) => {
+    const trimmed = (term || '').trim()
+    if (!trimmed) return
+    // Written synchronously (not inside a setState updater) so it isn't lost when
+    // the same click also triggers navigation and unmounts this component.
+    const next = [trimmed, ...recentSearches.filter(t => t.toLowerCase() !== trimmed.toLowerCase())].slice(0, 5)
+    try { localStorage.setItem('td_recent_searches', JSON.stringify(next)) } catch (e) { /* ignore quota errors */ }
+    setRecentSearches(next)
+  }
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -68,6 +123,10 @@ export default function Dashboard({ onNavigate }) {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
+
+  useEffect(() => {
+    if (commandOpen) setCommandActiveIndex(0)
+  }, [commandOpen, commandQuery])
 
   // Notifications Drawer State
   const [showNotifications, setShowNotifications] = useState(false)
@@ -1134,19 +1193,72 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
     }))
   }, [filteredCandidates])
 
+  // User-driven column sort layered on top of the default rank ordering above
+  const sortedRecruiterData = useMemo(() => {
+    if (!tableSortKey) return recruiterData
+    const copy = [...recruiterData]
+    copy.sort((a, b) => {
+      const av = a[tableSortKey]
+      const bv = b[tableSortKey]
+      if (typeof av === 'string') return tableSortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av)
+      return tableSortDir === 'asc' ? av - bv : bv - av
+    })
+    return copy
+  }, [recruiterData, tableSortKey, tableSortDir])
+
+  const handleTableSort = (key) => {
+    if (tableSortKey === key) {
+      setTableSortDir(prev => (prev === 'desc' ? 'asc' : 'desc'))
+    } else {
+      setTableSortKey(key)
+      setTableSortDir('desc')
+    }
+  }
+
+  // Same stage/owner/search filters as filteredCandidates, but not time-windowed —
+  // needed to look further back for the trend chart's previous-period comparison.
+  const candidatesForTrendComparison = useMemo(() => {
+    let list = candidates
+    if (stageFilter !== 'All') list = list.filter(c => (c.external_status || c.internal_status || 'Unassigned') === stageFilter)
+    if (selectedOwners.length > 0) {
+      list = list.filter(c => {
+        const key = c.recruiter_id || c.user_id || c.recruiter_name || c.fe_name || 'Unassigned'
+        return selectedOwners.includes(key)
+      })
+    }
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      list = list.filter(c =>
+        `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase().includes(q) ||
+        (c.email && c.email.toLowerCase().includes(q)) ||
+        (c.job_title && c.job_title.toLowerCase().includes(q)) ||
+        (c.client && c.client.toLowerCase().includes(q)) ||
+        (c.recruiter_name && c.recruiter_name.toLowerCase().includes(q)) ||
+        (c.fe_name && c.fe_name.toLowerCase().includes(q))
+      )
+    }
+    return list
+  }, [candidates, stageFilter, selectedOwners, searchQuery])
+
   const trendData = useMemo(() => {
     const rangeLength = timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : timeRange === '90d' ? 90 : 7
     return [...Array(rangeLength)].map((_, index) => {
       const date = new Date()
       date.setDate(date.getDate() - (rangeLength - 1 - index))
       const key = date.toISOString().slice(0, 10)
+
+      const prevDate = new Date(date)
+      prevDate.setDate(prevDate.getDate() - rangeLength)
+      const prevKey = prevDate.toISOString().slice(0, 10)
+
       return {
         date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         submissions: filteredCandidates.filter(c => c.submission_date === key).length,
         followups: filteredFollowups.filter(f => f.date === key).length,
+        previousSubmissions: candidatesForTrendComparison.filter(c => c.submission_date === prevKey).length,
       }
     })
-  }, [filteredCandidates, filteredFollowups, timeRange])
+  }, [filteredCandidates, filteredFollowups, candidatesForTrendComparison, timeRange])
 
   const sourceData = useMemo(() => {
     return [
@@ -1169,51 +1281,99 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
   const conversionRate = Math.round((hiredCount / Math.max(filteredCandidates.length, 1)) * 100)
   const pipelineHealthPct = Math.round((qualifiedCount / Math.max(filteredCandidates.length, 1)) * 100)
 
-  // Top Priority Job Requisitions & Health Radar
+  // Top Priority Job Requisitions & Health Radar — derived from real candidate/job data
   const priorityJobs = useMemo(() => {
-    return safeJobs.slice(0, 4).map((j, idx) => ({
-      ...j,
-      priority: idx === 0 ? 'Urgent' : idx === 1 ? 'High' : 'Normal',
-      openDays: Math.floor(Math.random() * 12) + 4,
-      submittals: Math.floor(Math.random() * 8) + 2,
-      interviews: Math.floor(Math.random() * 4),
-      placementProb: `${85 - idx * 8}%`,
-      statusTag: idx === 0 ? 'Critical' : idx === 1 ? 'At Risk' : 'Healthy',
-      statusTone: idx === 0 ? 'red' : idx === 1 ? 'amber' : 'green',
-    }))
-  }, [safeJobs])
+    const now = new Date().getTime()
+    return safeJobs.slice(0, 4).map(job => {
+      const jobCandidates = job.job_id ? candidates.filter(c => c.job_id === job.job_id) : []
+      const submittals = jobCandidates.length
+      const interviews = jobCandidates.filter(c => ['Interview Scheduled', 'Interview Done'].includes(c.internal_status || c.external_status)).length
+      const offers = jobCandidates.filter(c => (c.internal_status || c.external_status) === 'Offer Extended').length
+      const hires = jobCandidates.filter(c => (c.internal_status || c.external_status) === 'Hired').length
 
-  // Real-time activity timeline feed
+      const openedAt = job.open_date || job.created_at
+      const openDays = openedAt ? Math.max(0, Math.floor((now - new Date(openedAt).getTime()) / 86400000)) : 0
+
+      // Deterministic placement-probability heuristic from this job's real funnel conversion
+      const placementScore = submittals === 0
+        ? 15
+        : Math.min(95, Math.round(((interviews * 12 + offers * 25 + hires * 40) / submittals) + 20))
+
+      const isStale = openDays > 14 && submittals < 3
+      const priority = isStale ? 'Urgent' : (job.priority || 'Medium')
+
+      let statusTag = 'Healthy'
+      let statusTone = 'green'
+      if (isStale || placementScore < 30) {
+        statusTag = 'Critical'
+        statusTone = 'red'
+      } else if (submittals < 3 || placementScore < 55) {
+        statusTag = 'At Risk'
+        statusTone = 'amber'
+      }
+
+      return {
+        ...job,
+        priority,
+        openDays,
+        submittals,
+        interviews,
+        placementProb: `${placementScore}%`,
+        statusTag,
+        statusTone,
+      }
+    })
+  }, [safeJobs, candidates])
+
+  // Real-time activity timeline feed — merged from real candidate/callback/followup
+  // created_at timestamps (previously fabricated "Xh ago" strings), newest first.
   const activityFeed = useMemo(() => {
     const list = []
-    candidates.slice(0, 6).forEach((c, idx) => {
+    candidates.forEach(c => {
+      if (!c.created_at) return
       list.push({
         id: `c-${c.id}`,
         type: 'submission',
-        title: `Submittal: ${c.first_name || 'Candidate'} ${c.last_name || ''}`,
+        title: `Submittal: ${c.first_name || 'Candidate'} ${c.last_name || ''}`.trim(),
         sub: `${c.job_title || 'Role'} · ${c.client || 'Client'}`,
-        time: `${idx * 2 + 1}h ago`,
-        actor: c.recruiter_name || c.fe_name || 'Recruiter'
+        timestamp: c.created_at,
+        actor: c.recruiter_name || c.fe_name || 'Recruiter',
       })
     })
-    safeCallbacks.slice(0, 3).forEach((cb, idx) => {
+    safeCallbacks.forEach(cb => {
+      if (!cb.created_at) return
       list.push({
         id: `cb-${cb.id}`,
         type: 'callback',
         title: `Scheduled Call: ${cb.candidate_name || 'Candidate'}`,
-        sub: `Phone: ${cb.phone || 'N/A'} · Time: ${cb.time || 'Today'}`,
-        time: `${idx + 1}h ago`,
-        actor: 'Recruiting Lead'
+        sub: `${cb.job || 'General'} · ${cb.time || 'Today'}`,
+        timestamp: cb.created_at,
+        actor: 'Recruiting Team',
       })
     })
-    return list.slice(0, 7)
-  }, [candidates, safeCallbacks])
+    safeFollowups.forEach(f => {
+      if (!f.created_at) return
+      list.push({
+        id: `f-${f.id}`,
+        type: 'followup',
+        title: `Follow-up logged: ${f.candidate_name || 'Candidate'}`,
+        sub: `${f.type || 'Follow-up'} · ${f.priority || 'Normal'} priority`,
+        timestamp: f.created_at,
+        actor: 'Recruiting Team',
+      })
+    })
+    return list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 25)
+  }, [candidates, safeCallbacks, safeFollowups])
+
+  const filteredActivityFeed = useMemo(() => (
+    activityFilter === 'all' ? activityFeed : activityFeed.filter(act => act.type === activityFilter)
+  ), [activityFeed, activityFilter])
 
   const stats = [
     { label: 'Total Candidates', value: filteredCandidates.length, helper: `+${thisWeekCount} this week`, sparkline: [12, 16, 14, 22, 28, 32, 38], tone: 'blue', trend: { dir: 'up', pct: 15 } },
-    { label: 'Qualified Pipeline', value: qualifiedCount, helper: '↑12% vs last week', sparkline: [4, 6, 8, 10, 12, 15, qualifiedCount], tone: 'purple', trend: { dir: 'up', pct: 12 } },
+    { label: 'Qualified Pipeline', value: qualifiedCount, helper: '↑12% vs last week', sparkline: [4, 6, 8, 10, 12, 15, qualifiedCount], tone: 'purple', trend: { dir: 'up', pct: 12 }, progress: { value: qualifiedCount, max: filteredCandidates.length, label: 'of total candidates qualified' } },
     { label: 'Offers Extended', value: offerCount, helper: `${conversionRate}% placement rate`, sparkline: [1, 2, 2, 3, 2, 4, offerCount], tone: 'yellow', trend: { dir: 'up', pct: 8 } },
-    { label: 'Active Requisitions', value: activeJobsCount, helper: `${filteredJobs.length} total filtered`, sparkline: [8, 9, 11, 10, 12, 12, activeJobsCount], tone: 'green', trend: { dir: 'up', pct: 5 } },
+    { label: 'Active Requisitions', value: activeJobsCount, helper: `${filteredJobs.length} total filtered`, sparkline: [8, 9, 11, 10, 12, 12, activeJobsCount], tone: 'green', trend: { dir: 'up', pct: 5 }, progress: { value: activeJobsCount, max: filteredJobs.length, label: 'of filtered requisitions open' } },
     { label: 'Rejected Candidates', value: rejectedCount, helper: 'Client declined', sparkline: [2, 4, 3, 5, 4, 6, rejectedCount], tone: 'red', trend: { dir: 'down', pct: 3 } },
     { label: 'Pending Tasks', value: pendingCallbacks.length + dueFollowups.length, helper: `${todaysCallbacks.length} calls today`, sparkline: [10, 8, 6, 7, 5, 4, pendingCallbacks.length], tone: 'orange', trend: { dir: 'down', pct: 15 } },
   ]
@@ -1255,8 +1415,21 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
     }
   }
 
-  // Filter Command Launcher Query Results
-  const commandResults = useMemo(() => {
+  // Command Launcher quick actions — always searchable by label.
+  // Not memoized: it closes over onNavigate/handleCopilotSend (recreated each
+  // render like the rest of this component), and the list itself is tiny.
+  const commandActionItems = [
+    { type: 'action', title: 'New Candidate', meta: 'Action · Open candidates workspace', action: () => onNavigate && onNavigate('candidates') },
+    { type: 'action', title: 'New Job', meta: 'Action · Open jobs workspace', action: () => onNavigate && onNavigate('jobs') },
+    { type: 'action', title: 'Schedule Interview', meta: 'Action · Open candidates workspace', action: () => onNavigate && onNavigate('candidates') },
+    { type: 'action', title: 'Log Callback', meta: 'Action · Open callbacks workspace', action: () => onNavigate && onNavigate('callbacks') },
+    { type: 'action', title: 'AI Search Candidates', meta: 'Action · Ask AI Copilot', action: () => handleCopilotSend('Search top React candidates submitted this week') },
+    { type: 'action', title: 'Generate Boolean String', meta: 'Action · Ask AI Copilot', action: () => handleCopilotSend('Generate precision Boolean search string for Senior React Developer') },
+  ]
+
+  // Filter Command Launcher Query Results — grouped by Candidates / Jobs / Actions.
+  // Early-returns to [] whenever the palette is idle, so this stays cheap without useMemo.
+  const commandResults = (() => {
     if (!commandQuery.trim()) return []
     const q = commandQuery.toLowerCase().trim()
     const list = []
@@ -1270,12 +1443,52 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
         list.push({ type: 'job', title: j.title || 'Job', meta: `Job Requisition · ${j.client || 'Client'}`, action: () => onNavigate && onNavigate('jobs') })
       }
     })
-    return list.slice(0, 6)
-  }, [candidates, safeJobs, commandQuery, onNavigate])
+    commandActionItems.forEach(item => {
+      if (item.title.toLowerCase().includes(q)) list.push(item)
+    })
+    return list.slice(0, 8)
+  })()
+
+  const commandGroupLabel = { candidate: 'Candidates', job: 'Jobs', action: 'Actions' }
+
+  const runCommandResult = (res) => {
+    setCommandOpen(false)
+    commitRecentSearch(commandQuery)
+    res.action()
+  }
+
+  useEffect(() => {
+    if (!commandOpen) return
+    const handleNavKey = (e) => {
+      if (commandResults.length === 0) return
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setCommandActiveIndex(prev => (prev + 1) % commandResults.length)
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setCommandActiveIndex(prev => (prev - 1 + commandResults.length) % commandResults.length)
+      } else if (e.key === 'Enter') {
+        const target = commandResults[commandActiveIndex]
+        if (target) {
+          e.preventDefault()
+          runCommandResult(target)
+        }
+      }
+    }
+    window.addEventListener('keydown', handleNavKey)
+    return () => window.removeEventListener('keydown', handleNavKey)
+  }, [commandOpen, commandResults, commandActiveIndex, commandQuery, runCommandResult])
 
   // Partition Mission Board tasks into pending & completed
   const pendingTasks = useMemo(() => dailyNotes.filter(n => !n.done), [dailyNotes])
   const completedTasks = useMemo(() => dailyNotes.filter(n => n.done), [dailyNotes])
+
+  // Today's Recruiting Brief — derived from already-computed live metrics
+  const atRiskCount = candidates.filter(c => ['Interview Scheduled', 'Interview Done'].includes(c.internal_status || c.external_status)).length
+  const recommendedJob = safeJobs[0]
+  const recommendedJobLabel = recommendedJob ? (recommendedJob.title || recommendedJob.job_id || 'Priority requisition') : 'Priority requisition'
+  const pipelineHealthLabel = pipelineHealthPct >= 70 ? 'Healthy' : pipelineHealthPct >= 40 ? 'At Risk' : 'Critical'
+  const estimatedWorkloadHours = Math.max(0.5, Math.round(((todaysCallbacks.length + overdueFollowups.length) * 0.25 + pendingTasks.length * 0.15) * 2) / 2)
 
   return (
     <div className="dashboard-page ai-command-center-page">
@@ -1321,46 +1534,53 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
 
       {/* 2. UNIFIED COHESIVE TOP COMMAND CENTER CARD */}
       <div className="dash-unified-command-center">
-        {/* AI EXECUTIVE RADAR & INSIGHTS */}
+        {/* UNIFIED AI EXECUTIVE BRIEFING HERO */}
         <section className="dash-ai-executive-panel">
           <div className="ai-executive-header">
             <div className="ai-brand-group">
               <span className="ai-sparkle-animated">✨</span>
-              <strong>Gemini AI Opportunity Radar & Executive Insights</strong>
-              <span className="ai-tag-live">LIVE COPILOT</span>
-            </div>
-
-            <div className="ai-executive-controls">
-              <button className="ai-control-btn" onClick={() => setAiBriefExpanded(!aiBriefExpanded)} type="button">
-                {aiBriefExpanded ? 'Collapse Radar ▲' : 'Expand Briefing ▼'}
-              </button>
-              <button className="ai-control-btn primary" onClick={fetchAiBriefing} disabled={briefingLoading} type="button">
-                {briefingLoading ? '⚡ Synthesizing...' : '⚡ Generate Full Briefing'}
-              </button>
+              <strong>Today's Recruiting Brief</strong>
+              <span className="ai-tag-live">AI COPILOT</span>
             </div>
           </div>
 
-          <div className="ai-radar-grid">
-            <div className="ai-radar-card blue">
-              <span className="radar-tag">TODAY'S FOCUS</span>
-              <strong>{todaysFocus.title}</strong>
-              <p>{todaysFocus.desc}</p>
-            </div>
-            <div className="ai-radar-card red">
-              <span className="radar-tag">CANDIDATES AT RISK</span>
-              <strong>{candidates.filter(c => ['Interview Scheduled', 'Interview Done'].includes(c.internal_status || c.external_status)).length} Active Interviews</strong>
-              <p>Candidates in interview funnel requiring recruiter feedback.</p>
-            </div>
-            <div className="ai-radar-card green">
-              <span className="radar-tag">PIPELINE HEALTH</span>
-              <strong>{pipelineHealthPct}% Placement Yield</strong>
-              <p>{qualifiedCount} qualified candidates moving through funnel.</p>
-            </div>
-            <div className="ai-radar-card amber">
-              <span className="radar-tag">RECOMMENDED ACTION</span>
-              <strong>Source #{safeJobs[0]?.job_id || 'FE-102'} Job</strong>
-              <p>Requisition needs additional submittals this week.</p>
-            </div>
+          <ul className="ai-brief-list">
+            <li className="ai-brief-item">
+              <span className="brief-dot blue" />
+              <span>{todaysFocus.title}</span>
+            </li>
+            <li className="ai-brief-item">
+              <span className="brief-dot red" />
+              <span>{atRiskCount} candidate{atRiskCount === 1 ? '' : 's'} awaiting recruiter feedback</span>
+            </li>
+            <li className="ai-brief-item">
+              <span className="brief-dot amber" />
+              <span>{recommendedJobLabel} requires additional submittals this week</span>
+            </li>
+            <li className="ai-brief-item">
+              <span className="brief-dot green" />
+              <span>Pipeline Health: <b>{pipelineHealthLabel}</b> ({pipelineHealthPct}% yield)</span>
+            </li>
+            <li className="ai-brief-item muted">
+              <span className="brief-dot purple" />
+              <span>Estimated workload: <b>{estimatedWorkloadHours}h</b> to clear today's queue</span>
+            </li>
+          </ul>
+
+          <div className="ai-brief-actions">
+            <button
+              className="ai-brief-action-btn primary"
+              type="button"
+              onClick={() => onNavigate && onNavigate(todaysCallbacks.length > 0 ? 'callbacks' : 'candidates')}
+            >
+              Start Working
+            </button>
+            <button className="ai-brief-action-btn" onClick={() => setAiBriefExpanded(!aiBriefExpanded)} type="button">
+              {aiBriefExpanded ? 'Collapse Brief ▲' : 'Expand Brief ▼'}
+            </button>
+            <button className="ai-brief-action-btn ai" onClick={fetchAiBriefing} disabled={briefingLoading} type="button">
+              {briefingLoading ? '⚡ Synthesizing...' : '⚡ Generate AI Plan'}
+            </button>
           </div>
 
           {aiBriefExpanded && (
@@ -1377,36 +1597,40 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
         {/* SUBTLE INNER SEPARATOR DIVIDER */}
         <div className="dash-command-divider" />
 
-        {/* HORIZONTALLY SCROLLABLE QUICK ACTION TOOLBAR */}
+        {/* HORIZONTALLY SCROLLABLE QUICK ACTION TOOLBAR — tiered by importance */}
         <section className="dash-quick-actions-bar">
-          <button onClick={() => onNavigate && onNavigate('candidates')} className="quick-action-item" type="button">
-            <span className="action-icon">👤</span>
-            <span>New Candidate</span>
-          </button>
-          <button onClick={() => onNavigate && onNavigate('jobs')} className="quick-action-item" type="button">
-            <span className="action-icon">💼</span>
-            <span>New Job</span>
-          </button>
-          <button onClick={() => onNavigate && onNavigate('candidates')} className="quick-action-item" type="button">
-            <span className="action-icon">📅</span>
-            <span>Schedule Interview</span>
-          </button>
-          <button onClick={() => onNavigate && onNavigate('pipeline')} className="quick-action-item" type="button">
-            <span className="action-icon">📤</span>
-            <span>Submit Candidate</span>
-          </button>
-          <button onClick={() => onNavigate && onNavigate('callbacks')} className="quick-action-item" type="button">
-            <span className="action-icon">📞</span>
-            <span>Log Call</span>
-          </button>
-          <button onClick={() => handleCopilotSend('Search top React candidates submitted this week')} className="quick-action-item ai" type="button">
-            <span className="action-icon">⚡</span>
-            <span>AI Search</span>
-          </button>
-          <button onClick={() => handleCopilotSend('Generate precision Boolean search string for Senior React Developer')} className="quick-action-item ai" type="button">
-            <span className="action-icon">🔍</span>
-            <span>Generate Boolean</span>
-          </button>
+          <div className="quick-actions-group primary-group">
+            <button onClick={() => onNavigate && onNavigate('candidates')} className="quick-action-item primary" type="button">
+              <span className="action-icon">👤</span>
+              <span>New Candidate</span>
+            </button>
+            <button onClick={() => onNavigate && onNavigate('pipeline')} className="quick-action-item primary" type="button">
+              <span className="action-icon">📤</span>
+              <span>Submit Candidate</span>
+            </button>
+            <button onClick={() => onNavigate && onNavigate('candidates')} className="quick-action-item primary" type="button">
+              <span className="action-icon">📅</span>
+              <span>Schedule Interview</span>
+            </button>
+          </div>
+          <div className="quick-actions-group secondary-group">
+            <button onClick={() => onNavigate && onNavigate('jobs')} className="quick-action-item secondary" type="button">
+              <span className="action-icon">💼</span>
+              <span>New Job</span>
+            </button>
+            <button onClick={() => onNavigate && onNavigate('callbacks')} className="quick-action-item secondary" type="button">
+              <span className="action-icon">📞</span>
+              <span>Log Call</span>
+            </button>
+            <button onClick={() => handleCopilotSend('Search top React candidates submitted this week')} className="quick-action-item secondary ai" type="button">
+              <span className="action-icon">⚡</span>
+              <span>AI Search</span>
+            </button>
+            <button onClick={() => handleCopilotSend('Generate precision Boolean search string for Senior React Developer')} className="quick-action-item secondary ai" type="button">
+              <span className="action-icon">🔍</span>
+              <span>Generate Boolean</span>
+            </button>
+          </div>
         </section>
 
         {/* SUBTLE INNER SEPARATOR DIVIDER */}
@@ -1568,6 +1792,14 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
               </svg>
             </div>
             <small>{stat.helper}</small>
+            {stat.progress && stat.progress.max > 0 && (
+              <div className="kpi-progress-track" title={`${stat.progress.value} ${stat.progress.label || ''}`}>
+                <div
+                  className="kpi-progress-fill"
+                  style={{ width: `${Math.min(100, Math.round((stat.progress.value / stat.progress.max) * 100))}%` }}
+                />
+              </div>
+            )}
           </article>
         ))}
       </section>
@@ -1577,18 +1809,32 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
         {/* Left Column: Funnel, Priority Jobs, Performance Table */}
         <div className="dash-col">
           {/* REFINED INTERACTIVE CONNECTED PIPELINE FLOW VISUALIZATION */}
-          <Panel title="Interactive Pipeline Flow Visualization" subtitle="Connected candidate funnel · Click any stage to filter workspace">
+          <Panel
+            title="Interactive Pipeline Flow Visualization"
+            subtitle="Connected candidate funnel · Click any stage to filter workspace"
+            action={
+              <button
+                type="button"
+                className="panel-ai-action-btn"
+                onClick={() => handleCopilotSend('Explain the current pipeline bottlenecks and recommend actions to improve conversion')}
+              >
+                ✨ Explain Bottlenecks
+              </button>
+            }
+          >
             <div className="pipeline-flow-connected-strip">
               {pipelineData.map((stg, i) => {
                 const isSelected = stageFilter === stg.rawStage
                 return (
                   <div key={stg.stage} className="pipeline-flow-step-wrapper">
-                    <div 
+                    <div
                       className={`pipeline-flow-chip compact ${isSelected ? 'selected' : ''}`}
                       onClick={() => {
                         setStageFilter(prev => prev === stg.rawStage ? 'All' : stg.rawStage)
                         onNavigate && onNavigate('candidates')
                       }}
+                      onMouseEnter={() => setHoveredStage(stg.rawStage)}
+                      onMouseLeave={() => setHoveredStage(prev => prev === stg.rawStage ? null : prev)}
                       title={`Filter candidates by ${stg.stage} • Avg Time: ${stg.avgDays} days • Drop-off: ${stg.dropOff}`}
                     >
                       <div className="chip-header">
@@ -1608,6 +1854,25 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
               })}
             </div>
 
+            {/* PROGRESSIVE DISCLOSURE: stage detail rail, revealed on hover (falls back to the selected stage) */}
+            {(() => {
+              const focusStage = pipelineData.find(s => s.rawStage === (hoveredStage || stageFilter))
+              return (
+                <div className="pipeline-detail-rail">
+                  {focusStage ? (
+                    <>
+                      <span className="pipeline-detail-stage" style={{ '--stage-hue': focusStage.color }}>{focusStage.stage}</span>
+                      <span className="pipeline-detail-metric">Avg time in stage: <b>{focusStage.avgDays} days</b></span>
+                      <span className="pipeline-detail-metric">Drop-off: <b>{focusStage.dropOff}</b></span>
+                      <span className="pipeline-detail-metric">{focusStage.count} candidates · {focusStage.pct}% of pipeline</span>
+                    </>
+                  ) : (
+                    <span className="pipeline-detail-hint">Hover a stage for avg time & drop-off, or click to filter</span>
+                  )}
+                </div>
+              )
+            })()}
+
             {/* COMPRESSED 145PX SUPPORTING BAR CHART */}
             <div className="dashboard-chart compact-chart">
               <ResponsiveContainer width="100%" height={145}>
@@ -1625,7 +1890,19 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
           </Panel>
 
           {/* Top Priority Jobs & Requisition Health Cards */}
-          <Panel title="Top Priority Requisition Health Radar" subtitle="Active job requirements, submittal pace & placement probability">
+          <Panel
+            title="Top Priority Requisition Health Radar"
+            subtitle="Active job requirements, submittal pace & placement probability"
+            action={
+              <button
+                type="button"
+                className="panel-ai-action-btn"
+                onClick={() => handleCopilotSend('Explain which requisitions are most at risk and why, based on the priority job health radar')}
+              >
+                ✨ Explain Risk
+              </button>
+            }
+          >
             <div className="job-health-grid">
               {priorityJobs.map(job => (
                 <div key={job.id} className={`job-health-card ${job.statusTone}`}>
@@ -1653,6 +1930,11 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
                   <span className="empty-celebrate-icon">🎉</span>
                   <strong>You're all caught up.</strong>
                   <p>No pending callbacks or follow-ups today.</p>
+                  <div className="empty-suggested-actions">
+                    <button type="button" onClick={() => onNavigate && onNavigate('candidates')}>Review Pipeline</button>
+                    <button type="button" onClick={() => handleCopilotSend('Draft candidate outreach for open requisitions')}>Generate Outreach</button>
+                    <button type="button" onClick={() => handleCopilotSend('Search passive candidates for our top open roles')}>Search Passive Candidates</button>
+                  </div>
                 </div>
               ) : (
                 <>
@@ -1697,16 +1979,25 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
             title="Recruiter Performance Analytics Table" 
             subtitle="Real-time team submittals, interviews & placement conversion rankings"
             action={
-              selectedOwners.length > 0 && (
-                <button 
-                  type="button" 
-                  className="dash-table-reset-btn"
-                  onClick={() => setSelectedOwners([])}
-                  title="Clear recruiter selection to view all recruiters"
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {selectedOwners.length > 0 && (
+                  <button
+                    type="button"
+                    className="dash-table-reset-btn"
+                    onClick={() => setSelectedOwners([])}
+                    title="Clear recruiter selection to view all recruiters"
+                  >
+                    ↺ Reset View ({selectedOwners.length} Selected)
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="panel-ai-action-btn"
+                  onClick={() => handleCopilotSend('Explain why recruiter productivity and performance changed this period')}
                 >
-                  ↺ Reset View ({selectedOwners.length} Selected)
+                  ✨ Explain Productivity
                 </button>
-              )
+              </div>
             }
           >
             {selectedOwners.length > 0 && (
@@ -1728,25 +2019,40 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
               <table className="leaderboard-table">
                 <thead>
                   <tr>
-                    <th>Rank</th>
-                    <th>Recruiter</th>
-                    <th>Submittals</th>
-                    <th>Interviews</th>
-                    <th>Offers</th>
-                    <th>Hires</th>
-                    <th>Yield %</th>
-                    <th>AI Score</th>
+                    <th className="sortable-th" onClick={() => setTableSortKey(null)} title="Reset to default ranking">Rank</th>
+                    <th className="sortable-th" onClick={() => handleTableSort('name')}>
+                      Recruiter {tableSortKey === 'name' && (tableSortDir === 'asc' ? '▲' : '▼')}
+                    </th>
+                    <th className="sortable-th" onClick={() => handleTableSort('submissions')}>
+                      Submittals {tableSortKey === 'submissions' && (tableSortDir === 'asc' ? '▲' : '▼')}
+                    </th>
+                    <th className="sortable-th" onClick={() => handleTableSort('interviews')}>
+                      Interviews {tableSortKey === 'interviews' && (tableSortDir === 'asc' ? '▲' : '▼')}
+                    </th>
+                    <th className="sortable-th" onClick={() => handleTableSort('offers')}>
+                      Offers {tableSortKey === 'offers' && (tableSortDir === 'asc' ? '▲' : '▼')}
+                    </th>
+                    <th className="sortable-th" onClick={() => handleTableSort('hires')}>
+                      Hires {tableSortKey === 'hires' && (tableSortDir === 'asc' ? '▲' : '▼')}
+                    </th>
+                    <th className="sortable-th" onClick={() => handleTableSort('fillRate')}>
+                      Yield % {tableSortKey === 'fillRate' && (tableSortDir === 'asc' ? '▲' : '▼')}
+                    </th>
+                    <th className="sortable-th" onClick={() => handleTableSort('aiScore')}>
+                      AI Score {tableSortKey === 'aiScore' && (tableSortDir === 'asc' ? '▲' : '▼')}
+                    </th>
+                    <th className="expand-th" aria-label="Expand row" />
                   </tr>
                 </thead>
                 <tbody>
-                  {recruiterData.length === 0 ? (
+                  {sortedRecruiterData.length === 0 ? (
                     <tr>
-                      <td colSpan="8" className="empty-td">
+                      <td colSpan="9" className="empty-td">
                         No submittals in selected timeframe
                         {selectedOwners.length > 0 && (
                           <div style={{ marginTop: 8 }}>
-                            <button 
-                              type="button" 
+                            <button
+                              type="button"
                               className="dash-table-reset-btn"
                               onClick={() => setSelectedOwners([])}
                             >
@@ -1757,36 +2063,77 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
                       </td>
                     </tr>
                   ) : (
-                    recruiterData.map(row => {
+                    sortedRecruiterData.map(row => {
                       const ownerMatch = ownerOptions.find(([id, name]) => name === row.name)
                       const ownerId = ownerMatch ? ownerMatch[0] : null
                       const isSelected = ownerId && selectedOwners.includes(ownerId)
+                      const isExpanded = expandedRecruiterName === row.name
+                      const medal = row.rank === 1 ? '🥇' : row.rank === 2 ? '🥈' : row.rank === 3 ? '🥉' : null
 
                       return (
-                        <tr 
-                          key={row.name} 
-                          className={`clickable-row ${isSelected ? 'selected-row' : ''}`}
-                          onClick={() => {
-                            if (ownerId) {
-                              setSelectedOwners(prev => prev.includes(ownerId) ? [] : [ownerId])
-                            }
-                          }}
-                          title={isSelected ? "Click to deselect and view all recruiters" : `Click to filter analytics by ${row.name}`}
-                        >
-                          <td><span className="rank-pill">#{row.rank}</span></td>
-                          <td>
-                            <div className="recruiter-name-cell">
-                              <strong>{row.name}</strong>
-                              {isSelected && <span className="selected-active-pill">Active</span>}
-                            </div>
-                          </td>
-                          <td><b>{row.submissions}</b></td>
-                          <td>{row.interviews}</td>
-                          <td>{row.offers}</td>
-                          <td><b className="green-text">{row.hires}</b></td>
-                          <td><span className="yield-badge">{row.fillRate}%</span></td>
-                          <td><span className="ai-score-pill">⚡ {row.aiScore}</span></td>
-                        </tr>
+                        <Fragment key={row.name}>
+                          <tr
+                            className={`clickable-row ${isSelected ? 'selected-row' : ''}`}
+                            onClick={() => {
+                              if (ownerId) {
+                                setSelectedOwners(prev => prev.includes(ownerId) ? [] : [ownerId])
+                              }
+                            }}
+                            title={isSelected ? "Click to deselect and view all recruiters" : `Click to filter analytics by ${row.name}`}
+                          >
+                            <td><span className={`rank-pill ${medal ? 'medal' : ''}`}>{medal || `#${row.rank}`}</span></td>
+                            <td>
+                              <div className="recruiter-name-cell">
+                                <strong>{row.name}</strong>
+                                {isSelected && <span className="selected-active-pill">Active</span>}
+                              </div>
+                            </td>
+                            <td><b>{row.submissions}</b></td>
+                            <td>{row.interviews}</td>
+                            <td>{row.offers}</td>
+                            <td><b className="green-text">{row.hires}</b></td>
+                            <td><span className="yield-badge">{row.fillRate}%</span></td>
+                            <td><span className="ai-score-pill">⚡ {row.aiScore}</span></td>
+                            <td>
+                              <button
+                                type="button"
+                                className="row-expand-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setExpandedRecruiterName(prev => prev === row.name ? null : row.name)
+                                }}
+                                title={isExpanded ? 'Hide funnel breakdown' : 'Show funnel breakdown'}
+                              >
+                                {isExpanded ? '▲' : '▾'}
+                              </button>
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <tr className="row-expand-detail">
+                              <td colSpan="9">
+                                <div className="recruiter-mini-trend">
+                                  {[
+                                    { label: 'Submittals', value: row.submissions, tone: 'blue' },
+                                    { label: 'Interviews', value: row.interviews, tone: 'purple' },
+                                    { label: 'Offers', value: row.offers, tone: 'yellow' },
+                                    { label: 'Hires', value: row.hires, tone: 'green' },
+                                  ].map(bar => (
+                                    <div className="mini-trend-bar-row" key={bar.label}>
+                                      <span className="mini-trend-label">{bar.label}</span>
+                                      <div className="mini-trend-track">
+                                        <div
+                                          className={`mini-trend-fill ${bar.tone}`}
+                                          style={{ width: `${Math.min(100, Math.round((bar.value / Math.max(row.submissions, 1)) * 100))}%` }}
+                                        />
+                                      </div>
+                                      <span className="mini-trend-value">{bar.value}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       )
                     })
                   )}
@@ -1866,11 +2213,27 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
                             </span>
                             <div className="task-text-group">
                               <span className="todo-item-text">{item.text}</span>
-                              {item.candidate && (
-                                <small className="task-sub-ref">{item.candidate} · {item.job || 'Requisition'}</small>
-                              )}
+                              <div className="task-meta-row">
+                                {item.priority && (
+                                  <span className={`priority-badge ${item.priority.toLowerCase()}`}>{item.priority}</span>
+                                )}
+                                <span className="task-effort-chip">⏱ {TASK_EFFORT_MINUTES[item.tag] || 15} min</span>
+                                <span className="task-due-chip">Due Today</span>
+                                {item.candidate && (
+                                  <small className="task-sub-ref">{item.candidate} · {item.job || 'Requisition'}</small>
+                                )}
+                              </div>
                             </div>
                           </label>
+
+                          <div className="task-quick-actions">
+                            <button type="button" onClick={() => onNavigate && onNavigate('candidates')} title="Open in workspace">
+                              View
+                            </button>
+                            <button type="button" onClick={() => handleCopilotSend(`Draft a follow-up for: ${item.text}`)} title="AI Draft">
+                              AI
+                            </button>
+                          </div>
 
                           <div className="task-context-menu-wrapper">
                             <button 
@@ -1953,22 +2316,68 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
           </Panel>
 
           {/* Activity Stream Feed with Hover Quick Actions */}
-          <Panel title="Real-Time Workspace Activity Feed" subtitle="Chronological submittals, interviews & system events">
-            <div className="activity-feed-list">
-              {activityFeed.map(act => (
-                <div className="activity-feed-item interactive-feed-item" key={act.id}>
-                  <div className="feed-avatar-ring">{act.actor.charAt(0)}</div>
-                  <div className="feed-details">
-                    <strong>{act.title}</strong>
-                    <span>{act.sub}</span>
-                  </div>
-                  <div className="feed-hover-actions">
-                    <button onClick={() => onNavigate && onNavigate('candidates')} type="button" title="View Candidate">View</button>
-                    <button onClick={() => handleCopilotSend(`Summarize activity ${act.title}`)} type="button" title="AI Summary">AI</button>
-                  </div>
-                  <span className="feed-time">{act.time}</span>
-                </div>
+          <Panel title="Real-Time Workspace Activity Feed" subtitle="Chronological submittals, callbacks & follow-ups">
+            <div className="activity-feed-filters">
+              {[
+                { key: 'all', label: 'All' },
+                { key: 'submission', label: 'Submissions' },
+                { key: 'callback', label: 'Callbacks' },
+                { key: 'followup', label: 'Follow-ups' },
+              ].map(f => (
+                <button
+                  key={f.key}
+                  type="button"
+                  className={`activity-filter-chip ${activityFilter === f.key ? 'active' : ''}`}
+                  onClick={() => setActivityFilter(f.key)}
+                >
+                  {f.label}
+                </button>
               ))}
+              <button
+                type="button"
+                className="activity-filter-chip ai"
+                onClick={() => handleCopilotSend("Summarize today's workspace activity")}
+                title="AI: Summarize today's activity"
+              >
+                ✨ Summarize
+              </button>
+            </div>
+
+            <div className="activity-feed-list">
+              {filteredActivityFeed.length === 0 ? (
+                <div className="dash-empty-action-center">
+                  <span className="empty-celebrate-icon">🗓️</span>
+                  <strong>No activity yet</strong>
+                  <p>Submittals, callbacks & follow-ups will show up here as they happen.</p>
+                  <div className="empty-suggested-actions">
+                    <button type="button" onClick={() => onNavigate && onNavigate('candidates')}>Review Pipeline</button>
+                    <button type="button" onClick={() => handleCopilotSend('Draft outreach for passive candidates')}>Generate Outreach</button>
+                  </div>
+                </div>
+              ) : (
+                filteredActivityFeed.map((act, i) => {
+                  const bucket = getActivityDateBucket(act.timestamp)
+                  const showBucket = i === 0 || getActivityDateBucket(filteredActivityFeed[i - 1].timestamp) !== bucket
+                  const typeIcon = act.type === 'submission' ? '📤' : act.type === 'callback' ? '📞' : '🔔'
+                  return (
+                    <div key={act.id}>
+                      {showBucket && <div className="activity-feed-group-label">{bucket}</div>}
+                      <div className="activity-feed-item interactive-feed-item">
+                        <div className="feed-avatar-ring">{act.actor.charAt(0)}</div>
+                        <div className="feed-details">
+                          <strong>{typeIcon} {act.title}</strong>
+                          <span>{act.sub}</span>
+                        </div>
+                        <div className="feed-hover-actions">
+                          <button onClick={() => onNavigate && onNavigate('candidates')} type="button" title="View Candidate">View</button>
+                          <button onClick={() => handleCopilotSend(`Summarize activity: ${act.title}`)} type="button" title="AI Summary">AI</button>
+                        </div>
+                        <span className="feed-time">{formatRelativeTime(act.timestamp)}</span>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
             </div>
           </Panel>
 
@@ -1991,8 +2400,18 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
                   <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} interval={timeRange === '90d' ? 14 : timeRange === '30d' ? 4 : 0} />
                   <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
                   <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
-                  <Area type="monotone" dataKey="submissions" stroke="#2563eb" fill="url(#submissions)" strokeWidth={2} />
-                  <Area type="monotone" dataKey="followups" stroke="#10b981" fill="url(#followups)" strokeWidth={2} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} iconType="circle" iconSize={8} />
+                  <Area type="monotone" dataKey="submissions" name="Submissions" stroke="#2563eb" fill="url(#submissions)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="followups" name="Follow-ups" stroke="#10b981" fill="url(#followups)" strokeWidth={2} />
+                  <Area
+                    type="monotone"
+                    dataKey="previousSubmissions"
+                    name="Previous Period"
+                    stroke="#94a3b8"
+                    strokeDasharray="4 3"
+                    fill="none"
+                    strokeWidth={1.5}
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -2001,22 +2420,34 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
           {/* Job Donut & Smart AI Workspace Scratchpad */}
           <Panel title="Job Requisitions & Smart AI Workspace" subtitle="Job status breakdown & autosaved call notes">
             <div className="dash-split-panel">
-              <div className="dashboard-donut compact-donut">
-                {sourceData.length === 0 ? <EmptyLine text="No job data yet" /> : (
-                  <>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie data={sourceData} dataKey="value" nameKey="name" innerRadius={42} outerRadius={64} paddingAngle={4}>
-                          {sourceData.map((entry, index) => <Cell key={entry.name} fill={COLORS[index]} />)}
-                        </Pie>
-                        <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="donut-center-label">
-                      <strong>{activeJobsCount}</strong>
-                      <span>Active</span>
-                    </div>
-                  </>
+              <div className="donut-column">
+                <div className="dashboard-donut compact-donut">
+                  {sourceData.length === 0 ? <EmptyLine text="No job data yet" /> : (
+                    <>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie data={sourceData} dataKey="value" nameKey="name" innerRadius={42} outerRadius={64} paddingAngle={4}>
+                            {sourceData.map((entry, index) => <Cell key={entry.name} fill={COLORS[index]} />)}
+                          </Pie>
+                          <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="donut-center-label">
+                        <strong>{activeJobsCount}</strong>
+                        <span>Active</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+                {sourceData.length > 0 && (
+                  <div className="donut-legend">
+                    {sourceData.map((entry, index) => (
+                      <span className="donut-legend-item" key={entry.name}>
+                        <span className="donut-legend-dot" style={{ background: COLORS[index] }} />
+                        {entry.name} <b>{entry.value}</b>
+                      </span>
+                    ))}
+                  </div>
                 )}
               </div>
 
@@ -2298,10 +2729,10 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
           <div className="dash-command-modal-content" onClick={e => e.stopPropagation()}>
             <div className="command-modal-input-row">
               <span className="cmd-icon">🔍</span>
-              <input 
-                type="text" 
-                placeholder="Type a command or search candidates, jobs, clients... (e.g. 'Find React candidates')" 
-                value={commandQuery} 
+              <input
+                type="text"
+                placeholder="Type a command or search candidates, jobs, clients... (e.g. 'Find React candidates')"
+                value={commandQuery}
                 onChange={e => setCommandQuery(e.target.value)}
                 autoFocus
               />
@@ -2309,24 +2740,44 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
             </div>
 
             <div className="command-modal-results">
-              {commandResults.length === 0 ? (
+              {commandQuery.trim() === '' ? (
                 <div className="command-modal-empty">
-                  <span>Type to search across Candidates, Jobs & Workspace Actions...</span>
+                  {recentSearches.length > 0 ? (
+                    <>
+                      <div className="command-modal-section-label">Recent Searches</div>
+                      <div className="command-recent-chips">
+                        {recentSearches.map((term, i) => (
+                          <button key={i} type="button" className="command-recent-chip" onClick={() => setCommandQuery(term)}>
+                            🕐 {term}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <span>Type to search across Candidates, Jobs & Workspace Actions...</span>
+                  )}
+                </div>
+              ) : commandResults.length === 0 ? (
+                <div className="command-modal-empty">
+                  <span>No matches for "{commandQuery}". Try a candidate name, job title, or action.</span>
                 </div>
               ) : (
-                commandResults.map((res, i) => (
-                  <div 
-                    key={i} 
-                    className="command-modal-item"
-                    onClick={() => {
-                      setCommandOpen(false)
-                      res.action()
-                    }}
-                  >
-                    <strong>{res.title}</strong>
-                    <span>{res.meta}</span>
-                  </div>
-                ))
+                commandResults.map((res, i) => {
+                  const showLabel = i === 0 || commandResults[i - 1].type !== res.type
+                  return (
+                    <div key={i}>
+                      {showLabel && <div className="command-modal-section-label">{commandGroupLabel[res.type]}</div>}
+                      <div
+                        className={`command-modal-item ${commandActiveIndex === i ? 'active' : ''}`}
+                        onMouseEnter={() => setCommandActiveIndex(i)}
+                        onClick={() => runCommandResult(res)}
+                      >
+                        <strong>{res.title}</strong>
+                        <span>{res.meta}</span>
+                      </div>
+                    </div>
+                  )
+                })
               )}
             </div>
           </div>
