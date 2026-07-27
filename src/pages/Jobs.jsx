@@ -98,10 +98,10 @@ export default function Jobs() {
 
   const STATUS_COLORS = { 'Open': '#2ecc8f', 'Filled': '#4f7cff', 'On Hold': '#f5c842', 'Closed': '#ff4d6a' }
   const jobStats = [
-    { label: 'Open roles', value: jobs.filter(j => j.status === 'Open').length },
-    { label: 'On hold', value: jobs.filter(j => j.status === 'On Hold').length },
-    { label: 'Filled', value: jobs.filter(j => j.status === 'Filled').length },
-    { label: 'Closed', value: jobs.filter(j => j.status === 'Closed').length },
+    { label: 'Open roles', value: jobs.filter(j => j.status === 'Open').length, color: STATUS_COLORS['Open'] },
+    { label: 'On hold', value: jobs.filter(j => j.status === 'On Hold').length, color: STATUS_COLORS['On Hold'] },
+    { label: 'Filled', value: jobs.filter(j => j.status === 'Filled').length, color: STATUS_COLORS['Filled'] },
+    { label: 'Closed', value: jobs.filter(j => j.status === 'Closed').length, color: STATUS_COLORS['Closed'] },
   ]
 
   return (
@@ -130,7 +130,7 @@ export default function Jobs() {
 
       <div className="jobs-summary">
         {jobStats.map(stat => (
-          <div key={stat.label} className="jobs-summary-card">
+          <div key={stat.label} className="jobs-summary-card" style={{ '--job-stat-color': stat.color }}>
             <span>{stat.label}</span>
             <strong>{stat.value}</strong>
           </div>

@@ -4253,10 +4253,20 @@ button {
 }
 
 .jobs-summary-card {
+  position: relative;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
   padding: 12px 14px;
+}
+
+.jobs-summary-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--job-stat-color, var(--accent));
 }
 
 .jobs-summary-card span {
@@ -7431,7 +7441,7 @@ button {
   .jobs-filterbar {
     max-width: calc(100vw - 20px) !important;
     margin: 12px 10px 0 !important;
-    padding: 0 !important;
+    padding: 12px !important;
   }
 
   .candidate-filter {
@@ -14509,12 +14519,6 @@ body {
 
   .task-kpi-card small {
     font-size: 10px !important;
-  }
-}
-
-@media (max-width: 400px) {
-  .tasks-kpi-grid {
-    grid-template-columns: 1fr !important;
   }
 }
 
