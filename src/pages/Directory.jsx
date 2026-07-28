@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { db } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
@@ -22,6 +22,9 @@ export default function Directory() {
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [toast, setToast] = useState(null)
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(false)
+  const tabsRef = useRef(null)
 
   const isAdmin = ['admin', 'superadmin'].includes(profile?.role)
 
@@ -78,6 +81,25 @@ export default function Directory() {
     return list
   }, [dynamicDepartments, members])
 
+  const checkScroll = () => {
+    if (!tabsRef.current) return
+    const { scrollLeft, scrollWidth, clientWidth } = tabsRef.current
+    setCanScrollLeft(scrollLeft > 6)
+    setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 6)
+  }
+
+  useEffect(() => {
+    checkScroll()
+    window.addEventListener('resize', checkScroll)
+    return () => window.removeEventListener('resize', checkScroll)
+  }, [departmentCounts])
+
+  const scrollTabs = (direction) => {
+    if (!tabsRef.current) return
+    const amount = direction === 'left' ? -260 : 260
+    tabsRef.current.scrollBy({ left: amount, behavior: 'smooth' })
+  }
+
   const openAdd = (dept = activeDepartment) => {
     const defaultDept = dept === 'All' ? (dynamicDepartments[0] || 'General') : dept
     setForm({ ...emptyForm, department: defaultDept })
@@ -86,12 +108,16 @@ export default function Directory() {
   }
 
   const openEdit = (member) => {
+    let resolvedRole = member.role || 'recruiter'
+    if (resolvedRole === 'manager') {
+      resolvedRole = (member.manager_id || (member.team && member.team.includes('AM'))) ? 'account_manager' : 'recruitment_manager'
+    }
     setForm({
       full_name: member.full_name || '',
       email: member.email || '',
       phone: member.phone || '',
       extension: member.extension || '',
-      role: member.role || 'recruiter',
+      role: resolvedRole,
       department: getMemberDepartment(member),
       team: member.team || '',
     })
@@ -173,18 +199,60 @@ export default function Directory() {
         </div>
       </header>
 
-      <div className="directory-tabs">
-        {departmentCounts.map(item => (
-          <button
-            key={item.department}
-            className={activeDepartment === item.department ? 'active' : ''}
-            onClick={() => setActiveDepartment(item.department)}
-            type="button"
+      <div className="directory-filter-wrapper">
+        <div className="directory-filter-header">
+          <div className="directory-filter-title">
+            <span className="directory-filter-icon"><FilterIcon /></span>
+            <span className="directory-filter-text">Filter by Team</span>
+          </div>
+          <span className="directory-filter-count-badge">{departmentCounts.length - 1} Teams</span>
+        </div>
+        
+        <div className="directory-tabs-container">
+          {canScrollLeft && (
+            <button 
+              className="directory-scroll-btn left" 
+              onClick={() => scrollTabs('left')} 
+              type="button" 
+              title="Scroll left"
+            >
+              <ChevronLeftIcon />
+            </button>
+          )}
+
+          <div 
+            className="directory-tabs" 
+            ref={tabsRef} 
+            onScroll={checkScroll}
           >
-            <span>{item.department}</span>
-            <strong>{item.count}</strong>
-          </button>
-        ))}
+            {departmentCounts.map(item => {
+              const isActive = activeDepartment === item.department
+              return (
+                <button
+                  key={item.department}
+                  className={`directory-tab-chip ${isActive ? 'active' : ''}`}
+                  onClick={() => setActiveDepartment(item.department)}
+                  type="button"
+                >
+                  <span className="tab-chip-icon">{getDepartmentIcon(item.department)}</span>
+                  <span className="tab-chip-name">{item.department}</span>
+                  <strong className="tab-chip-count">{item.count}</strong>
+                </button>
+              )
+            })}
+          </div>
+
+          {canScrollRight && (
+            <button 
+              className="directory-scroll-btn right" 
+              onClick={() => scrollTabs('right')} 
+              type="button" 
+              title="Scroll right"
+            >
+              <ChevronRightIcon />
+            </button>
+          )}
+        </div>
       </div>
 
       <main className="directory-content">
@@ -247,7 +315,9 @@ export default function Directory() {
               </Field>
               <Field label="Role">
                 <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-                  {['recruiter', 'manager', 'admin', 'employee'].map(role => <option key={role}>{role}</option>)}
+                  {['recruiter', 'account_manager', 'recruitment_manager', 'operations_manager', 'manager', 'admin', 'employee'].map(role => (
+                    <option key={role} value={role}>{role.replace('_', ' ')}</option>
+                  ))}
                 </select>
               </Field>
               <Field label="Team"><input value={form.team} onChange={e => setForm(f => ({ ...f, team: e.target.value }))} placeholder="e.g. Frontend Team" /></Field>
@@ -323,6 +393,25 @@ function getMemberDepartment(member) {
   return 'General'
 }
 
+function formatRole(member) {
+  if (!member) return 'Recruiter'
+  const role = member.role
+  if (role === 'recruitment_manager') return 'Recruitment Manager'
+  if (role === 'account_manager') return 'Account Manager'
+  if (role === 'operations_manager') return 'Operations Manager'
+  if (role === 'superadmin') return 'Superadmin'
+  if (role === 'admin') return 'Admin'
+  if (role === 'recruiter') return 'Recruiter'
+  
+  if (role === 'manager') {
+    if (member.manager_id || (member.team && member.team.includes('AM'))) {
+      return 'Account Manager'
+    }
+    return 'Recruitment Manager'
+  }
+  return role ? role.replace('_', ' ') : 'Recruiter'
+}
+
 function MemberCard({ member, index, canEdit, onEdit, onDelete, showToast }) {
   const initials = (member.full_name || member.email || '?').split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase()
   const copyMember = async (event) => {
@@ -336,13 +425,8 @@ function MemberCard({ member, index, canEdit, onEdit, onDelete, showToast }) {
   return (
     <article className="directory-card">
       <div className="directory-avatar" style={{ background: avatarGradients[index % avatarGradients.length] }}>{initials}</div>
-      <div className="directory-card-copy">
+      <div className="directory-card-name" title={member.full_name || 'Unnamed contact'}>
         <strong>{member.full_name || 'Unnamed contact'}</strong>
-        <div className="directory-card-meta">
-          {member.extension && <span className="directory-meta-ext">{member.extension}</span>}
-          {member.extension && member.phone && <span className="directory-meta-sep"> · </span>}
-          {member.phone && <span className="directory-meta-phone">{member.phone}</span>}
-        </div>
       </div>
       <div className="directory-card-actions">
         <button className="directory-copy" onClick={copyMember} type="button" title="Copy contact">
@@ -358,6 +442,11 @@ function MemberCard({ member, index, canEdit, onEdit, onDelete, showToast }) {
             </button>
           </>
         )}
+      </div>
+      <div className="directory-card-meta">
+        <span className="directory-role-badge">{formatRole(member)}</span>
+        {member.extension && <span className="directory-meta-ext">Ext {member.extension}</span>}
+        {member.phone && <span className="directory-meta-phone">{member.phone}</span>}
       </div>
       <div className="directory-card-lines">
         {member.email && (
@@ -398,5 +487,79 @@ function EmptyState({ title, body, compact }) {
       <strong>{title}</strong>
       <span>{body}</span>
     </div>
+  )
+}
+
+const FilterIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+  </svg>
+)
+
+const ChevronLeftIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m15 18-6-6 6-6"/>
+  </svg>
+)
+
+const ChevronRightIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m9 18 6-6-6-6"/>
+  </svg>
+)
+
+function getDepartmentIcon(dept) {
+  const d = (dept || '').toLowerCase()
+  if (d === 'all') {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+        <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+        <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+        <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+      </svg>
+    )
+  }
+  if (d.includes('health') || d.includes('care') || d.includes('e-care')) {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>
+      </svg>
+    )
+  }
+  if (d.includes('it') || d.includes('tech') || d.includes('desk') || d.includes('dev')) {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <rect width="20" height="14" x="2" y="3" rx="2"/>
+        <line x1="8" x2="16" y1="21" y2="21"/>
+        <line x1="12" x2="12" y1="17" y2="21"/>
+      </svg>
+    )
+  }
+  if (d.includes('op') || d.includes('pmo') || d.includes('admin') || d.includes('manage')) {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>
+    )
+  }
+  if (d.includes('onboard') || d.includes('recruit') || d.includes('hr')) {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+        <circle cx="9" cy="7" r="4"/>
+        <path d="M19 8v6"/>
+        <path d="M22 11h-6"/>
+      </svg>
+    )
+  }
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+      <circle cx="9" cy="7" r="4"/>
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+      <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </svg>
   )
 }

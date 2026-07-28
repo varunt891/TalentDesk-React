@@ -4,12 +4,12 @@ import { useAuth } from '../context/AuthContext'
 
 // Helper Styles & Utilities defined at top to prevent TDZ Hoisting Errors
 const emptyForm = { candidate_name: '', phone: '', job: '', date: new Date().toISOString().slice(0,10), time: '10:00', timezone: 'EST', interest: 'Warm', notes: '', status: 'pending' }
-const inputStyle = { width: '100%', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '9px 12px', color: 'var(--text)', fontSize: '13px', outline: 'none', fontFamily: 'inherit' }
-const grid2 = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }
+const inputStyle = { width: '100%', boxSizing: 'border-box', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '9px 12px', color: 'var(--text)', fontSize: '13px', outline: 'none', fontFamily: 'inherit', minWidth: 0 }
+const grid2 = { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0 16px' }
 const topbarStyle = { height: '58px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', padding: '0 24px', gap: '16px', flexShrink: 0 }
 const btnPrimary = { background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }
 const btnGhost = { background: 'var(--surface2)', color: 'var(--text2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }
-const overlayStyle = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+const overlayStyle = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }
 const modalStyle = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '16px', width: '90%', maxWidth: '600px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }
 const modalHeader = { padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }
 const closeBtn = { background: 'none', border: 'none', color: 'var(--text3)', fontSize: '18px', cursor: 'pointer' }
@@ -17,7 +17,7 @@ const toastStyle = (type) => ({ position: 'fixed', bottom: '24px', right: '24px'
 
 function Field({ label, children }) {
   return (
-    <div style={{ marginBottom: '14px' }}>
+    <div style={{ marginBottom: '14px', minWidth: 0 }}>
       <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text2)', marginBottom: '6px' }}>{label}</label>
       {children}
     </div>
@@ -76,7 +76,7 @@ function SearchableCandidateSelector({ candidates, value, onChange, onSelectCand
   }, [uniqueCandidates, search])
 
   return (
-    <div ref={dropdownRef} style={{ position: 'relative', width: '100%' }}>
+    <div ref={dropdownRef} style={{ position: 'relative', width: '100%', minWidth: 0 }}>
       <div
         style={{
           display: 'flex',
@@ -92,14 +92,14 @@ function SearchableCandidateSelector({ candidates, value, onChange, onSelectCand
           type="text"
           value={value}
           onChange={e => onChange(e.target.value)}
-          placeholder="Type or pick candidate..."
+          placeholder="Pick or type..."
           style={{
             flex: 1,
             background: 'transparent',
             border: 'none',
-            padding: '9px 12px',
+            padding: '8px 8px',
             color: 'var(--text)',
-            fontSize: '13px',
+            fontSize: '12px',
             outline: 'none',
             fontFamily: 'inherit',
             minWidth: 0
@@ -115,15 +115,15 @@ function SearchableCandidateSelector({ candidates, value, onChange, onSelectCand
             color: isOpen ? '#ffffff' : 'var(--accent)',
             border: 'none',
             borderLeft: '1px solid var(--border)',
-            padding: '0 12px',
-            height: '38px',
-            fontSize: '12px',
+            padding: '0 8px',
+            height: '34px',
+            fontSize: '11px',
             fontWeight: '600',
             cursor: 'pointer',
             whiteSpace: 'nowrap',
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
+            gap: '4px',
             transition: 'all 0.15s ease',
             flexShrink: 0
           }}
@@ -135,13 +135,14 @@ function SearchableCandidateSelector({ candidates, value, onChange, onSelectCand
 
       {isOpen && (
         <div
+          className="candidate-dropdown-panel"
           style={{
             position: 'absolute',
             top: 'calc(100% + 6px)',
             left: 0,
-            minWidth: '320px',
-            width: 'max(100%, 340px)',
-            maxWidth: '90vw',
+            right: 0,
+            width: '100%',
+            maxWidth: '100%',
             zIndex: 1300,
             background: 'var(--surface)',
             border: '1px solid var(--border)',
@@ -151,7 +152,8 @@ function SearchableCandidateSelector({ candidates, value, onChange, onSelectCand
             display: 'flex',
             flexDirection: 'column',
             gap: '8px',
-            maxHeight: '300px'
+            maxHeight: '300px',
+            boxSizing: 'border-box'
           }}
         >
           <input
@@ -366,24 +368,24 @@ export default function Callbacks() {
               const isToday = c.date === todayStr
               const isPast = c.date < todayStr && c.status === 'pending'
               return (
-                <div key={c.id} style={{ background: 'var(--surface)', border: `1px solid ${isPast ? 'rgba(255,77,106,0.3)' : 'var(--border)'}`, borderRadius: '10px', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '16px', opacity: c.status === 'done' ? 0.6 : 1 }}>
-                  <div style={{ textAlign: 'center', minWidth: '80px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px', flexShrink: 0 }}>
+                <div key={c.id} className="callback-item-row" style={{ background: 'var(--surface)', border: `1px solid ${isPast ? 'rgba(255,77,106,0.3)' : 'var(--border)'}`, borderRadius: '10px', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '16px', opacity: c.status === 'done' ? 0.6 : 1 }}>
+                  <div className="callback-time-box" style={{ textAlign: 'center', minWidth: '80px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px', flexShrink: 0 }}>
                     <div style={{ fontSize: '10px', color: 'var(--text3)', fontFamily: "'Space Mono',monospace" }}>{c.date}</div>
                     <div style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text)', fontFamily: "'Space Mono',monospace", lineHeight: 1.2 }}>{c.time}</div>
                     <div style={{ fontSize: '10px', color: 'var(--text3)' }}>{c.timezone}</div>
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                       {c.candidate_name}
                       {isToday && c.status === 'pending' && <span style={{ background: 'rgba(245,200,66,0.15)', color: 'var(--yellow)', border: '1px solid rgba(245,200,66,0.3)', borderRadius: '20px', padding: '2px 8px', fontSize: '10px', fontWeight: '700' }}>TODAY</span>}
                       {isPast && <span style={{ background: 'rgba(255,77,106,0.15)', color: 'var(--red)', border: '1px solid rgba(255,77,106,0.3)', borderRadius: '20px', padding: '2px 8px', fontSize: '10px', fontWeight: '700' }}>OVERDUE</span>}
                     </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text3)', display: 'flex', gap: '12px' }}>
+                    <div style={{ fontSize: '12px', color: 'var(--text3)', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                       <span>📱 {c.phone}</span>
                       <span>💼 {c.job}</span>
                       <span style={{ color: INTEREST_COLORS[c.interest], fontWeight: '700' }}>🔥 {c.interest}</span>
                     </div>
-                    {c.notes && <div style={{ fontSize: '12px', color: 'var(--text2)', marginTop: '6px', fontStyle: 'italic' }}>{c.notes}</div>}
+                    {c.notes && <div style={{ fontSize: '12px', color: 'var(--text2)', marginTop: '6px', fontStyle: 'italic', wordBreak: 'break-word' }}>{c.notes}</div>}
                   </div>
                   <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
                     {c.status === 'pending' && <button onClick={() => markDone(c.id)} style={{ background: 'rgba(46,204,143,0.1)', border: '1px solid rgba(46,204,143,0.3)', borderRadius: '8px', padding: '6px 12px', fontSize: '12px', color: 'var(--green)', cursor: 'pointer', fontFamily: 'inherit' }}>✅ Done</button>}
@@ -399,13 +401,13 @@ export default function Callbacks() {
 
       {showModal && (
         <div style={overlayStyle} onClick={e => e.target === e.currentTarget && setShowModal(false)}>
-          <div style={modalStyle}>
-            <div style={modalHeader}>
+          <div className="modal-card-responsive" style={modalStyle}>
+            <div className="modal-header-responsive" style={modalHeader}>
               <div style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text)' }}>{editingId ? 'Edit Callback' : 'Schedule Callback'}</div>
               <button onClick={() => setShowModal(false)} style={closeBtn}>✕</button>
             </div>
-            <div style={{ padding: '20px 24px', overflowY: 'auto' }}>
-              <div style={grid2}>
+            <div className="modal-body-responsive" style={{ padding: '20px 24px', overflowY: 'auto' }}>
+              <div className="modal-grid-2" style={grid2}>
                 <Field label="Candidate Name *">
                   <SearchableCandidateSelector
                     candidates={candidates}
@@ -448,7 +450,7 @@ export default function Callbacks() {
                 <textarea {...inp('notes')} style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }} placeholder="Any notes..." />
               </Field>
             </div>
-            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <div className="modal-footer-responsive" style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button onClick={() => setShowModal(false)} style={btnGhost}>Cancel</button>
               <button onClick={handleSave} disabled={saving} style={{ ...btnPrimary, opacity: saving ? 0.7 : 1 }}>{saving ? 'Saving...' : 'Save'}</button>
             </div>
@@ -458,13 +460,13 @@ export default function Callbacks() {
 
       {showNotification && (
         <div style={overlayStyle} onClick={() => setShowNotification(null)}>
-          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '16px', padding: '32px', maxWidth: '500px', width: '90%', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+          <div className="modal-card-responsive" style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '16px', padding: '24px', maxWidth: '500px', width: '90%', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
             <div style={{ fontSize: '48px', marginBottom: '16px', animation: 'pulse 1s infinite' }}>📞</div>
             <div style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text)', marginBottom: '8px' }}>
               {showNotification.type === 'added' ? 'Callback Scheduled! ✓' : 'Callback Updated! ✓'}
             </div>
             <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', marginBottom: '16px', textAlign: 'left' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="modal-grid-2" style={{ gap: '10px' }}>
                 <div>
                   <div style={{ fontSize: '11px', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Candidate</div>
                   <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text)' }}>{showNotification.candidate_name}</div>

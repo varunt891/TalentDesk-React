@@ -51,18 +51,63 @@ function coerce(value) {
   return value
 }
 
-async function visibleOwnerIds(req) {
-  if (['admin', 'superadmin'].includes(req.profile.role)) return null
+async function getDescendantProfileIds(managerId, orgId) {
+  const allOrgProfiles = await prisma.profile.findMany({
+    where: { org_id: orgId },
+    select: { id: true, manager_id: true, team: true },
+  })
 
-  if (req.profile.role === 'manager') {
-    const reports = await prisma.profile.findMany({
-      where: { org_id: req.profile.org_id, OR: [{ manager_id: req.user.id }, { id: req.user.id }] },
-      select: { id: true },
-    })
-    return reports.map(report => report.id)
+  const descendantIds = new Set([managerId])
+  let added = true
+  while (added) {
+    added = false
+    for (const p of allOrgProfiles) {
+      if (!descendantIds.has(p.id) && p.manager_id && descendantIds.has(p.manager_id)) {
+        descendantIds.add(p.id)
+        added = true
+      }
+    }
+  }
+  return Array.from(descendantIds)
+}
+
+async function getDirectTeamProfileIds(managerId, orgId, team) {
+  const whereConditions = [{ manager_id: managerId }, { id: managerId }]
+  if (team) whereConditions.push({ team })
+
+  const teamProfiles = await prisma.profile.findMany({
+    where: { org_id: orgId, OR: whereConditions },
+    select: { id: true },
+  })
+  return teamProfiles.map(p => p.id)
+}
+
+function isRMRole(profile) {
+  if (!profile) return false
+  if (['recruitment_manager', 'operations_manager'].includes(profile.role)) return true
+  if (profile.role === 'manager' && !profile.manager_id) return true
+  return false
+}
+
+function isAMRole(profile) {
+  if (!profile) return false
+  if (profile.role === 'account_manager') return true
+  if (profile.role === 'manager' && !!profile.manager_id) return true
+  return false
+}
+
+async function visibleOwnerIds(req) {
+  const role = req.profile?.role
+  if (['admin', 'superadmin'].includes(role)) return null
+
+  if (isRMRole(req.profile)) {
+    return await getDescendantProfileIds(req.user.id, req.profile.org_id)
   }
 
-  if (req.profile.role === 'recruiter') return [req.user.id]
+  if (isAMRole(req.profile)) {
+    return await getDirectTeamProfileIds(req.user.id, req.profile.org_id, req.profile.team)
+  }
+
   return [req.user.id]
 }
 
@@ -90,24 +135,17 @@ async function buildWhere(req, table, config) {
   if (table === 'tasks') {
     if (['admin', 'superadmin'].includes(req.profile.role)) {
       // Admins see all tasks in org
-    } else if (req.profile.role === 'manager') {
-      const teamConditions = [
-        { manager_id: req.user.id },
-        { id: req.user.id },
-      ]
-      if (req.profile.team) teamConditions.push({ team: req.profile.team })
-
-      const teamProfiles = await prisma.profile.findMany({
-        where: {
-          org_id: req.profile.org_id,
-          OR: teamConditions
-        },
-        select: { id: true }
-      })
-      const teamIds = teamProfiles.map(p => p.id)
+    } else if (isRMRole(req.profile)) {
+      const allowedIds = await getDescendantProfileIds(req.user.id, req.profile.org_id)
       where.OR = [
-        { assigned_to: { in: teamIds } },
-        { assigned_by: { in: teamIds } }
+        { assigned_to: { in: allowedIds } },
+        { assigned_by: { in: allowedIds } }
+      ]
+    } else if (isAMRole(req.profile)) {
+      const allowedIds = await getDirectTeamProfileIds(req.user.id, req.profile.org_id, req.profile.team)
+      where.OR = [
+        { assigned_to: { in: allowedIds } },
+        { assigned_by: { in: allowedIds } }
       ]
     } else {
       where.OR = [
@@ -118,18 +156,19 @@ async function buildWhere(req, table, config) {
   }
 
   if (table === 'profiles') {
-    if (req.query.full_org === 'true' && ['admin', 'superadmin'].includes(req.profile.role)) {
-      // Admins can see full org profiles
-    } else if (['admin', 'superadmin'].includes(req.profile.role)) {
-      // Admin sees all org profiles
-    } else if (req.profile.role === 'manager') {
-      const teamConditions = [
-        { manager_id: req.user.id },
-        { id: req.user.id },
-      ]
-      if (req.profile.team) teamConditions.push({ team: req.profile.team })
-
-      where.OR = teamConditions
+    if (['admin', 'superadmin'].includes(req.profile.role)) {
+      // Only Admins or Superadmins see all org profiles
+      if (req.tenantOrg) {
+        where.org_id = req.tenantOrg.id
+      } else if (req.profile.role !== 'superadmin' && req.profile.org_id) {
+        where.org_id = req.profile.org_id
+      }
+    } else if (isRMRole(req.profile)) {
+      const allowedIds = await getDescendantProfileIds(req.user.id, req.profile.org_id)
+      where.id = { in: allowedIds }
+    } else if (isAMRole(req.profile)) {
+      const allowedIds = await getDirectTeamProfileIds(req.user.id, req.profile.org_id, req.profile.team)
+      where.id = { in: allowedIds }
     } else {
       where.id = req.user.id
     }

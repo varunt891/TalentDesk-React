@@ -69,6 +69,31 @@ app.use((err, _req, res, _next) => {
   res.status(status).json({ error: err.message || 'Server error' })
 })
 
+import { prisma } from './prisma.js'
+
+async function autoMigrateManagerRoles() {
+  try {
+    const legacyManagers = await prisma.profile.findMany({
+      where: { role: 'manager' }
+    })
+    for (const p of legacyManagers) {
+      const explicitRole = (p.manager_id || (p.team && p.team.includes('AM')))
+        ? 'account_manager'
+        : 'recruitment_manager'
+      await prisma.profile.update({
+        where: { id: p.id },
+        data: { role: explicitRole }
+      })
+    }
+    if (legacyManagers.length > 0) {
+      console.log(`Auto-migrated ${legacyManagers.length} legacy manager profiles to explicit roles.`)
+    }
+  } catch (err) {
+    // Ignore error if DB connection pending
+  }
+}
+
 app.listen(port, () => {
   console.log(`TalentDesk API running on http://localhost:${port}`)
+  autoMigrateManagerRoles()
 })

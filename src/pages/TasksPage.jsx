@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { apiRequest, db } from '../lib/api'
 import TaskModal from '../components/TaskModal'
+import SearchableSelect from '../components/SearchableSelect'
 
 export default function TasksPage({ user, onNavigate }) {
   const [tasks, setTasks] = useState([])
@@ -50,10 +51,10 @@ export default function TasksPage({ user, onNavigate }) {
 
       // Map comments by task_id
       const map = {}
-      ;(commentsRes.data || []).forEach(c => {
-        if (!map[c.task_id]) map[c.task_id] = []
-        map[c.task_id].push(c)
-      })
+        ; (commentsRes.data || []).forEach(c => {
+          if (!map[c.task_id]) map[c.task_id] = []
+          map[c.task_id].push(c)
+        })
       setCommentsMap(map)
     } catch (err) {
       console.error('Error loading task management data:', err)
@@ -132,6 +133,19 @@ export default function TasksPage({ user, onNavigate }) {
       return true
     })
   }, [processedTasks, isManager, user?.id, activeTab, recruiterFilter, statusFilter, priorityFilter, categoryFilter, searchQuery, todayStr])
+
+  const hasActiveFilters = useMemo(() => {
+    return activeTab !== 'today' || recruiterFilter !== 'All' || statusFilter !== 'All' || priorityFilter !== 'All' || categoryFilter !== 'All' || searchQuery !== ''
+  }, [activeTab, recruiterFilter, statusFilter, priorityFilter, categoryFilter, searchQuery])
+
+  const handleResetFilters = () => {
+    setActiveTab('today')
+    setRecruiterFilter('All')
+    setStatusFilter('All')
+    setPriorityFilter('All')
+    setCategoryFilter('All')
+    setSearchQuery('')
+  }
 
   // KPI Computations
   const stats = useMemo(() => {
@@ -378,12 +392,14 @@ export default function TasksPage({ user, onNavigate }) {
           {isManager && (
             <label className="task-filter-label">
               <span>Recruiter:</span>
-              <select value={recruiterFilter} onChange={e => setRecruiterFilter(e.target.value)}>
-                <option value="All">All Recruiters</option>
-                {profiles.map(p => (
-                  <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                options={profiles}
+                value={recruiterFilter}
+                onChange={selectedId => setRecruiterFilter(selectedId)}
+                allLabel="All Recruiters"
+                placeholder="Type recruiter name..."
+                icon="👤"
+              />
             </label>
           )}
 
@@ -430,7 +446,30 @@ export default function TasksPage({ user, onNavigate }) {
           <div className="tasks-empty-box">
             <div className="empty-icon">🎯</div>
             <h3>No Tasks Found</h3>
-            <p>There are no tasks matching your selected filters or active workspace tab.</p>
+            <p>
+              {hasActiveFilters
+                ? 'There are no tasks matching your selected filters or active workspace tab.'
+                : 'Your task list is empty. Get started by creating a task or assigning daily benchmarks.'}
+            </p>
+            <div className="empty-actions">
+              {hasActiveFilters && (
+                <button type="button" className="empty-reset-btn" onClick={handleResetFilters}>
+                  🔄 Reset Filters & Search
+                </button>
+              )}
+              {isManager && (
+                <button
+                  type="button"
+                  className="empty-create-btn"
+                  onClick={() => {
+                    setEditingTask(null)
+                    setIsModalOpen(true)
+                  }}
+                >
+                  🎯 + Assign New Task / Target
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <div className="task-cards-grid">

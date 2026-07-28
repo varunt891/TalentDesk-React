@@ -3,9 +3,19 @@ import { apiRequest, db } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
 const TABS = ['Overview', 'Org Chart', 'Members', 'Access', 'Company']
-const ROLES = ['employee', 'recruiter', 'manager', 'admin', 'superadmin']
+const ROLES = ['employee', 'recruiter', 'account_manager', 'recruitment_manager', 'operations_manager', 'manager', 'admin', 'superadmin']
 
 const isSubmissionRecruiter = user => user.role === 'recruiter'
+
+const getAllDescendants = (userId, allUsers) => {
+  if (!userId || !allUsers) return []
+  const direct = allUsers.filter(u => u.manager_id === userId)
+  let result = [...direct]
+  for (const child of direct) {
+    result = result.concat(getAllDescendants(child.id, allUsers))
+  }
+  return result
+}
 
 // Inline SVG Icons for visual consistency & branding
 const Icons = {
@@ -223,11 +233,15 @@ export default function Admin() {
   const userStats = useMemo(() => {
     const stats = new Map()
     users.forEach(user => {
+      const descendants = getAllDescendants(user.id, users)
+      const targetUserIds = new Set([user.id, ...descendants.map(d => d.id)])
+      const targetNames = new Set([user.full_name, ...descendants.map(d => d.full_name)].filter(Boolean))
+
       const owned = candidates.filter(candidate => (
-        candidate.user_id === user.id ||
-        candidate.recruiter_id === user.id ||
-        candidate.recruiter_name === user.full_name ||
-        candidate.fe_name === user.full_name
+        targetUserIds.has(candidate.user_id) ||
+        targetUserIds.has(candidate.recruiter_id) ||
+        targetNames.has(candidate.recruiter_name) ||
+        targetNames.has(candidate.fe_name)
       ))
       stats.set(user.id, {
         submissions: owned.length,
@@ -242,9 +256,10 @@ export default function Admin() {
     const managerLedUnits = users
       .filter(user => user.role === 'manager')
       .map(manager => {
-        const reports = users.filter(user => user.manager_id === manager.id)
-        const recruiters = reports.filter(isSubmissionRecruiter)
-        const supportMembers = reports.filter(member => !['manager', 'admin', 'superadmin'].includes(member.role) && !isSubmissionRecruiter(member))
+        const allReports = getAllDescendants(manager.id, users)
+        const directReports = users.filter(u => u.manager_id === manager.id)
+        const recruiters = allReports.filter(isSubmissionRecruiter)
+        const supportMembers = allReports.filter(member => !['manager', 'admin', 'superadmin'].includes(member.role) && !isSubmissionRecruiter(member))
         const candidateOwners = recruiters
         const ownerIds = new Set(candidateOwners.map(user => user.id))
         const ownerNames = new Set(candidateOwners.map(user => user.full_name || user.email).filter(Boolean))
@@ -255,19 +270,21 @@ export default function Admin() {
           ownerNames.has(candidate.fe_name)
         ))
 
+        const isRecruitmentManager = directReports.some(r => r.role === 'manager') || !manager.manager_id
+
         return {
           key: manager.id,
           team: manager.team || `${manager.full_name} Team`,
-          title: manager.manager_id
-            ? `${manager.full_name} (${manager.department} Account Manager)`
-            : `${manager.full_name} (${manager.department} Recruitment Manager)`,
+          title: isRecruitmentManager
+            ? `${manager.full_name} (${manager.department} Recruitment Manager)`
+            : `${manager.full_name} (${manager.department} Account Manager)`,
           department: manager.department || 'Unassigned',
-          managers: [manager],
+          managers: [manager, ...directReports.filter(r => r.role === 'manager')],
           manager,
           recruiters,
           supportMembers,
           admins: [],
-          members: [manager, ...reports],
+          members: [manager, ...allReports],
           submissions: owned.length,
           interviews: owned.filter(candidate => ['Interview Scheduled', 'Interview Done'].includes(candidate.external_status || candidate.internal_status)).length,
           hires: owned.filter(candidate => candidate.external_status === 'Hired' || candidate.internal_status === 'Hired').length,
@@ -1326,7 +1343,7 @@ function TreeNode({ user, allUsers, userStats, onAssignManager, query, level, ex
             {user.role === 'recruiter'
               ? `${user.department || ''} Recruiter`
               : user.role === 'manager'
-                ? (user.manager_id ? `${user.department || ''} Account Manager` : `${user.department || ''} Recruitment Manager`)
+                ? ((allUsers.some(u => u.manager_id === user.id && u.role === 'manager') || !user.manager_id) ? `${user.department || ''} Recruitment Manager` : `${user.department || ''} Account Manager`)
                 : `${user.department || ''} ${user.role}`}
           </span>
           <span className="org-tree-node-email">{user.email}</span>
@@ -1564,13 +1581,19 @@ function MetricStrip({ stats }) {
 
 /* Role Pill Component */
 function RolePill({ role }) {
-  return <span className={`admin-role-pill ${role || 'recruiter'}`}>{role || 'recruiter'}</span>
+  const normRole = (role || 'recruiter').toLowerCase().replace(/\s+/g, '_')
+  const formattedText = (role || 'recruiter').replace('_', ' ')
+  return <span className={`admin-role-pill ${normRole}`}>{formattedText}</span>
 }
 
 function displayRole(user) {
+  if (!user) return 'recruiter'
+  if (user.role === 'recruitment_manager') return 'recruitment manager'
+  if (user.role === 'account_manager') return 'account manager'
+  if (user.role === 'operations_manager') return 'operations manager'
   if (user.role === 'employee') return 'employee'
   if (user.role === 'recruiter' && user.department !== 'Recruiting') return 'member'
-  return user.role || 'recruiter'
+  return user.role ? user.role.replace('_', ' ') : 'recruiter'
 }
 
 function initials(value = '') {

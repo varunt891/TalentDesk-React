@@ -15,8 +15,10 @@ import * as XLSX from 'xlsx'
 import { db } from '../lib/api'
 import { useCandidates } from '../hooks/useCandidates'
 import { useAuth } from '../context/AuthContext'
+import SearchableSelect from '../components/SearchableSelect'
 
 const COLORS = ['#4f7cff', '#2ecc8f', '#7c5cff', '#f5c842', '#ff8c42', '#ff4d6a']
+const TEAM_BADGE_COLORS = ['blue', 'purple', 'green', 'yellow', 'orange', 'pink']
 const STAGES = ['Submitted', 'Shortlisted', 'Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired', 'Rejected']
 
 function dateKey(date) {
@@ -35,15 +37,19 @@ function isInRange(value, days) {
   return value >= dateKey(daysAgo(days - 1))
 }
 
+function getDescendants(userId, allUsers) {
+  if (!userId || !allUsers) return []
+  const direct = allUsers.filter(u => u.manager_id === userId)
+  let result = [...direct]
+  for (const child of direct) {
+    result = result.concat(getDescendants(child.id, allUsers))
+  }
+  return result
+}
+
 export default function Reports() {
   const { profile } = useAuth()
   const role = profile?.role || 'recruiter'
-  // Recruitment Managers (no manager_id) → full org view
-  // Account Managers (has manager_id) → locked to own team
-  const isRM = role === 'manager' && !profile?.manager_id
-  const isAM = role === 'manager' && !!profile?.manager_id
-  const isAdminLike = ['admin', 'superadmin'].includes(role)
-  const canSeeFullOrg = isAdminLike || isRM
 
   const { candidates } = useCandidates()
   const [mode, setMode] = useState('weekly')
@@ -64,35 +70,105 @@ export default function Reports() {
     })
   }, [])
 
+  const isSuperAdmin = role === 'superadmin'
+  const isAdmin = role === 'admin'
+  const isRM = useMemo(() => {
+    if (['recruitment_manager', 'operations_manager'].includes(role)) return true
+    if (role === 'manager' && (!profile?.manager_id || users.some(u => u.manager_id === profile?.id && ['manager', 'account_manager', 'recruitment_manager'].includes(u.role)))) return true
+    return false
+  }, [role, profile, users])
+
+  const isAM = useMemo(() => {
+    if (role === 'account_manager') return true
+    if (role === 'manager' && !isRM) return true
+    return false
+  }, [role, isRM])
+
+  const canSeeFullOrg = isSuperAdmin || isAdmin
+  const canSeeRM = canSeeFullOrg || isRM
+
   const profileTeam = profile?.team
 
-  // When users are loaded, auto-lock AM to their own team
+  // When users are loaded, lock AM to their team
   useEffect(() => {
     if (isAM && profileTeam && users.length > 0) {
-      setScope({ team: profileTeam, user: 'all' })
+      setScope(current => ({ ...current, team: profileTeam }))
     }
   }, [isAM, profileTeam, users.length])
 
   const rangeDays = mode === 'daily' ? 1 : 7
 
-  // For AMs: only their own team; for RMs/admins: all teams
-  const teams = useMemo(() => {
-    const allTeams = [...new Set(users.map(u => u.team).filter(Boolean))].sort()
-    if (isAM && profileTeam) return [profileTeam]
-    return allTeams
-  }, [users, isAM, profileTeam])
+  const allOrgUsers = useMemo(() => {
+    const userMap = new Map()
+
+    users.forEach(u => {
+      if (u.id || u.full_name || u.email) {
+        userMap.set(u.id || u.full_name || u.email, u)
+      }
+    })
+
+    candidates.forEach(c => {
+      const recName = c.recruiter_name || c.fe_name
+      const recId = c.recruiter_id || c.user_id
+      if (recName) {
+        const existing = Array.from(userMap.values()).find(u => u.full_name === recName || u.id === recId)
+        if (!existing) {
+          userMap.set(recId || recName, {
+            id: recId || recName,
+            full_name: recName,
+            email: '',
+            role: 'recruiter',
+            team: c.team || null
+          })
+        }
+      }
+    })
+
+    return Array.from(userMap.values())
+  }, [users, candidates])
+
+  const rmTreeUsers = useMemo(() => {
+    if (!isRM || !profile) return allOrgUsers
+    const descendants = getDescendants(profile.id, allOrgUsers)
+    return [profile, ...descendants]
+  }, [isRM, profile, allOrgUsers])
 
   const scopeUsers = useMemo(() => {
-    // AMs are always locked to their team
-    const effectiveTeam = isAM ? (profileTeam || 'all') : scope.team
-    return users.filter(u => effectiveTeam === 'all' || u.team === effectiveTeam)
-  }, [scope.team, users, isAM, profileTeam])
+    if (isAM && profile) {
+      return allOrgUsers.filter(u => (profileTeam && u.team === profileTeam) || u.manager_id === profile.id || u.id === profile.id)
+    }
+    const baseUsers = isRM ? rmTreeUsers : allOrgUsers
+    const effectiveTeam = scope.team
+    if (effectiveTeam === 'all') return baseUsers
+    return baseUsers.filter(u => u.team === effectiveTeam)
+  }, [scope.team, allOrgUsers, rmTreeUsers, isAM, isRM, profile, profileTeam])
+
+  // Available teams for selection
+  const teams = useMemo(() => {
+    const sourceUsers = isAM ? scopeUsers : (isRM ? rmTreeUsers : allOrgUsers)
+    const allTeams = [...new Set(sourceUsers.map(u => u.team).filter(Boolean))].sort()
+    if (isAM && profileTeam) return [profileTeam]
+    return allTeams
+  }, [allOrgUsers, rmTreeUsers, scopeUsers, isAM, isRM, profileTeam])
+
+  const selectedUserDescendants = useMemo(() => {
+    if (scope.user === 'all') return null
+    const selected = allOrgUsers.find(u => u.id === scope.user)
+    if (!selected) return { userIds: new Set([scope.user]), userNames: new Set() }
+    const descendants = getDescendants(selected.id, allOrgUsers)
+    const userIds = new Set([selected.id, ...descendants.map(u => u.id)])
+    const userNames = new Set([selected.full_name, ...descendants.map(u => u.full_name)].filter(Boolean))
+    return { userIds, userNames }
+  }, [scope.user, allOrgUsers])
 
   const reportCandidates = useMemo(() => {
     return candidates.filter(candidate => {
       if (!isInRange(candidate.submission_date, rangeDays)) return false
-      if (scope.user !== 'all') {
-        return candidate.user_id === scope.user || candidate.recruiter_id === scope.user
+      if (scope.user !== 'all' && selectedUserDescendants) {
+        const { userIds, userNames } = selectedUserDescendants
+        const matchesUser = userIds.has(candidate.user_id) || userIds.has(candidate.recruiter_id)
+        const matchesName = userNames.has(candidate.recruiter_name) || userNames.has(candidate.fe_name)
+        if (!matchesUser && !matchesName) return false
       }
       if (scope.team !== 'all') {
         const userIds = new Set(scopeUsers.map(user => user.id))
@@ -103,15 +179,17 @@ export default function Reports() {
       }
       return true
     })
-  }, [candidates, rangeDays, scope.team, scope.user, scopeUsers])
+  }, [candidates, rangeDays, scope.team, scope.user, scopeUsers, selectedUserDescendants])
 
   const scopeUserIds = useMemo(() => new Set(scopeUsers.map(user => user.id)), [scopeUsers])
 
   const itemInScope = useCallback((item) => {
-    if (scope.user !== 'all') return item.user_id === scope.user
+    if (scope.user !== 'all' && selectedUserDescendants) {
+      return selectedUserDescendants.userIds.has(item.user_id)
+    }
     if (scope.team !== 'all') return scopeUserIds.has(item.user_id)
     return true
-  }, [scope.team, scope.user, scopeUserIds])
+  }, [scope.team, scope.user, selectedUserDescendants, scopeUserIds])
 
   const reportCallbacks = useMemo(() => {
     return callbacks.filter(callback => isInRange(callback.date, rangeDays) && itemInScope(callback))
@@ -214,8 +292,8 @@ export default function Reports() {
             {canSeeFullOrg
               ? 'Org-wide hiring analytics — filter by team or individual recruiter.'
               : isAM
-              ? `Showing your team: ${profile?.team || 'your team'}`
-              : 'Your personal performance summary.'}
+                ? `Showing your team: ${profile?.team || 'your team'}`
+                : 'Your personal performance summary.'}
           </span>
         </div>
         <div className="reports-actions">
@@ -223,22 +301,32 @@ export default function Reports() {
             <button className={mode === 'daily' ? 'active' : ''} onClick={() => setMode('daily')} type="button">Daily</button>
             <button className={mode === 'weekly' ? 'active' : ''} onClick={() => setMode('weekly')} type="button">Weekly</button>
           </div>
-          {canSeeFullOrg && (
-            <select value={scope.team} onChange={e => setScope({ team: e.target.value, user: 'all' })}>
-              <option value="all">All Teams</option>
-              {teams.map(team => <option key={team} value={team}>{team}</option>)}
-            </select>
-          )}
-          {canSeeFullOrg && (
-            <select value={scope.user} onChange={e => setScope(current => ({ ...current, user: e.target.value }))}>
-              <option value="all">All Users</option>
-              {scopeUsers.map(user => <option key={user.id} value={user.id}>{user.full_name || user.email}</option>)}
-            </select>
+          {canSeeRM && (
+            <SearchableSelect
+              options={teams}
+              value={scope.team}
+              onChange={selectedTeam => setScope({ team: selectedTeam, user: 'all' })}
+              allLabel="All Teams"
+              placeholder="Type team name..."
+              icon="🏢"
+              fullWidth={false}
+            />
           )}
           {isAM && (
             <span style={{ background: 'rgba(245,200,66,0.15)', color: '#f5c842', border: '1px solid rgba(245,200,66,0.3)', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 700, letterSpacing: '0.3px' }}>
-              🔒 {profile?.team}
+              🔒 {profile?.team || 'Your Team'}
             </span>
+          )}
+          {(canSeeRM || isAM) && (
+            <SearchableSelect
+              options={scopeUsers}
+              value={scope.user}
+              onChange={selectedId => setScope(current => ({ ...current, user: selectedId }))}
+              allLabel={isAM ? "All Team Recruiters" : "All Recruiters"}
+              placeholder="Type recruiter name..."
+              icon="👤"
+              fullWidth={false}
+            />
           )}
           <button className="reports-export-btn" onClick={exportReport} type="button">Export XLSX</button>
         </div>
@@ -320,20 +408,63 @@ export default function Reports() {
       </section>
 
       <section className="reports-activity-card">
-        <div>
+        <div className="reports-activity-header">
           <h2>Team & User Breakdown</h2>
-          <p>Use Admin Panel to edit teams, managers, departments, and member ownership.</p>
+          <p>Real-time team headcount, leadership distribution, and hiring yield benchmarks.</p>
         </div>
         <div className="reports-activity-list">
-          {teamData.length === 0 ? <div className="reports-empty">No team structure found yet</div> : teamData.map(item => (
-            <div className="reports-activity-row" key={item.team}>
-              <span>{item.team.slice(0, 1).toUpperCase()}</span>
-              <div>
-                <strong>{item.team}</strong>
-                <small>{item.members} members - {item.managers} managers - {item.submissions} submissions - {item.interviews} interviews - {item.hires} hires</small>
-              </div>
-            </div>
-          ))}
+          {teamData.length === 0 ? (
+            <div className="reports-empty">No team structure found yet</div>
+          ) : (
+            [...teamData]
+              .sort((a, b) => b.submissions - a.submissions)
+              .map((item, index) => {
+                const conversionRate = item.submissions > 0 ? Math.round((item.hires / item.submissions) * 100) : 0
+                const isTopTeam = index === 0 && item.submissions > 0
+                const badgeColor = TEAM_BADGE_COLORS[index % TEAM_BADGE_COLORS.length]
+                return (
+                  <div className="reports-team-breakdown-card" key={item.team}>
+                    <div className="reports-team-info">
+                      <div className={`reports-team-icon-badge ${badgeColor}`}>
+                        {item.team.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="reports-team-details">
+                        <div className="reports-team-name-row">
+                          <h3 className="reports-team-name">{item.team}</h3>
+                          {isTopTeam && <span className="reports-team-badge">🏆 Top team</span>}
+                        </div>
+                        <div className="reports-team-subtext">
+                          <span>👥 <b>{item.members}</b> {item.members === 1 ? 'member' : 'members'}</span>
+                          <span className="dot-sep">•</span>
+                          <span>👤 <b>{item.managers}</b> {item.managers === 1 ? 'manager' : 'managers'}</span>
+                        </div>
+                        <div className="reports-team-conversion">
+                          <div className="reports-team-conversion-track">
+                            <div className="reports-team-conversion-fill" style={{ width: `${Math.min(conversionRate, 100)}%` }} />
+                          </div>
+                          <span className="reports-team-conversion-label">{conversionRate}% hire rate</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="reports-team-metrics-pills">
+                      <div className="team-metric-pill blue">
+                        <span className="pill-num">{item.submissions}</span>
+                        <span className="pill-label">Submissions</span>
+                      </div>
+                      <div className="team-metric-pill purple">
+                        <span className="pill-num">{item.interviews}</span>
+                        <span className="pill-label">Interviews</span>
+                      </div>
+                      <div className="team-metric-pill green">
+                        <span className="pill-num">{item.hires}</span>
+                        <span className="pill-label">{item.hires === 1 ? 'Hire' : 'Hires'}</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })
+          )}
         </div>
       </section>
     </div>

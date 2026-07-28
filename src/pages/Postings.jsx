@@ -162,14 +162,14 @@ export default function Postings() {
 
       {showModal && (
         <div style={overlayStyle} onClick={e => e.target === e.currentTarget && setShowModal(false)}>
-          <div style={modalStyle}>
-            <div style={modalHeader}>
+          <div className="modal-card-responsive" style={modalStyle}>
+            <div className="modal-header-responsive" style={modalHeader}>
               <div style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text)' }}>Log Job Posting</div>
               <button onClick={() => setShowModal(false)} style={closeBtn}>✕</button>
             </div>
-            <div style={{ overflowY: 'auto', flex: 1, padding: '20px 24px' }}>
+            <div className="modal-body-responsive" style={{ overflowY: 'auto', flex: 1, padding: '20px 24px' }}>
               <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '12px' }}>📡 Select Portals</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '8px', marginBottom: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '8px', marginBottom: '20px' }}>
                 {PORTALS.map(portal => (
                   <label key={portal} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: form.portals.includes(portal) ? 'rgba(79,124,255,0.12)' : 'var(--surface2)', border: `1px solid ${form.portals.includes(portal) ? 'var(--accent)' : 'var(--border)'}`, borderRadius: '8px', cursor: 'pointer', fontSize: '13px', color: form.portals.includes(portal) ? 'var(--accent)' : 'var(--text2)', transition: 'all 0.15s' }}>
                     <input type="checkbox" checked={form.portals.includes(portal)} onChange={() => togglePortal(portal)} style={{ accentColor: 'var(--accent)' }} />
@@ -177,14 +177,14 @@ export default function Postings() {
                   </label>
                 ))}
               </div>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
                 <button onClick={() => setForm(f => ({ ...f, portals: PORTALS }))} style={{ ...btnGhost, padding: '5px 12px', fontSize: '12px' }}>☑ Select All</button>
                 <button onClick={() => setForm(f => ({ ...f, portals: [] }))} style={{ ...btnGhost, padding: '5px 12px', fontSize: '12px' }}>✕ Clear</button>
                 <span style={{ fontSize: '12px', color: 'var(--text3)', alignSelf: 'center' }}>{form.portals.length} selected</span>
               </div>
 
               <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '12px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>📋 Job Info</div>
-              <div style={grid2}>
+              <div className="modal-grid-2" style={grid2}>
                 <Field label="Date *"><input {...inp('date')} type="date" /></Field>
                 <Field label="Job ID"><input {...inp('job_id')} placeholder="JOB-001" /></Field>
                 <Field label="Job Title *"><input {...inp('job_title')} placeholder="Java Developer" /></Field>
@@ -224,15 +224,15 @@ function Field({ label, children }) {
   )
 }
 
-const inputStyle = { width: '100%', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '9px 12px', color: 'var(--text)', fontSize: '13px', outline: 'none', fontFamily: 'inherit' }
-const grid2 = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }
+const inputStyle = { width: '100%', boxSizing: 'border-box', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '9px 12px', color: 'var(--text)', fontSize: '13px', outline: 'none', fontFamily: 'inherit', minWidth: 0 }
+const grid2 = { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0 16px' }
 const topbarStyle = { height: '58px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', padding: '0 24px', gap: '12px', flexShrink: 0 }
 const searchBox = { display: 'flex', alignItems: 'center', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0 12px', gap: '8px', height: '36px', width: '220px' }
 const searchInp = { background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', fontSize: '13px', width: '100%', fontFamily: 'inherit' }
 const btnPrimary = { background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }
 const btnGhost = { background: 'var(--surface2)', color: 'var(--text2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }
 const selectStyle = { background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: '8px', padding: '7px 12px', fontSize: '12.5px', fontFamily: 'inherit', cursor: 'pointer', outline: 'none' }
-const overlayStyle = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+const overlayStyle = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }
 const modalStyle = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '16px', width: '90%', maxWidth: '760px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }
 const modalHeader = { padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }
 const closeBtn = { background: 'none', border: 'none', color: 'var(--text3)', fontSize: '18px', cursor: 'pointer' }

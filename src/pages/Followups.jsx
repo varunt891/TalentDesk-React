@@ -5,12 +5,12 @@ import { SmartDropdown } from '../components/SmartDropdown'
 
 // Helper Styles & Utilities defined at top to prevent TDZ Hoisting Errors
 const emptyForm = { candidate_name: '', date: new Date().toISOString().slice(0,10), type: 'General Check-in', status: 'pending', priority: 'Medium', notes: '', next_action: '' }
-const inputStyle = { width: '100%', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '9px 12px', color: 'var(--text)', fontSize: '13px', outline: 'none', fontFamily: 'inherit' }
-const grid2 = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }
+const inputStyle = { width: '100%', boxSizing: 'border-box', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '9px 12px', color: 'var(--text)', fontSize: '13px', outline: 'none', fontFamily: 'inherit', minWidth: 0 }
+const grid2 = { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0 16px' }
 const topbarStyle = { height: '58px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', padding: '0 24px', gap: '16px', flexShrink: 0 }
 const btnPrimary = { background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }
 const btnGhost = { background: 'var(--surface2)', color: 'var(--text2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }
-const overlayStyle = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+const overlayStyle = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }
 const modalStyle = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '16px', width: '90%', maxWidth: '600px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }
 const modalHeader = { padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }
 const closeBtn = { background: 'none', border: 'none', color: 'var(--text3)', fontSize: '18px', cursor: 'pointer' }
@@ -351,13 +351,13 @@ export default function Followups() {
 
       {showModal && (
         <div style={overlayStyle} onClick={e => e.target === e.currentTarget && setShowModal(false)}>
-          <div style={modalStyle}>
-            <div style={modalHeader}>
+          <div className="modal-card-responsive" style={modalStyle}>
+            <div className="modal-header-responsive" style={modalHeader}>
               <div style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text)' }}>{editingId ? 'Edit Follow-up' : 'Add Follow-up'}</div>
               <button onClick={() => setShowModal(false)} style={closeBtn}>✕</button>
             </div>
-            <div style={{ padding: '20px 24px', overflowY: 'auto' }}>
-              <div style={grid2}>
+            <div className="modal-body-responsive" style={{ padding: '20px 24px', overflowY: 'auto' }}>
+              <div className="modal-grid-2" style={grid2}>
                 <Field label="Candidate Name *">
                   <SearchableCandidateSelector
                     candidates={candidates}

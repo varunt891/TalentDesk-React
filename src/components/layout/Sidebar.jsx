@@ -26,8 +26,30 @@ const ROLE_COLORS = {
   superadmin: { bg: 'rgba(255,92,135,0.15)', color: '#ff5c87', label: 'Super Admin' },
   admin: { bg: 'rgba(79,124,255,0.15)', color: '#4f7cff', label: 'Admin' },
   manager: { bg: 'rgba(245,200,66,0.15)', color: '#f5c842', label: 'Manager' },
+  recruitment_manager: { bg: 'rgba(245,200,66,0.15)', color: '#f5c842', label: 'Recruitment Manager' },
+  account_manager: { bg: 'rgba(124,92,255,0.15)', color: '#7c5cff', label: 'Account Manager' },
+  operations_manager: { bg: 'rgba(255,140,66,0.15)', color: '#ff8c42', label: 'Operations Manager' },
   recruiter: { bg: 'rgba(46,204,143,0.15)', color: '#2ecc8f', label: 'Recruiter' },
   employee: { bg: 'rgba(100,116,139,0.15)', color: '#64748b', label: 'Employee' },
+}
+
+function getRoleStyle(profile) {
+  if (!profile) return ROLE_COLORS.recruiter
+  const r = profile.role
+  if (r === 'recruitment_manager') return ROLE_COLORS.recruitment_manager
+  if (r === 'account_manager') return ROLE_COLORS.account_manager
+  if (r === 'operations_manager') return ROLE_COLORS.operations_manager
+  if (r === 'manager') {
+    if (profile.manager_id || (profile.team && profile.team.includes('AM'))) {
+      return ROLE_COLORS.account_manager
+    }
+    return ROLE_COLORS.recruitment_manager
+  }
+  return ROLE_COLORS[r] || {
+    bg: 'rgba(46,204,143,0.15)',
+    color: '#2ecc8f',
+    label: r ? r.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Recruiter'
+  }
 }
 
 function readJson(key, fallback) {
@@ -75,7 +97,7 @@ export default function Sidebar({ currentPage, onNavigate, theme, onToggleTheme,
   }
 
   const role = profile?.role || 'recruiter'
-  const roleStyle = ROLE_COLORS[role] || ROLE_COLORS.recruiter
+  const roleStyle = getRoleStyle(profile)
   const orgName = 'Recruiter CRM'
 
   const visibleItems = navItems.filter(item => {
