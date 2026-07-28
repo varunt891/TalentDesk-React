@@ -69,6 +69,28 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* GLOBAL RESET: Remove browser default native blue focus outline rings & tap highlights */
+:focus,
+:focus-visible,
+input:focus,
+select:focus,
+textarea:focus,
+button:focus,
+a:focus,
+[tabindex]:focus,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: none !important;
+  outline-style: none !important;
+  outline-width: 0 !important;
+  -webkit-tap-highlight-color: transparent !important;
 }
 
 html {
@@ -92,6 +114,7 @@ textarea,
 button {
   font-family: 'DM Sans', sans-serif;
   min-width: 0;
+  -webkit-tap-highlight-color: transparent;
 }
 
 ::-webkit-scrollbar {
@@ -5571,9 +5594,12 @@ button {
   opacity: 0.7;
 }
 
-.dashboard-scratchpad:focus {
+.dashboard-scratchpad:focus,
+.dashboard-scratchpad:focus-visible {
+  outline: none !important;
   background: var(--surface);
-  box-shadow: inset 0 0 0 2px rgba(79, 124, 255, 0.25);
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18) !important;
 }
 
 [data-theme="light"] .dashboard-scratchpad {
@@ -5581,8 +5607,12 @@ button {
   color: var(--text);
 }
 
-[data-theme="light"] .dashboard-scratchpad:focus {
+[data-theme="light"] .dashboard-scratchpad:focus,
+[data-theme="light"] .dashboard-scratchpad:focus-visible {
+  outline: none !important;
   background: #fff;
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15) !important;
 }
 
 /* ===== REPORTS ===== */
@@ -18766,16 +18796,26 @@ body {
   min-width: 220px !important;
   flex: 1 !important;
   box-sizing: border-box !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
 }
 
-.dash-search-compact input {
+.dash-search-compact:focus-within {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15) !important;
+}
+
+.dash-search-compact input,
+.dash-search-compact input:focus,
+.dash-search-compact input:focus-visible {
   border: none !important;
   outline: none !important;
+  box-shadow: none !important;
   background: transparent !important;
   font-size: 12.5px !important;
   color: #0f172a !important;
   width: 100% !important;
   height: 100% !important;
+  -webkit-tap-highlight-color: transparent !important;
 }
 
 .dash-filter-dropdown-pill .filter-trigger-btn {
@@ -18791,6 +18831,14 @@ body {
   color: #334155 !important;
   cursor: pointer !important;
   box-sizing: border-box !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+.dash-filter-dropdown-pill .filter-trigger-btn:focus,
+.dash-filter-dropdown-pill .filter-trigger-btn:focus-visible {
+  outline: none !important;
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15) !important;
 }
 
 .dash-select-compact {
@@ -18804,16 +18852,26 @@ body {
   padding: 0 8px 0 10px !important;
   font-size: 12px !important;
   box-sizing: border-box !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
 }
 
-.dash-select-compact select {
+.dash-select-compact:focus-within {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15) !important;
+}
+
+.dash-select-compact select,
+.dash-select-compact select:focus,
+.dash-select-compact select:focus-visible {
   border: none !important;
   outline: none !important;
+  box-shadow: none !important;
   font-size: 12px !important;
   color: #334155 !important;
   background: transparent !important;
   cursor: pointer !important;
   height: 100% !important;
+  -webkit-tap-highlight-color: transparent !important;
 }
 
 .dash-reset-compact-btn {
@@ -19829,14 +19887,18 @@ body {
   box-shadow: 0 6px 20px rgba(37, 99, 235, 0.18) !important;
 }
 
-.copilot-input-box input {
+.copilot-input-box input,
+.copilot-input-box input:focus,
+.copilot-input-box input:focus-visible {
   flex: 1 !important;
   border: none !important;
   outline: none !important;
+  box-shadow: none !important;
   background: transparent !important;
   font-size: 13.5px !important;
   color: #0f172a !important;
   padding: 8px 0 !important;
+  -webkit-tap-highlight-color: transparent !important;
 }
 
 .copilot-input-box button {
