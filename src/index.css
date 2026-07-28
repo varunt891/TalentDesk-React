@@ -23053,6 +23053,7 @@ html[data-theme="dark"] .ai-tag-live {
 }
 
 @media (max-width: 767px) {
+
   .candidates-page,
   .jobs-page {
     width: 100% !important;
@@ -23331,5 +23332,521 @@ html[data-theme="dark"] .ai-tag-live {
     background: var(--surface) !important;
     width: 100% !important;
     box-sizing: border-box !important;
+  }
+}
+
+/* Mobile Responsiveness for Candidate Resume AI Extractor & Job Candidate Matcher */
+@media (max-width: 768px) {
+
+  .candidate-form-grid,
+  .candidate-details-grid,
+  .jobs-form-grid,
+  .jobs-details-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .candidate-score-card-body {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .candidate-score-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* ==========================================================================
+   B2B SaaS Premium Jobs Dashboard Redesign CSS
+   ========================================================================== */
+
+.jobs-page {
+  padding: 20px 28px;
+  max-width: 1440px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Tasks-Style Banner Header for Jobs */
+.jobs-header-banner {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+  flex-wrap: wrap;
+}
+
+.jobs-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 650px;
+}
+
+.jobs-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(79, 124, 255, 0.12);
+  color: var(--accent);
+  border: 1px solid rgba(79, 124, 255, 0.25);
+  border-radius: 20px;
+  padding: 4px 12px;
+  width: fit-content;
+}
+
+.jobs-badge-pill span {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.jobs-header-info h1 {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text);
+  margin: 2px 0 0 0;
+  letter-spacing: -0.3px;
+  line-height: 1.25;
+}
+
+.jobs-header-info p {
+  font-size: 13.5px;
+  color: var(--text2);
+  margin: 0;
+  line-height: 1.45;
+}
+
+.jobs-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Search Input */
+.jobs-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 280px;
+}
+
+.jobs-search-icon {
+  position: absolute;
+  left: 14px;
+  color: var(--text3);
+  pointer-events: none;
+}
+
+.jobs-search-input {
+  width: 100%;
+  padding: 10px 36px 10px 38px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  color: var(--text);
+  font-size: 13.5px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.jobs-search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.2);
+  background: var(--surface);
+}
+
+.jobs-search-clear {
+  position: absolute;
+  right: 12px;
+  background: none;
+  border: none;
+  color: var(--text3);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.jobs-btn-primary {
+  background: linear-gradient(135deg, var(--accent), #6366f1);
+  color: #fff;
+  border: none;
+  border-radius: 20px;
+  padding: 10px 20px;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 14px rgba(79, 124, 255, 0.3);
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.jobs-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(79, 124, 255, 0.4);
+}
+
+/* Metrics Cards Grid */
+.jobs-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.jobs-metric-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+}
+
+.jobs-metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  border-color: var(--metric-accent, var(--accent));
+}
+
+.jobs-metric-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.jobs-metric-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text2);
+}
+
+.jobs-metric-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.jobs-metric-value {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.5px;
+  font-family: 'Space Mono', monospace;
+  line-height: 1;
+}
+
+.jobs-metric-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text3);
+}
+
+.jobs-metric-helper {
+  font-weight: 600;
+}
+
+/* Controls Bar */
+.jobs-controls-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 6px 12px;
+}
+
+.jobs-segmented-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.jobs-segment-btn {
+  background: transparent;
+  border: none;
+  color: var(--text2);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.jobs-segment-btn.active {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.jobs-status-dot-sm {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.jobs-count-badge {
+  font-size: 12px;
+  color: var(--text3);
+}
+
+/* Main Jobs Table Container */
+.jobs-table-container {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+}
+
+.jobs-table-header {
+  display: grid;
+  grid-template-columns: 2.2fr 1fr 1.2fr 1fr 1fr 1fr 1fr;
+  padding: 12px 20px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.jobs-table-row {
+  display: grid;
+  grid-template-columns: 2.2fr 1fr 1.2fr 1fr 1fr 1fr 1fr;
+  padding: 12px 20px;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s ease;
+  cursor: pointer;
+}
+
+.jobs-table-row:last-child {
+  border-bottom: none;
+}
+
+.jobs-table-row:hover {
+  background: rgba(79, 124, 255, 0.03);
+}
+
+.jobs-role-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.jobs-role-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.jobs-role-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text3);
+}
+
+.jobs-id-pill {
+  font-family: 'Space Mono', monospace;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.jobs-match-chip {
+  background: rgba(46, 204, 143, 0.14);
+  color: var(--green);
+  border: 1px solid rgba(46, 204, 143, 0.3);
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.jobs-match-chip:hover {
+  background: rgba(46, 204, 143, 0.25);
+  transform: translateY(-1px);
+}
+
+/* Status Dot Pill (Modern Dot Indicator, No Outlines!) */
+.jobs-status-dot-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.jobs-status-dot-pill .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.jobs-text-cell {
+  font-size: 13px;
+  color: var(--text2);
+}
+
+.jobs-type-badge {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text2);
+}
+
+.jobs-rate-cell {
+  font-family: 'Space Mono', monospace;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--green);
+}
+
+/* Owner Initials Avatar */
+.jobs-owner-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.jobs-owner-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(79, 124, 255, 0.15);
+  color: var(--accent);
+  font-size: 10.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(79, 124, 255, 0.3);
+}
+
+.jobs-owner-name {
+  font-size: 12.5px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Action Buttons */
+.jobs-action-btns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.jobs-action-btn {
+  background: var(--surface2);
+  color: var(--text2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-height: 32px;
+}
+
+.jobs-action-btn:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.jobs-action-btn.danger:hover {
+  background: var(--red);
+  color: #fff;
+  border-color: var(--red);
+}
+
+/* Let the whole page scroll as one unit so the stat cards scroll out of
+   view with the table, instead of staying pinned above a cramped inner
+   scrollbox (mobile already gets this via the 760px breakpoint fix). */
+@media (min-width: 761px) {
+  .jobs-page {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    min-height: 0 !important;
+  }
+
+  .jobs-content {
+    flex: 1 !important;
+    overflow-y: visible !important;
+  }
+}
+
+/* Responsive Breakpoints */
+@media (max-width: 1024px) {
+  .jobs-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .jobs-page {
+    padding: 16px;
+  }
+
+  .jobs-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .jobs-table-header {
+    display: none;
+  }
+
+  .jobs-table-row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+  }
+
+  .jobs-action-btn {
+    min-height: 44px;
+    flex: 1;
   }
 }

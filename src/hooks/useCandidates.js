@@ -46,26 +46,42 @@ export function useCandidates() {
   }
 
   const addCandidate = async (candidate) => {
+    const payload = cleanDates(candidate)
     const { data, error } = await db
       .from('candidates')
       .insert([{
-        ...cleanDates(candidate),
+        ...payload,
         user_id: user.id,
         org_id: profile?.org_id
       }])
       .select()
-    if (!error) setCandidates(prev => [data[0], ...prev])
-    return { data, error }
+    if (error) {
+      console.error('[addCandidate] Error:', error)
+      return { data: null, error }
+    }
+    const createdItem = Array.isArray(data) ? data[0] : data
+    if (createdItem) {
+      setCandidates(prev => [createdItem, ...prev])
+    }
+    return { data: createdItem, error: null }
   }
 
   const updateCandidate = async (id, updates) => {
+    const payload = cleanDates(updates)
     const { data, error } = await db
       .from('candidates')
-      .update(cleanDates(updates))
+      .update(payload)
       .eq('id', id)
       .select()
-    if (!error) setCandidates(prev => prev.map(c => c.id === id ? data[0] : c))
-    return { data, error }
+    if (error) {
+      console.error('[updateCandidate] Error:', error)
+      return { data: null, error }
+    }
+    const updatedItem = Array.isArray(data) ? data[0] : data
+    if (updatedItem) {
+      setCandidates(prev => prev.map(c => c.id === id ? { ...c, ...updatedItem } : c))
+    }
+    return { data: updatedItem, error: null }
   }
 
   const deleteCandidate = async (id) => {

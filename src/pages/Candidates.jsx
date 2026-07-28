@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useCandidates } from '../hooks/useCandidates'
 import { useAuth } from '../context/AuthContext'
 import { SmartDropdown } from '../components/SmartDropdown'
+import { apiRequest } from '../lib/api'
 import * as XLSX from 'xlsx'
 
 const STATUSES = ['Pending', 'Submitted', 'Shortlisted', 'Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired', 'Rejected', 'On Hold', 'Withdrew']
@@ -30,7 +31,7 @@ const emptyForm = {
   feedback_status: 'Awaiting', priority: 'Medium',
   interview_date: '', interview_type: '',
   fe_name: '', fe_extension: '', account_manager: '', recruiter_name: '',
-  skills: [], notes: '', followup_date: ''
+  skills: [], notes: '', followup_date: '', resume_text: ''
 }
 
 // Multi-select dropdown component
@@ -101,12 +102,26 @@ function StatusBadge({ status }) {
   )
 }
 
+function ensureArray(val) {
+  if (Array.isArray(val)) return val
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val)
+      if (Array.isArray(parsed)) return parsed
+    } catch {
+      if (val.trim()) return val.split(',').map(s => s.trim()).filter(Boolean)
+    }
+  }
+  return []
+}
+
 // Score engine
 function computeScore(c) {
   const fields = ['first_name', 'last_name', 'email', 'phone', 'location', 'work_auth', 'experience', 'linkedin', 'submission_date', 'job_id', 'job_title', 'client', 'rate', 'fe_name', 'fe_extension', 'recruiter_name']
   const filled = fields.filter(f => c[f] && String(c[f]).trim() !== '').length
   const completeness = Math.round((filled / fields.length) * 25)
-  const skillCount = (c.skills || []).length
+  const candSkills = ensureArray(c.skills)
+  const skillCount = candSkills.length
   const skillScore = skillCount === 0 ? 0 : skillCount >= 8 ? 25 : skillCount >= 5 ? 20 : skillCount >= 3 ? 14 : 8
   const statusScores = { 'Pending': 0, 'Submitted': 8, 'Shortlisted': 14, 'Interview Scheduled': 20, 'Interview Done': 24, 'Offer Extended': 28, 'Hired': 30, 'Rejected': 4, 'On Hold': 5, 'Withdrew': 3 }
   const statusScore = statusScores[c.internal_status] || 0
@@ -133,6 +148,25 @@ function computeScore(c) {
   return { total, grade, gradeColor, gradeLabel, insights, completeness, skillScore, statusScore, recencyScore }
 }
 
+function fallbackExtractSkills(text = '') {
+  if (!text) return []
+  const dictionary = [
+    'React', 'React Native', 'Node.js', 'Express', 'TypeScript', 'JavaScript', 'Python', 'Django', 'Flask', 'FastAPI',
+    'Java', 'Spring Boot', 'C++', 'C#', '.NET', 'Go', 'Golang', 'Rust', 'PHP', 'Ruby', 'Rails', 'SQL', 'PostgreSQL',
+    'MySQL', 'MongoDB', 'Redis', 'GraphQL', 'REST API', 'AWS', 'Azure', 'GCP', 'Docker', 'Kubernetes', 'CI/CD',
+    'Git', 'DevOps', 'Microservices', 'HTML5', 'CSS3', 'Tailwind CSS', 'Sass', 'Figma', 'System Design', 'Agile',
+    'Scrum', 'Jira', 'Unit Testing', 'Jest', 'Cypress', 'Machine Learning', 'Data Analysis', 'Tableau', 'Power BI',
+    'Communication', 'Leadership', 'Problem Solving', 'Teamwork'
+  ]
+  const lower = text.toLowerCase()
+  const matches = dictionary.filter(skill => {
+    const escaped = skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(`\\b${escaped}\\b`, 'i')
+    return regex.test(lower)
+  })
+  return matches.slice(0, 10)
+}
+
 export default function Candidates() {
   const { candidates, loading, addCandidate, updateCandidate, deleteCandidate } = useCandidates()
   const { profile } = useAuth()
@@ -144,6 +178,7 @@ export default function Candidates() {
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [skillInput, setSkillInput] = useState('')
+  const [extractingSkills, setExtractingSkills] = useState(false)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
@@ -174,7 +209,7 @@ export default function Candidates() {
 
   const filtered = candidates.filter(c => {
     const q = search.toLowerCase()
-    if (q && !`${c.first_name} ${c.last_name} ${c.email} ${c.job_title} ${c.job_id} ${c.client} ${c.location} ${(c.skills || []).join(' ')}`.toLowerCase().includes(q)) return false
+    if (q && !`${c.first_name} ${c.last_name} ${c.email} ${c.job_title} ${c.job_id} ${c.client} ${c.location} ${ensureArray(c.skills).join(' ')}`.toLowerCase().includes(q)) return false
     if (filters.status.length && !filters.status.includes(c.internal_status)) return false
     if (filters.fe.length && !filters.fe.includes(c.fe_name)) return false
     if (filters.job.length && !filters.job.includes(c.job_id)) return false
@@ -224,7 +259,7 @@ export default function Candidates() {
   const bulkExport = () => {
     const sel = candidates.filter(c => selected.has(c.id))
     const headers = ['First Name', 'Last Name', 'Email', 'Phone', 'Location', 'Work Auth', 'Experience', 'Submission Date', 'Job ID', 'Job Title', 'Client', 'Rate', 'Internal Status', 'External Status', 'Feedback', 'Priority', 'Interview Date', 'FE Name', 'Extension', 'Skills', 'Notes']
-    const rows = sel.map(c => [c.first_name, c.last_name, c.email, c.phone, c.location, c.work_auth, c.experience, c.submission_date, c.job_id, c.job_title, c.client, c.rate, c.internal_status, c.external_status, c.feedback_status, c.priority, c.interview_date, c.fe_name, c.fe_extension, (c.skills || []).join(';'), c.notes])
+    const rows = sel.map(c => [c.first_name, c.last_name, c.email, c.phone, c.location, c.work_auth, c.experience, c.submission_date, c.job_id, c.job_title, c.client, c.rate, c.internal_status, c.external_status, c.feedback_status, c.priority, c.interview_date, c.fe_name, c.fe_extension, ensureArray(c.skills).join(';'), c.notes])
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Candidates')
@@ -234,7 +269,7 @@ export default function Candidates() {
 
   const exportAll = () => {
     const headers = ['First Name', 'Last Name', 'Email', 'Phone', 'Location', 'Work Auth', 'Experience', 'Submission Date', 'Job ID', 'Job Title', 'Client', 'Rate', 'Internal Status', 'External Status', 'Feedback', 'Priority', 'Interview Date', 'FE Name', 'Extension', 'Skills', 'Notes']
-    const rows = filtered.map(c => [c.first_name, c.last_name, c.email, c.phone, c.location, c.work_auth, c.experience, c.submission_date, c.job_id, c.job_title, c.client, c.rate, c.internal_status, c.external_status, c.feedback_status, c.priority, c.interview_date, c.fe_name, c.fe_extension, (c.skills || []).join(';'), c.notes])
+    const rows = filtered.map(c => [c.first_name, c.last_name, c.email, c.phone, c.location, c.work_auth, c.experience, c.submission_date, c.job_id, c.job_title, c.client, c.rate, c.internal_status, c.external_status, c.feedback_status, c.priority, c.interview_date, c.fe_name, c.fe_extension, ensureArray(c.skills).join(';'), c.notes])
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Candidates')
@@ -264,9 +299,67 @@ export default function Candidates() {
       interview_date: c.interview_date || '', interview_type: c.interview_type || '',
       fe_name: c.fe_name || '', fe_extension: c.fe_extension || '',
       account_manager: c.account_manager || '', recruiter_name: c.recruiter_name || '',
-      skills: c.skills || [], notes: c.notes || '', followup_date: c.followup_date || ''
+      skills: ensureArray(c.skills), notes: c.notes || '', followup_date: c.followup_date || '',
+      resume_text: c.resume_text || ''
     })
     setEditingId(c.id); setSkillInput(''); setShowModal(true)
+  }
+
+  const handleExtractSkillsAI = async () => {
+    if (!form.resume_text || !form.resume_text.trim()) {
+      return showToast('Please paste resume text first', 'error')
+    }
+    setExtractingSkills(true)
+    try {
+      const res = await apiRequest('/ai/generate', {
+        method: 'POST',
+        body: {
+          toolId: 'resume_skills',
+          prompt: `Extract up to 10 key technical and professional skills from this candidate resume:\n\n${form.resume_text}`
+        }
+      })
+      let extracted = []
+      if (res && res.text) {
+        try {
+          const cleaned = res.text.replace(/```json/gi, '').replace(/```/g, '').trim()
+          extracted = JSON.parse(cleaned)
+        } catch {
+          const match = res.text.match(/\[.*?\]/s)
+          if (match) {
+            try { extracted = JSON.parse(match[0]) } catch { }
+          }
+        }
+      }
+
+      if (!Array.isArray(extracted) || extracted.length === 0) {
+        extracted = fallbackExtractSkills(form.resume_text)
+      }
+
+      if (extracted.length > 0) {
+        const top10 = extracted.map(s => String(s).trim()).filter(Boolean).slice(0, 10)
+        setForm(f => ({
+          ...f,
+          skills: Array.from(new Set([...(f.skills || []), ...top10]))
+        }))
+        showToast(`AI extracted ${top10.length} skills!`, 'success')
+      } else {
+        showToast('No skills detected in resume', 'error')
+      }
+    } catch (err) {
+      console.warn('[AI Skill Extractor] Error, falling back to keyword matcher:', err)
+      const fallback = fallbackExtractSkills(form.resume_text)
+      if (fallback.length > 0) {
+        setForm(f => ({
+          ...f,
+          skills: Array.from(new Set([...(f.skills || []), ...fallback]))
+        }))
+        showToast(`Extracted ${fallback.length} skills (local engine)`, 'success')
+      } else {
+        showToast('Failed to extract skills', 'error')
+      }
+    } finally {
+      setExtractingSkills(false)
+    }
   }
 
   const handleSave = async () => {
@@ -288,7 +381,8 @@ export default function Candidates() {
   const addSkill = (e) => {
     if (e.key === 'Enter' && skillInput.trim()) {
       e.preventDefault()
-      if (!form.skills.includes(skillInput.trim())) setForm(f => ({ ...f, skills: [...f.skills, skillInput.trim()] }))
+      const current = ensureArray(form.skills)
+      if (!current.includes(skillInput.trim())) setForm(f => ({ ...f, skills: [...current, skillInput.trim()] }))
       setSkillInput('')
     }
   }
@@ -610,10 +704,16 @@ export default function Candidates() {
               <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '10px', padding: '16px', marginTop: '16px' }}>
                 <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '10px' }}>Skills</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {(showDetail.skills || []).map(s => <span key={s} style={{ background: 'rgba(79,124,255,0.12)', color: 'var(--accent)', border: '1px solid rgba(79,124,255,0.25)', borderRadius: '20px', padding: '3px 10px', fontSize: '12px', fontWeight: '600' }}>{s}</span>)}
-                  {!(showDetail.skills || []).length && <span style={{ color: 'var(--text3)', fontSize: '13px' }}>No skills listed</span>}
+                  {ensureArray(showDetail.skills).map(s => <span key={s} style={{ background: 'rgba(79,124,255,0.12)', color: 'var(--accent)', border: '1px solid rgba(79,124,255,0.25)', borderRadius: '20px', padding: '3px 10px', fontSize: '12px', fontWeight: '600' }}>{s}</span>)}
+                  {!ensureArray(showDetail.skills).length && <span style={{ color: 'var(--text3)', fontSize: '13px' }}>No skills listed</span>}
                 </div>
               </div>
+              {showDetail.resume_text && (
+                <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '10px', padding: '16px', marginTop: '16px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '10px' }}>Resume Text</div>
+                  <pre style={{ fontSize: '12.5px', color: 'var(--text2)', lineHeight: '1.6', whiteSpace: 'pre-wrap', fontFamily: 'inherit', maxHeight: '180px', overflowY: 'auto' }}>{showDetail.resume_text}</pre>
+                </div>
+              )}
               {showDetail.notes && (
                 <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '10px', padding: '16px', marginTop: '16px' }}>
                   <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '10px' }}>Notes</div>
@@ -670,15 +770,58 @@ export default function Candidates() {
                 <Field label="Account Manager"><input {...inp('account_manager')} placeholder="Mike R." /></Field>
                 <Field label="Recruiter"><input {...inp('recruiter_name')} placeholder="Your name" /></Field>
               </div>
+              <Section title="Resume & AI Skill Extractor" />
+              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                  <label style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--accent)' }}>Paste Candidate Resume Text</label>
+                  <button
+                    type="button"
+                    onClick={handleExtractSkillsAI}
+                    disabled={extractingSkills || !form.resume_text?.trim()}
+                    style={{
+                      background: 'linear-gradient(135deg, var(--accent), #7c5cff)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '6px 14px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: extractingSkills || !form.resume_text?.trim() ? 'not-allowed' : 'pointer',
+                      opacity: extractingSkills || !form.resume_text?.trim() ? 0.6 : 1,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxShadow: '0 2px 10px rgba(79,124,255,0.25)'
+                    }}
+                  >
+                    {extractingSkills ? (
+                      <>
+                        <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                        Extracting Skills...
+                      </>
+                    ) : (
+                      <>
+                        ✨ AI Auto-Extract Top 10 Skills
+                      </>
+                    )}
+                  </button>
+                </div>
+                <textarea
+                  {...inp('resume_text')}
+                  placeholder="Paste full raw candidate resume text here (e.g. summary, skills, experience)... The AI will parse 10 skills automatically!"
+                  style={{ ...inputStyle, minHeight: '110px', resize: 'vertical', fontSize: '12.5px', fontFamily: 'monospace' }}
+                />
+              </div>
+
               <Section title="Skills & Notes" />
               <Field label="Skills (press Enter to add)">
                 <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px', display: 'flex', flexWrap: 'wrap', gap: '6px', minHeight: '42px', cursor: 'text' }} onClick={() => document.getElementById('skill-inp')?.focus()}>
-                  {form.skills.map(s => (
+                  {ensureArray(form.skills).map(s => (
                     <span key={s} style={{ background: 'rgba(79,124,255,0.15)', color: 'var(--accent)', border: '1px solid rgba(79,124,255,0.3)', borderRadius: '20px', padding: '2px 9px', fontSize: '11px', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      {s} <span onClick={() => setForm(f => ({ ...f, skills: f.skills.filter(x => x !== s) }))} style={{ cursor: 'pointer', opacity: 0.7, fontSize: '10px' }}>x</span>
+                      {s} <span onClick={() => setForm(f => ({ ...f, skills: ensureArray(f.skills).filter(x => x !== s) }))} style={{ cursor: 'pointer', opacity: 0.7, fontSize: '10px' }}>x</span>
                     </span>
                   ))}
-                  <input id="skill-inp" value={skillInput} onChange={e => setSkillInput(e.target.value)} onKeyDown={addSkill} placeholder={form.skills.length ? '' : 'Type a skill and press Enter...'} style={{ background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', fontSize: '13px', fontFamily: 'DM Sans, sans-serif', minWidth: '160px', flex: 1 }} />
+                  <input id="skill-inp" value={skillInput} onChange={e => setSkillInput(e.target.value)} onKeyDown={addSkill} placeholder={ensureArray(form.skills).length ? '' : 'Type a skill and press Enter...'} style={{ background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)', fontSize: '13px', fontFamily: 'DM Sans, sans-serif', minWidth: '160px', flex: 1 }} />
                 </div>
               </Field>
               <Field label="Notes"><textarea {...inp('notes')} placeholder="Internal notes..." style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }} /></Field>

@@ -92,6 +92,7 @@ model Candidate {
   recruiter_id     String?  @db.Uuid
   skills           Json?
   notes            String?
+  resume_text      String?
   followup_date    String?
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt

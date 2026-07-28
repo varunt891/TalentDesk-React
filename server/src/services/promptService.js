@@ -46,6 +46,12 @@ export const TOOL_CONFIGS = {
     temperature: 0.3,
     allowGrounding: false,
     maxTokens: 4096
+  },
+  resume_skills: {
+    systemPrompt: 'You are an expert Talent Acquisition AI Skill Extractor. Analyze the provided resume text and extract up to 10 top key technical and professional skills. You MUST output ONLY a valid raw JSON array of strings containing up to 10 skill names (for example: ["React", "Node.js", "Python", "SQL", "TypeScript", "Docker", "AWS", "GraphQL", "Git", "REST APIs"]). Do not include any markdown formatting, backticks, or explanatory text—return ONLY the JSON array.',
+    temperature: 0.1,
+    allowGrounding: false,
+    maxTokens: 1024
   }
 };
 
