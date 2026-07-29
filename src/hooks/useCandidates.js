@@ -42,6 +42,11 @@ export function useCandidates() {
     dateFields.forEach(f => {
       if (!cleaned[f] || cleaned[f] === '') cleaned[f] = null
     })
+    if (cleaned.experience !== undefined && cleaned.experience !== null && cleaned.experience !== '') {
+      cleaned.experience = String(cleaned.experience)
+    } else {
+      cleaned.experience = null
+    }
     return cleaned
   }
 

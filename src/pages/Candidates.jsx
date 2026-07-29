@@ -3,6 +3,8 @@ import { useCandidates } from '../hooks/useCandidates'
 import { useAuth } from '../context/AuthContext'
 import { SmartDropdown } from '../components/SmartDropdown'
 import { apiRequest } from '../lib/api'
+import SubmissionPacketModal from '../components/SubmissionPacketModal'
+import AIMatchModal from '../components/AIMatchModal'
 import * as XLSX from 'xlsx'
 
 const STATUSES = ['Pending', 'Submitted', 'Shortlisted', 'Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired', 'Rejected', 'On Hold', 'Withdrew']
@@ -175,7 +177,37 @@ export default function Candidates() {
   const [filters, setFilters] = useState({ status: [], fe: [], job: [], location: [], feedback: [] })
   const [showModal, setShowModal] = useState(false)
   const [showDetail, setShowDetail] = useState(null)
+  const [packetModal, setPacketModal] = useState({ isOpen: false, candidate: null, job: null })
+  const [aiMatchModal, setAiMatchModal] = useState({ isOpen: false, candidate: null, job: null })
   const [editingId, setEditingId] = useState(null)
+
+  const openPacketForCandidate = (cand) => {
+    const jobMock = {
+      id: cand.job_id || 'JOB-REQ',
+      job_id: cand.job_id || 'JOB-REQ',
+      title: cand.job_title || 'Target Requisition',
+      client: cand.client || 'Client Account',
+      location: cand.location || '',
+      rate: cand.rate || '',
+      skills: cand.skills || [],
+      description: cand.notes || ''
+    }
+    setPacketModal({ isOpen: true, candidate: cand, job: jobMock })
+  }
+
+  const openAiMatchForCandidate = (cand) => {
+    const jobMock = {
+      id: cand.job_id || 'JOB-REQ',
+      job_id: cand.job_id || 'JOB-REQ',
+      title: cand.job_title || 'Target Requisition',
+      client: cand.client || 'Client Account',
+      location: cand.location || '',
+      rate: cand.rate || '',
+      skills: cand.skills || [],
+      description: cand.notes || ''
+    }
+    setAiMatchModal({ isOpen: true, candidate: cand, job: jobMock })
+  }
   const [form, setForm] = useState(emptyForm)
   const [skillInput, setSkillInput] = useState('')
   const [extractingSkills, setExtractingSkills] = useState(false)
@@ -358,6 +390,93 @@ export default function Candidates() {
         showToast('Failed to extract skills', 'error')
       }
     } finally {
+      setExtractingSkills(false)
+    }
+  }
+
+  const handleAutoFillProfileAI = async () => {
+    if (!form.resume_text || !form.resume_text.trim()) {
+      return showToast('Please paste resume text or upload a resume file first', 'error')
+    }
+    setExtractingSkills(true)
+    try {
+      const res = await apiRequest('/ai/parse-resume', {
+        method: 'POST',
+        body: { resumeText: form.resume_text }
+      })
+      if (res && res.profile) {
+        const p = res.profile
+        setForm(prev => ({
+          ...prev,
+          first_name: p.first_name || prev.first_name,
+          last_name: p.last_name || prev.last_name,
+          email: p.email || prev.email,
+          phone: p.phone || prev.phone,
+          location: p.location || prev.location,
+          job_title: p.job_title || prev.job_title,
+          experience: p.experience !== undefined && p.experience !== null ? String(p.experience) : prev.experience,
+          work_auth: p.work_auth || prev.work_auth,
+          rate: p.rate || prev.rate,
+          skills: Array.isArray(p.skills) && p.skills.length > 0 ? Array.from(new Set([...(prev.skills || []), ...p.skills])) : prev.skills
+        }))
+        showToast('⚡ AI Auto-Filled candidate name, email, location, title & skills!')
+      } else {
+        throw new Error(res.error || 'Could not parse profile details.')
+      }
+    } catch (err) {
+      showToast(err.message || 'Failed to auto-fill candidate profile', 'error')
+    } finally {
+      setExtractingSkills(false)
+    }
+  }
+
+  const handleResumeFileUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setExtractingSkills(true)
+    showToast(`Parsing ${file.name}... Please wait`)
+    try {
+      const reader = new FileReader()
+      reader.onload = async (event) => {
+        try {
+          const dataUrl = event.target?.result
+          if (typeof dataUrl === 'string') {
+            const base64 = dataUrl.split(',')[1] || dataUrl
+            const res = await apiRequest('/ai/parse-resume-file', {
+              method: 'POST',
+              body: { fileBase64: base64, fileName: file.name }
+            })
+            if (res && res.success) {
+              const p = res.profile || {}
+              setForm(prev => ({
+                ...prev,
+                resume_text: res.extractedText || prev.resume_text,
+                first_name: p.first_name || prev.first_name,
+                last_name: p.last_name || prev.last_name,
+                email: p.email || prev.email,
+                phone: p.phone || prev.phone,
+                location: p.location || prev.location,
+                job_title: p.job_title || prev.job_title,
+                experience: p.experience !== undefined && p.experience !== null ? String(p.experience) : prev.experience,
+                work_auth: p.work_auth || prev.work_auth,
+                rate: p.rate || prev.rate,
+                skills: Array.isArray(p.skills) && p.skills.length > 0 ? Array.from(new Set([...(prev.skills || []), ...p.skills])) : prev.skills
+              }))
+              showToast(`⚡ Clean text & profile auto-filled from ${file.name}!`)
+            } else {
+              throw new Error(res.error || 'Failed to parse document text.')
+            }
+          }
+        } catch (err) {
+          showToast(err.message || 'File upload parsing failed', 'error')
+        } finally {
+          setExtractingSkills(false)
+        }
+      }
+      reader.readAsDataURL(file)
+    } catch (err) {
+      showToast(err.message || 'File upload parsing failed', 'error')
       setExtractingSkills(false)
     }
   }
@@ -586,6 +705,8 @@ export default function Candidates() {
                         )}
                         <td style={tdStyle}>
                           <div className="candidate-row-actions">
+                            <button onClick={() => openAiMatchForCandidate(c)} title="Deep AI Fit Radar" style={{ background: 'rgba(124, 92, 255, 0.12)', color: '#7c5cff', fontWeight: '600' }}>🎯 Fit</button>
+                            <button onClick={() => openPacketForCandidate(c)} title="Generate Client Packet" style={{ background: 'rgba(79, 124, 255, 0.12)', color: 'var(--accent)', fontWeight: '600' }}>⚡ Packet</button>
                             <button onClick={() => setShowDetail(c)} title="View details">View</button>
                             <button onClick={() => openEdit(c)} title="Edit">Edit</button>
                             <button className="danger" onClick={() => setDeleteId(c.id)} title="Delete">Delete</button>
@@ -642,7 +763,9 @@ export default function Candidates() {
                 <div style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text)' }}>{showDetail.first_name} {showDetail.last_name}</div>
                 <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>{showDetail.job_title} · <span style={{ color: 'var(--accent)', fontFamily: 'Space Mono, monospace' }}>{showDetail.job_id}</span></div>
               </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button onClick={() => openAiMatchForCandidate(showDetail)} style={{ background: 'var(--surface3, #212330)', color: 'var(--accent, #4f7cff)', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 14px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>🎯 Deep AI Fit</button>
+                <button onClick={() => openPacketForCandidate(showDetail)} style={{ background: 'linear-gradient(135deg, var(--accent), #7c5cff)', color: '#fff', border: 'none', borderRadius: '8px', padding: '6px 14px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>⚡ 1-Click Packet</button>
                 <button onClick={() => { setShowDetail(null); openEdit(showDetail) }} style={{ ...btnGhost, fontSize: '12px', padding: '6px 12px' }}>Edit</button>
                 <button onClick={() => setShowDetail(null)} style={closeBtn}>x</button>
               </div>
@@ -770,46 +893,87 @@ export default function Candidates() {
                 <Field label="Account Manager"><input {...inp('account_manager')} placeholder="Mike R." /></Field>
                 <Field label="Recruiter"><input {...inp('recruiter_name')} placeholder="Your name" /></Field>
               </div>
-              <Section title="Resume & AI Skill Extractor" />
+              <Section title="Resume & AI Profile Parser" />
               <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
-                  <label style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--accent)' }}>Paste Candidate Resume Text</label>
-                  <button
-                    type="button"
-                    onClick={handleExtractSkillsAI}
-                    disabled={extractingSkills || !form.resume_text?.trim()}
-                    style={{
-                      background: 'linear-gradient(135deg, var(--accent), #7c5cff)',
-                      color: '#fff',
-                      border: 'none',
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--accent)' }}>Candidate Resume Text or File</label>
+                    <div style={{ fontSize: '11.5px', color: 'var(--text3)', marginTop: '2px' }}>Paste resume text or upload a file — AI will auto-fill name, email, phone, location, title & skills!</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <label style={{
+                      background: 'var(--surface3, #2d303e)',
+                      color: 'var(--text, #fff)',
+                      border: '1px solid var(--border)',
                       borderRadius: '8px',
-                      padding: '6px 14px',
+                      padding: '6px 12px',
                       fontSize: '12px',
-                      fontWeight: '700',
-                      cursor: extractingSkills || !form.resume_text?.trim() ? 'not-allowed' : 'pointer',
-                      opacity: extractingSkills || !form.resume_text?.trim() ? 0.6 : 1,
+                      fontWeight: '600',
+                      cursor: 'pointer',
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '6px',
-                      boxShadow: '0 2px 10px rgba(79,124,255,0.25)'
-                    }}
-                  >
-                    {extractingSkills ? (
-                      <>
-                        <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-                        Extracting Skills...
-                      </>
-                    ) : (
-                      <>
-                        ✨ AI Auto-Extract Top 10 Skills
-                      </>
-                    )}
-                  </button>
+                      gap: '4px'
+                    }}>
+                      📁 Upload File
+                      <input type="file" accept=".txt,.pdf,.doc,.docx" onChange={handleResumeFileUpload} style={{ display: 'none' }} />
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={handleExtractSkillsAI}
+                      disabled={extractingSkills || !form.resume_text?.trim()}
+                      style={{
+                        background: 'var(--surface3, #212330)',
+                        color: 'var(--accent, #4f7cff)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '8px',
+                        padding: '6px 12px',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        cursor: extractingSkills || !form.resume_text?.trim() ? 'not-allowed' : 'pointer',
+                        opacity: extractingSkills || !form.resume_text?.trim() ? 0.6 : 1
+                      }}
+                    >
+                      ✨ Extract Skills Only
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleAutoFillProfileAI}
+                      disabled={extractingSkills || !form.resume_text?.trim()}
+                      style={{
+                        background: 'linear-gradient(135deg, var(--accent), #7c5cff)',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '6px 14px',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        cursor: extractingSkills || !form.resume_text?.trim() ? 'not-allowed' : 'pointer',
+                        opacity: extractingSkills || !form.resume_text?.trim() ? 0.6 : 1,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 2px 10px rgba(79,124,255,0.25)'
+                      }}
+                    >
+                      {extractingSkills ? (
+                        <>
+                          <span style={{ display: 'inline-block', width: '12px', height: '12px', border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                          Parsing Resume...
+                        </>
+                      ) : (
+                        <>
+                          ⚡ AI Auto-Fill Full Profile
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
                 <textarea
                   {...inp('resume_text')}
-                  placeholder="Paste full raw candidate resume text here (e.g. summary, skills, experience)... The AI will parse 10 skills automatically!"
-                  style={{ ...inputStyle, minHeight: '110px', resize: 'vertical', fontSize: '12.5px', fontFamily: 'monospace' }}
+                  placeholder="Paste full raw candidate resume text here (e.g. summary, contact, skills, experience)... Or upload a resume file above and click '⚡ AI Auto-Fill Full Profile'!"
+                  style={{ ...inputStyle, minHeight: '120px', resize: 'vertical', fontSize: '12.5px', fontFamily: 'monospace' }}
                 />
               </div>
 
@@ -851,6 +1015,23 @@ export default function Candidates() {
           </div>
         </div>
       )}
+
+      {/* Submission Packet Modal */}
+      <SubmissionPacketModal
+        isOpen={packetModal.isOpen}
+        onClose={() => setPacketModal({ isOpen: false, candidate: null, job: null })}
+        candidate={packetModal.candidate}
+        job={packetModal.job}
+      />
+
+      {/* AI Match Modal */}
+      <AIMatchModal
+        isOpen={aiMatchModal.isOpen}
+        onClose={() => setAiMatchModal({ isOpen: false, candidate: null, job: null })}
+        candidate={aiMatchModal.candidate}
+        job={aiMatchModal.job}
+        onOpenSubmissionPacket={(cand, j) => openPacketForCandidate(cand)}
+      />
 
       {/* Toast */}
       {toast && <div style={{ position: 'fixed', bottom: '24px', right: '24px', background: toast.type === 'error' ? 'var(--red)' : 'var(--green)', color: '#fff', padding: '12px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', zIndex: 9999, boxShadow: '0 4px 20px rgba(0,0,0,0.4)', fontFamily: 'DM Sans, sans-serif' }}>{toast.msg}</div>}

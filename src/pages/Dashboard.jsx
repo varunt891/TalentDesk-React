@@ -1876,9 +1876,9 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
             {/* COMPRESSED 145PX SUPPORTING BAR CHART */}
             <div className="dashboard-chart compact-chart">
               <ResponsiveContainer width="100%" height={145}>
-                <BarChart data={pipelineData}>
+                <BarChart data={pipelineData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                   <CartesianGrid stroke="rgba(226,232,240,0.6)" vertical={false} />
-                  <XAxis dataKey="stage" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="stage" interval={0} angle={-35} textAnchor="end" height={48} tick={{ fill: '#64748b', fontSize: 9 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
                   <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={{ fill: 'rgba(37,99,235,0.04)' }} />
                   <Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={20}>

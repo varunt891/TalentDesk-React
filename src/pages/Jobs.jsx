@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { db } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useCandidates } from '../hooks/useCandidates'
+import SubmissionPacketModal from '../components/SubmissionPacketModal'
+import AIMatchModal from '../components/AIMatchModal'
 
 function ensureArray(val) {
   if (Array.isArray(val)) return val
@@ -18,17 +20,23 @@ function ensureArray(val) {
 
 const GENERIC_SOFT_SKILLS = ['communication', 'leadership', 'teamwork', 'problem solving', 'agile', 'scrum', 'jira', 'management', 'collaboration']
 
-function getMatchingCandidates(job, candidatesList = []) {
-  if (!job || !candidatesList || !candidatesList.length) return []
+export function getMatchingCandidates(job, candidates, aiScores = {}) {
+  if (!job || !candidates) return []
 
-  const jobSkills = ensureArray(job.skills).map(s => String(s).toLowerCase().trim())
+  const origJobSkills = ensureArray(job.skills)
+  const jobSkills = origJobSkills.map(s => String(s).toLowerCase().trim())
   const domainJobSkills = jobSkills.filter(s => !GENERIC_SOFT_SKILLS.includes(s))
   const jobTitle = String(job.title || '').toLowerCase()
   const jobDesc = String(job.description || '').toLowerCase()
-  const jobId = String(job.job_id || '').toLowerCase()
+  const reqJobId = String(job.job_id || '').toLowerCase().trim()
 
-  return candidatesList.map(c => {
+  return candidates.map(c => {
     const origCandSkills = ensureArray(c.skills)
+    const candSkills = origCandSkills.map(s => String(s).toLowerCase().trim())
+    const candJobId = String(c.job_id || '').toLowerCase().trim()
+    const matchByJobId = Boolean(reqJobId && candJobId && reqJobId === candJobId)
+
+    // Overlapping skills
     const matchedSkills = origCandSkills.filter(s => {
       const lower = String(s).toLowerCase().trim()
       return jobSkills.includes(lower) || (jobTitle && jobTitle.includes(lower)) || (jobDesc && jobDesc.includes(lower))
@@ -39,33 +47,63 @@ function getMatchingCandidates(job, candidatesList = []) {
       return !GENERIC_SOFT_SKILLS.includes(lower) && (jobSkills.includes(lower) || (jobTitle && jobTitle.includes(lower)) || (jobDesc && jobDesc.includes(lower)))
     })
 
-    const matchByJobId = c.job_id && String(c.job_id).toLowerCase() === jobId && jobId !== ''
-
-    let matchPercentage = 0
+    // Calculate intelligent baseline AI match percentage
+    let calculatedScore = 0
     if (domainJobSkills.length > 0) {
       const overlapCount = matchedDomainSkills.filter(s => domainJobSkills.includes(String(s).toLowerCase().trim())).length
-      matchPercentage = Math.round((overlapCount / domainJobSkills.length) * 100)
+      calculatedScore = Math.round((overlapCount / domainJobSkills.length) * 100)
     } else if (matchedDomainSkills.length > 0) {
-      matchPercentage = Math.min(100, matchedDomainSkills.length * 33)
+      calculatedScore = Math.min(100, matchedDomainSkills.length * 33)
     }
+
+    // Role & Title Alignment factor
+    const candTitle = String(c.job_title || '').toLowerCase()
+    let titleFactor = 1.0
+    if (candTitle && jobTitle) {
+      const stopWords = ['senior', 'junior', 'lead', 'staff', 'principal', 'engineer', 'developer', 'manager', 'specialist']
+      const candWords = candTitle.split(/[\s,/\\_-]+/).filter(w => w.length > 2 && !stopWords.includes(w))
+      const jobWords = jobTitle.split(/[\s,/\\_-]+/).filter(w => w.length > 2 && !stopWords.includes(w))
+      
+      if (candWords.length > 0 && jobWords.length > 0) {
+        const titleOverlap = candWords.filter(w => jobWords.includes(w))
+        if (titleOverlap.length === 0) {
+          titleFactor = 0.5 // Heavy domain mismatch penalty (e.g. Dentist vs Welder)
+        }
+      }
+    }
+    calculatedScore = Math.round(calculatedScore * titleFactor)
 
     if (matchByJobId) {
-      matchPercentage = Math.max(matchPercentage, 90)
-      if (matchedDomainSkills.length >= 2) matchPercentage = 100
+      if (matchedDomainSkills.length > 0) {
+        calculatedScore = Math.max(calculatedScore, 85)
+      } else if (titleFactor < 1.0) {
+        calculatedScore = 0 // Completely mismatched domain & 0 skills despite job association
+      }
     }
 
-    const isMatched = matchByJobId || (matchedDomainSkills.length >= 1 && matchPercentage >= 40)
+    const aiKey1 = `${c.id}_${job.id}`
+    const aiKey2 = `${c.id}_${job.job_id}`
+    const isAiEvaluated = Boolean(aiScores && (aiScores[aiKey1] !== undefined || aiScores[aiKey2] !== undefined))
+
+    const skillTitleScore = calculatedScore
+    const deepAiScore = isAiEvaluated ? (aiScores[aiKey1] !== undefined ? aiScores[aiKey1] : aiScores[aiKey2]) : null
+    const finalScore = isAiEvaluated && deepAiScore !== null ? deepAiScore : skillTitleScore
+
+    // STRICT UNCONDITIONAL FILTER: Candidate fit score MUST be >= 30%!
+    // Any candidate with fit < 30% (e.g. Dentist vs Welder = 0%) is EXCLUDED!
+    const isMatched = finalScore >= 30
 
     return {
       candidate: c,
       matchedSkills: matchedDomainSkills.length > 0 ? matchedDomainSkills : matchedSkills,
-      matchPercentage,
+      matchPercentage: finalScore,
+      skillTitleScore,
+      deepAiScore,
+      isAiEvaluated,
       isMatched,
       matchByJobId
     }
-  })
-    .filter(item => item.isMatched)
-    .sort((a, b) => b.matchPercentage - a.matchPercentage)
+  }).filter(item => item.isMatched).sort((a, b) => b.matchPercentage - a.matchPercentage)
 }
 
 const emptyForm = {
@@ -91,6 +129,40 @@ export default function Jobs() {
   const [deleteId, setDeleteId] = useState(null)
   const [viewingCandidate, setViewingCandidate] = useState(null)
   const [showMatchedOnly, setShowMatchedOnly] = useState(false)
+  const [packetModal, setPacketModal] = useState({ isOpen: false, candidate: null, job: null })
+  const [aiMatchModal, setAiMatchModal] = useState({ isOpen: false, candidate: null, job: null })
+  const [aiScores, setAiScores] = useState(() => {
+    try {
+      const saved = localStorage.getItem('talentdesk_ai_scores')
+      return saved ? JSON.parse(saved) : {}
+    } catch {
+      return {}
+    }
+  })
+
+  const openPacketModal = (candidate, job) => {
+    setPacketModal({ isOpen: true, candidate, job })
+  }
+
+  const openAiMatchModal = (candidate, job) => {
+    setAiMatchModal({ isOpen: true, candidate, job })
+  }
+
+  const handleMatchEvaluated = (candId, jobObjOrId, score) => {
+    setAiScores(prev => {
+      const jId1 = typeof jobObjOrId === 'object' ? jobObjOrId.id : jobObjOrId
+      const jId2 = typeof jobObjOrId === 'object' ? (jobObjOrId.job_id || jobObjOrId.id) : jobObjOrId
+      const updated = {
+        ...prev,
+        [`${candId}_${jId1}`]: score,
+        [`${candId}_${jId2}`]: score
+      }
+      try {
+        localStorage.setItem('talentdesk_ai_scores', JSON.stringify(updated))
+      } catch { }
+      return updated
+    })
+  }
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -216,7 +288,7 @@ function getInitials(name = '') {
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
             </svg>
-            <span>+ New Job</span>
+            <span>New Job</span>
           </button>
         </div>
       </header>
@@ -445,7 +517,7 @@ function getInitials(name = '') {
 
             {/* Modal Navigation Tabs */}
             {(() => {
-              const matches = getMatchingCandidates(showDetail, candidates)
+              const matches = getMatchingCandidates(showDetail, candidates, aiScores)
               return (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--border)', padding: '0 24px', background: 'var(--surface2)', gap: '16px' }}>
@@ -493,13 +565,39 @@ function getInitials(name = '') {
                     {showMatchedOnly ? (
                       /* ONLY Matched Candidates View */
                       <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                          <h4 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text)', margin: 0 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                          <h4 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text)', margin: 0 }}>
                             Matched Candidates for {showDetail.title}
                           </h4>
                           <span style={{ fontSize: '12px', color: 'var(--text3)' }}>
-                            Showing candidates matching required skills or requisition ID
+                            {matches.length} candidate{matches.length === 1 ? '' : 's'} matching required skills & title
                           </span>
+                        </div>
+
+                        {/* Skill & Title Match Matrix Banner */}
+                        <div style={{
+                          background: 'linear-gradient(135deg, rgba(79,124,255,0.08), rgba(124,92,255,0.08))',
+                          border: '1px solid rgba(79,124,255,0.25)',
+                          borderRadius: '12px',
+                          padding: '12px 18px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap',
+                          marginBottom: '16px'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{ fontSize: '18px', background: 'rgba(79,124,255,0.15)', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>⚡</div>
+                            <div>
+                              <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text)' }}>
+                                Skill & Title Match Matrix
+                              </div>
+                              <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
+                                Candidate fit calculated from hard skills & target title. Click <strong>Deep AI Fit Radar</strong> on any card for in-depth AI analysis & screening questions.
+                              </div>
+                            </div>
+                          </div>
                         </div>
 
                         {matches.length === 0 ? (
@@ -508,93 +606,191 @@ function getInitials(name = '') {
                           </div>
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                            {matches.map(({ candidate, matchedSkills, matchPercentage, matchByJobId }) => (
+                            {matches.map(({ candidate, matchedSkills, matchPercentage, skillTitleScore, deepAiScore, isAiEvaluated, matchByJobId }) => (
                               <div
                                 key={candidate.id}
                                 style={{
                                   background: 'var(--surface2)',
                                   border: '1px solid var(--border)',
-                                  borderRadius: '12px',
-                                  padding: '16px',
+                                  borderRadius: '14px',
+                                  padding: '20px',
                                   display: 'flex',
                                   flexDirection: 'column',
-                                  gap: '10px',
-                                  transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
+                                  gap: '14px',
+                                  transition: 'all 0.2s ease'
                                 }}
                               >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
-                                  <div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                      <strong style={{ fontSize: '15px', color: 'var(--text)', fontWeight: '700' }}>
-                                        {candidate.first_name} {candidate.last_name}
-                                      </strong>
-                                      {matchByJobId && (
-                                        <span style={{ fontSize: '10px', background: 'rgba(79,124,255,0.15)', color: 'var(--accent)', padding: '2px 7px', borderRadius: '4px', border: '1px solid rgba(79,124,255,0.3)', fontWeight: '600' }}>
-                                          Job ID Match
-                                        </span>
-                                      )}
-                                      {/* Match Percentage Badge */}
-                                      <span style={{
-                                        background: matchPercentage >= 75 ? 'rgba(46,204,143,0.18)' : matchPercentage >= 50 ? 'rgba(245,200,66,0.18)' : 'rgba(79,124,255,0.18)',
-                                        color: matchPercentage >= 75 ? 'var(--green)' : matchPercentage >= 50 ? 'var(--yellow)' : 'var(--accent)',
-                                        border: `1px solid ${matchPercentage >= 75 ? 'rgba(46,204,143,0.35)' : matchPercentage >= 50 ? 'rgba(245,200,66,0.35)' : 'rgba(79,124,255,0.35)'}`,
-                                        padding: '2px 9px',
-                                        borderRadius: '20px',
-                                        fontSize: '11.5px',
-                                        fontWeight: '800',
-                                        fontFamily: 'Space Mono, monospace'
-                                      }}>
-                                        ⚡ {matchPercentage}% Match
-                                      </span>
+                                {/* Header Row: Candidate Info (Left) | Badges & Status (Right) */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{
+                                      width: '42px',
+                                      height: '42px',
+                                      borderRadius: '50%',
+                                      background: 'linear-gradient(135deg, var(--accent), #7c5cff)',
+                                      color: '#fff',
+                                      fontWeight: '700',
+                                      fontSize: '16px',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      flexShrink: 0
+                                    }}>
+                                      {(candidate.first_name || 'C').charAt(0)}{(candidate.last_name || '').charAt(0)}
                                     </div>
-                                    <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '4px' }}>
-                                      {candidate.email || candidate.phone || 'No contact'} · {candidate.location || 'Location n/a'} · {candidate.experience ? `${candidate.experience} yrs exp` : 'Exp n/a'}
+                                    <div>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                        <strong style={{ fontSize: '16px', color: 'var(--text)', fontWeight: '700' }}>
+                                          {candidate.first_name} {candidate.last_name}
+                                        </strong>
+                                        {matchByJobId && (
+                                          <span style={{ fontSize: '10px', background: 'rgba(79,124,255,0.15)', color: 'var(--accent)', padding: '2px 7px', borderRadius: '4px', border: '1px solid rgba(79,124,255,0.3)', fontWeight: '600' }}>
+                                            Job ID Match
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div style={{ fontSize: '12.5px', color: 'var(--text3)', marginTop: '3px' }}>
+                                        {candidate.email || candidate.phone || 'No contact'} · {candidate.location || 'Location n/a'} · {candidate.experience ? `${candidate.experience} yrs exp` : 'Exp n/a'}
+                                      </div>
                                     </div>
                                   </div>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span style={{ background: 'rgba(46,204,143,0.12)', color: 'var(--green)', border: '1px solid rgba(46,204,143,0.25)', padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}>
+
+                                  {/* Badges on Top Right */}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    {/* Hard Skills & Title Match Badge */}
+                                    <span style={{
+                                      background: skillTitleScore < 40 ? 'rgba(255,77,106,0.15)' : skillTitleScore < 65 ? 'rgba(245,200,66,0.15)' : 'rgba(79,124,255,0.15)',
+                                      color: skillTitleScore < 40 ? 'var(--red)' : skillTitleScore < 65 ? 'var(--yellow)' : 'var(--accent)',
+                                      border: `1px solid ${skillTitleScore < 40 ? 'rgba(255,77,106,0.4)' : skillTitleScore < 65 ? 'rgba(245,200,66,0.4)' : 'rgba(79,124,255,0.35)'}`,
+                                      padding: '4.5px 13px',
+                                      borderRadius: '20px',
+                                      fontSize: '12px',
+                                      fontWeight: '800',
+                                      fontFamily: 'Space Mono, monospace',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '5px'
+                                    }} title="Calculated from candidate hard skills and title alignment">
+                                      🎯 {skillTitleScore}% Skill & Title Match
+                                    </span>
+
+                                    {/* Deep AI Evaluation Score Badge (When Deep AI Radar executed) */}
+                                    {isAiEvaluated && deepAiScore !== null && (
+                                      <span style={{
+                                        background: deepAiScore < 40 ? 'rgba(255,77,106,0.15)' : deepAiScore < 65 ? 'rgba(245,200,66,0.15)' : 'linear-gradient(135deg, rgba(124,92,255,0.22), rgba(79,124,255,0.22))',
+                                        color: deepAiScore < 40 ? 'var(--red)' : deepAiScore < 65 ? 'var(--yellow)' : '#7c5cff',
+                                        border: `1px solid ${deepAiScore < 40 ? 'rgba(255,77,106,0.4)' : deepAiScore < 65 ? 'rgba(245,200,66,0.4)' : 'rgba(124,92,255,0.45)'}`,
+                                        padding: '4.5px 13px',
+                                        borderRadius: '20px',
+                                        fontSize: '12px',
+                                        fontWeight: '800',
+                                        fontFamily: 'Space Mono, monospace',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '5px'
+                                      }}>
+                                        ⚡ {deepAiScore}% Deep AI
+                                      </span>
+                                    )}
+
+                                    <span style={{ background: 'rgba(46,204,143,0.12)', color: 'var(--green)', border: '1px solid rgba(46,204,143,0.25)', padding: '4px 12px', borderRadius: '20px', fontSize: '11.5px', fontWeight: '700' }}>
                                       {candidate.internal_status || 'Pending'}
                                     </span>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => { e.stopPropagation(); setViewingCandidate(candidate) }}
-                                      style={{
-                                        background: 'var(--accent)',
-                                        color: '#fff',
-                                        border: 'none',
-                                        borderRadius: '8px',
-                                        padding: '6px 14px',
-                                        fontSize: '12px',
-                                        fontWeight: '700',
-                                        cursor: 'pointer',
-                                        whiteSpace: 'nowrap'
-                                      }}
-                                    >
-                                      View Candidate
-                                    </button>
                                   </div>
                                 </div>
 
+                                {/* Matched Skills Pill Row */}
                                 {matchedSkills.length > 0 && (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                    <span style={{ fontSize: '10.5px', color: 'var(--text3)', textTransform: 'uppercase', fontWeight: '700' }}>Matched Skills:</span>
-                                    {matchedSkills.map(s => (
-                                      <span key={s} style={{ background: 'rgba(46,204,143,0.15)', color: 'var(--green)', border: '1px solid rgba(46,204,143,0.3)', borderRadius: '12px', padding: '1px 8px', fontSize: '11px', fontWeight: '600' }}>
-                                        {s}
-                                      </span>
-                                    ))}
+                                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px 14px' }}>
+                                    <div style={{ fontSize: '10.5px', color: 'var(--text3)', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px', marginBottom: '6px' }}>Matched Skills:</div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                      {matchedSkills.map(s => (
+                                        <span key={s} style={{ background: 'rgba(46,204,143,0.12)', color: 'var(--green)', border: '1px solid rgba(46,204,143,0.25)', borderRadius: '12px', padding: '2px 10px', fontSize: '11.5px', fontWeight: '600' }}>
+                                          {s}
+                                        </span>
+                                      ))}
+                                    </div>
                                   </div>
                                 )}
 
-                                {/* Clean Inline Candidate Snippet (No floating overlay!) */}
+                                {/* Candidate Summary Box */}
                                 {(candidate.resume_text || candidate.notes || ensureArray(candidate.skills).length > 0) && (
-                                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', marginTop: '2px' }}>
-                                    <div style={{ fontSize: '10px', fontWeight: '700', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Candidate Snippet</div>
-                                    <div style={{ fontSize: '12px', color: 'var(--text2)', lineHeight: '1.5', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 14px' }}>
+                                    <div style={{ fontSize: '10.5px', fontWeight: '700', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Candidate Profile Summary</div>
+                                    <div style={{ fontSize: '12.5px', color: 'var(--text2)', lineHeight: '1.5', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                                       {candidate.resume_text || candidate.notes || `Top Skills: ${ensureArray(candidate.skills).join(', ')}`}
                                     </div>
                                   </div>
                                 )}
+
+                                {/* Bottom Action Grid (Matching All Blue Buttons) */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', marginTop: '4px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); openAiMatchModal(candidate, showDetail) }}
+                                    style={{
+                                      background: 'linear-gradient(135deg, var(--accent, #4f7cff), #7c5cff)',
+                                      color: '#fff',
+                                      border: 'none',
+                                      borderRadius: '8px',
+                                      padding: '9.5px 14px',
+                                      fontSize: '12.5px',
+                                      fontWeight: '700',
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      gap: '6px',
+                                      boxShadow: '0 2px 8px rgba(79, 124, 255, 0.22)'
+                                    }}
+                                  >
+                                    🎯 Deep AI Fit Radar
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); openPacketModal(candidate, showDetail) }}
+                                    style={{
+                                      background: 'linear-gradient(135deg, var(--accent, #4f7cff), #7c5cff)',
+                                      color: '#fff',
+                                      border: 'none',
+                                      borderRadius: '8px',
+                                      padding: '9.5px 14px',
+                                      fontSize: '12.5px',
+                                      fontWeight: '700',
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      gap: '6px',
+                                      boxShadow: '0 2px 8px rgba(79, 124, 255, 0.22)'
+                                    }}
+                                  >
+                                    ⚡ 1-Click Packet
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); setViewingCandidate(candidate) }}
+                                    style={{
+                                      background: 'linear-gradient(135deg, var(--accent, #4f7cff), #7c5cff)',
+                                      color: '#fff',
+                                      border: 'none',
+                                      borderRadius: '8px',
+                                      padding: '9.5px 14px',
+                                      fontSize: '12.5px',
+                                      fontWeight: '700',
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      gap: '6px',
+                                      boxShadow: '0 2px 8px rgba(79, 124, 255, 0.22)'
+                                    }}
+                                  >
+                                    👁️ View Profile
+                                  </button>
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -774,6 +970,24 @@ function getInitials(name = '') {
           </div>
         </div>
       )}
+
+      {/* Submission Packet Modal */}
+      <SubmissionPacketModal
+        isOpen={packetModal.isOpen}
+        onClose={() => setPacketModal({ isOpen: false, candidate: null, job: null })}
+        candidate={packetModal.candidate}
+        job={packetModal.job}
+      />
+
+      {/* AI Match Modal */}
+      <AIMatchModal
+        isOpen={aiMatchModal.isOpen}
+        onClose={() => setAiMatchModal({ isOpen: false, candidate: null, job: null })}
+        candidate={aiMatchModal.candidate}
+        job={aiMatchModal.job}
+        onOpenSubmissionPacket={(cand, j) => openPacketModal(cand, j)}
+        onMatchEvaluated={handleMatchEvaluated}
+      />
 
       {toast && <div style={toastStyle(toast.type)}>{toast.msg}</div>}
     </div>

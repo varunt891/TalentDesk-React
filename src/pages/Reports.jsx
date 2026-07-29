@@ -362,9 +362,9 @@ export default function Reports() {
         <ReportPanel title="Pipeline Movement" subtitle="External client stages for selected period">
           <div className="reports-chart">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={pipelineData}>
+              <BarChart data={pipelineData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke="rgba(139,145,168,0.18)" vertical={false} />
-                <XAxis dataKey="stage" tick={{ fill: '#8b91a8', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <XAxis dataKey="stage" interval={0} angle={-35} textAnchor="end" height={50} tick={{ fill: '#8b91a8', fontSize: 9 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: '#8b91a8', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
                 <Bar dataKey="count" radius={[6, 6, 0, 0]}>
@@ -392,9 +392,9 @@ export default function Reports() {
           <div className="reports-chart">
             {teamData.length === 0 ? <div className="reports-empty">Assign users to teams in Admin to unlock team reporting</div> : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={teamData}>
+                <BarChart data={teamData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                   <CartesianGrid stroke="rgba(139,145,168,0.18)" vertical={false} />
-                  <XAxis dataKey="team" tick={{ fill: '#8b91a8', fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="team" interval={0} angle={-35} textAnchor="end" height={50} tick={{ fill: '#8b91a8', fontSize: 9 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: '#8b91a8', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
                   <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
                   <Bar dataKey="submissions" fill="#4f7cff" radius={[6, 6, 0, 0]} />

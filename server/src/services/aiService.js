@@ -4,7 +4,7 @@ import { geminiService } from './geminiService.js';
 import { groqService } from './groqService.js';
 
 export class AIService {
-  async generate({ prompt, toolId }) {
+  async generate({ prompt, fileInlineData, toolId }) {
     if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
       const err = new Error('Prompt is required and must be a non-empty text string.');
       err.status = 400;
@@ -18,20 +18,22 @@ export class AIService {
     const toolConfig = getToolConfig(activeToolId);
 
     // 1. Response Caching Check
-    const cachedResponse = cacheService.get(activeToolId, cleanPrompt);
-    if (cachedResponse) {
-      console.log(`[AI METRICS] ${new Date().toISOString()} | tool:${activeToolId} | provider:${cachedResponse.provider} | model:${cachedResponse.model} | latency:0ms (CACHE_HIT) | grounded:${cachedResponse.grounded} | fallback:false | status:200`);
-      return {
-        ...cachedResponse,
-        cached: true
-      };
+    if (!fileInlineData) {
+      const cachedResponse = cacheService.get(activeToolId, cleanPrompt);
+      if (cachedResponse) {
+        console.log(`[AI METRICS] ${new Date().toISOString()} | tool:${activeToolId} | provider:${cachedResponse.provider} | model:${cachedResponse.model} | latency:0ms (CACHE_HIT) | grounded:${cachedResponse.grounded} | fallback:false | status:200`);
+        return {
+          ...cachedResponse,
+          cached: true
+        };
+      }
     }
 
     const startTime = Date.now();
 
     // 2. Primary Provider: Google Gemini
     try {
-      const result = await geminiService.generate({ prompt: cleanPrompt, toolConfig });
+      const result = await geminiService.generate({ prompt: cleanPrompt, fileInlineData, toolConfig });
       const durationMs = Date.now() - startTime;
 
       console.log(`[AI METRICS] ${new Date().toISOString()} | tool:${activeToolId} | provider:${result.provider} | model:${result.model} | latency:${durationMs}ms | grounded:${result.grounded} | fallback:false | status:200`);

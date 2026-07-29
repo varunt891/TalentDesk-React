@@ -52,6 +52,18 @@ export const TOOL_CONFIGS = {
     temperature: 0.1,
     allowGrounding: false,
     maxTokens: 1024
+  },
+  submission_packet: {
+    systemPrompt: 'You are a Senior Staffing Account Director creating a top-tier Client Submission Package. Based on candidate metadata, resume text, and job requirements, generate a polished, structured Client Submission Packet. Return markdown with sections: ### Candidate Profile Header, ### Executive Pitch & Key Strengths (3 bullet points), ### Skills & Requirements Matrix (Markdown Table comparing Client Requirement vs Candidate Experience), ### Key Project Highlights, and ### Right-To-Represent (RTR) Confirmation Draft. Keep it professional, objective, high-converting, and ready for immediate client presentation.',
+    temperature: 0.2,
+    allowGrounding: false,
+    maxTokens: 4096
+  },
+  resume_parser: {
+    systemPrompt: 'You are an expert Talent Acquisition AI Resume Parser. Extract candidate contact details, target job title, years of experience, location, work authorization, target hourly/annual rate, and top skills from the provided raw resume text. Return ONLY a valid raw JSON object with keys: "first_name", "last_name", "email", "phone", "location", "job_title", "experience" (number in years), "work_auth", "rate", "skills" (array of strings up to 10 items). Do not include markdown codeblocks or backticks—output ONLY valid JSON.',
+    temperature: 0.1,
+    allowGrounding: false,
+    maxTokens: 2048
   }
 };
 

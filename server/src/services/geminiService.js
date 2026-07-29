@@ -28,7 +28,7 @@ export function isRetryableGeminiError(error) {
 }
 
 export class GeminiService {
-  async generate({ prompt, toolConfig }) {
+  async generate({ prompt, fileInlineData, toolConfig }) {
     const key = (process.env.GEMINI_API_KEY || '').trim();
     if (!key) {
       const err = new Error('GEMINI_API_KEY environment variable is not configured on the server.');
@@ -49,12 +49,23 @@ export class GeminiService {
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10-second timeout
 
         try {
+          const parts = [];
+          if (fileInlineData && fileInlineData.data) {
+            parts.push({
+              inlineData: {
+                mimeType: fileInlineData.mimeType || 'application/pdf',
+                data: fileInlineData.data
+              }
+            });
+          }
+          parts.push({ text: prompt });
+
           const payload = {
             systemInstruction: {
               parts: [{ text: toolConfig.systemPrompt }]
             },
             contents: [
-              { parts: [{ text: prompt }] }
+              { parts }
             ],
             generationConfig: {
               temperature: toolConfig.temperature,

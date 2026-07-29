@@ -562,18 +562,20 @@ export default function Admin() {
             onClick={fetchAdminData}
             disabled={loading || saving}
             type="button"
+            style={{ color: '#ffffff' }}
           >
             <Icons.Refresh className={loading ? 'admin-spin' : ''} />
-            <span>Refresh</span>
+            <span style={{ color: '#ffffff' }}>Refresh</span>
           </button>
           <button
             className="admin-btn admin-btn-primary"
             onClick={seedDemoProfiles}
             disabled={saving}
             type="button"
+            style={{ color: '#ffffff' }}
           >
             <Icons.Plus />
-            <span>Add Demo Profiles</span>
+            <span style={{ color: '#ffffff' }}>Add Demo Profiles</span>
           </button>
         </div>
       </header>
