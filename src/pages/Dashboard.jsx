@@ -135,12 +135,24 @@ export default function Dashboard({ onNavigate }) {
   const [copilotState, setCopilotState] = useState('closed')
   const [copilotQuery, setCopilotQuery] = useState('')
 
-  // Persistent Conversation Session History in LocalStorage
+  // User First Name & Scoped LocalStorage Keys
+  const userFirstName = useMemo(() => {
+    if (profile?.full_name) return profile.full_name.trim().split(' ')[0]
+    if (profile?.email) return profile.email.split('@')[0]
+    return 'there'
+  }, [profile])
+
+  const storagePrefix = useMemo(() => {
+    if (profile?.id && profile?.org_id) return `td_${profile.org_id}_${profile.id}`
+    if (profile?.id) return `td_${profile.id}`
+    return 'td_guest'
+  }, [profile])
+
   const initialWelcomeMessage = useMemo(() => ({
     sender: 'ai',
-    text: "Hi Varun! I'm your TalentDesk AI Action Copilot.",
+    text: `Hi ${userFirstName}! I'm your TalentDesk AI Action Copilot.`,
     content: {
-      summary: "Hi Varun! I'm your TalentDesk AI Action Copilot. How can I assist you with candidate sourcing, pipeline analytics, or CRM operations today?",
+      summary: `Hi ${userFirstName}! I'm your TalentDesk AI Action Copilot. How can I assist you with candidate sourcing, pipeline analytics, or CRM operations today?`,
       actions: [
         { label: "View Callbacks", action: "open_callbacks" },
         { label: "Schedule Interviews", action: "open_candidates" },
@@ -149,31 +161,79 @@ export default function Dashboard({ onNavigate }) {
       followup: "Ask me a question or try an action like 'Close job #1' or 'Log callback for Alex'."
     },
     timestamp: 'Just now'
-  }), [])
+  }), [userFirstName])
 
-  const [copilotMessages, setCopilotMessages] = useState(() => {
-    const saved = localStorage.getItem('td_copilot_history')
-    if (saved) {
+  const [copilotMessages, setCopilotMessages] = useState([initialWelcomeMessage])
+
+  // Recruiter Mission Board State
+  const [dailyNotes, setDailyNotes] = useState([])
+
+  // Re-sync copilot messages and daily notes when profile/organization switches
+  useEffect(() => {
+    if (!profile) return
+
+    // 1. Sync Copilot History
+    const copilotKey = `${storagePrefix}_copilot_history`
+    const savedCopilot = localStorage.getItem(copilotKey)
+    if (savedCopilot) {
       try {
-        const parsed = JSON.parse(saved)
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed
-      } catch (e) { console.error('Error parsing copilot history:', e) }
+        const parsed = JSON.parse(savedCopilot)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCopilotMessages(parsed)
+        } else {
+          setCopilotMessages([initialWelcomeMessage])
+        }
+      } catch {
+        setCopilotMessages([initialWelcomeMessage])
+      }
+    } else {
+      setCopilotMessages([initialWelcomeMessage])
     }
-    return [initialWelcomeMessage]
-  })
+
+    // 2. Sync Daily Notes
+    const notesKey = `${storagePrefix}_daily_notes`
+    const savedNotes = localStorage.getItem(notesKey)
+    if (savedNotes) {
+      try {
+        const parsed = JSON.parse(savedNotes)
+        if (Array.isArray(parsed)) {
+          setDailyNotes(parsed)
+          return
+        }
+      } catch { /* ignore */ }
+    }
+
+    // 3. Sync Scratchpad Notes
+    const padKey = `${storagePrefix}_scratchpad`
+    const savedPad = localStorage.getItem(padKey)
+    setScratchpad(savedPad || '')
+
+    // Default tasks only for initial TalentDesk demo org profile
+    if (profile.org_id === '4871af76-fa56-4069-af34-5f9ab4c0be10') {
+      setDailyNotes([
+        { id: 1, text: 'Follow up with Alex Rivera on Senior React Developer offer letter', done: false, tag: 'Offer', priority: 'High', candidate: 'Alex Rivera', job: 'Senior React Developer' },
+        { id: 2, text: 'Screen 3 DevOps candidates for Acme Corp requisition', done: true, tag: 'Screening', priority: 'Medium', candidate: 'DevOps Leads', job: 'Lead DevOps Eng' },
+        { id: 3, text: 'Schedule final technical interview round for candidate Sarah Jenkins', done: true, tag: 'Interview', priority: 'Urgent', candidate: 'Sarah Jenkins', job: 'Full-Stack Lead' },
+        { id: 4, text: 'Perform EOD submittal audit & clean up stalled CRM leads', done: false, tag: 'EOD Review', priority: 'Normal', candidate: 'N/A', job: 'Operations' }
+      ])
+    } else {
+      setDailyNotes([])
+    }
+  }, [profile, storagePrefix, initialWelcomeMessage])
 
   // Sync message changes to persistence store
   useEffect(() => {
+    if (!profile) return
     try {
-      localStorage.setItem('td_copilot_history', JSON.stringify(copilotMessages))
+      localStorage.setItem(`${storagePrefix}_copilot_history`, JSON.stringify(copilotMessages))
     } catch (e) {
       console.error('Error saving copilot history:', e)
     }
-  }, [copilotMessages])
+  }, [copilotMessages, profile, storagePrefix])
 
   const handleNewChat = () => {
     setCopilotMessages([initialWelcomeMessage])
-    localStorage.removeItem('td_copilot_history')
+    if (profile) localStorage.removeItem(`${storagePrefix}_copilot_history`)
   }
 
   const [copilotLoading, setCopilotLoading] = useState(false)
@@ -183,22 +243,6 @@ export default function Dashboard({ onNavigate }) {
   const [briefingLoading, setBriefingLoading] = useState(false)
   const [aiBriefExpanded, setAiBriefExpanded] = useState(false)
 
-  // Recruiter Mission Board State
-  const [dailyNotes, setDailyNotes] = useState(() => {
-    const saved = localStorage.getItem('td_daily_notes')
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved)
-        if (Array.isArray(parsed)) return parsed
-      } catch (e) { console.error(e) }
-    }
-    return [
-      { id: 1, text: 'Follow up with Alex Rivera on Senior React Developer offer letter', done: false, tag: 'Offer', priority: 'High', candidate: 'Alex Rivera', job: 'Senior React Developer' },
-      { id: 2, text: 'Screen 3 DevOps candidates for Acme Corp requisition', done: true, tag: 'Screening', priority: 'Medium', candidate: 'DevOps Leads', job: 'Lead DevOps Eng' },
-      { id: 3, text: 'Schedule final technical interview round for candidate Sarah Jenkins', done: true, tag: 'Interview', priority: 'Urgent', candidate: 'Sarah Jenkins', job: 'Full-Stack Lead' },
-      { id: 4, text: 'Perform EOD submittal audit & clean up stalled CRM leads', done: false, tag: 'EOD Review', priority: 'Normal', candidate: 'N/A', job: 'Operations' }
-    ]
-  })
   const [newNoteText, setNewNoteText] = useState('')
   const [noteTag, setNoteTag] = useState('Follow-up')
   const [missionTab, setMissionTab] = useState('tasks')
@@ -220,20 +264,20 @@ export default function Dashboard({ onNavigate }) {
     }
     const updated = [newNote, ...dailyNotes]
     setDailyNotes(updated)
-    localStorage.setItem('td_daily_notes', JSON.stringify(updated))
+    if (profile) localStorage.setItem(`${storagePrefix}_daily_notes`, JSON.stringify(updated))
     setNewNoteText('')
   }
 
   const handleToggleNote = (id) => {
     const updated = dailyNotes.map(n => n.id === id ? { ...n, done: !n.done } : n)
     setDailyNotes(updated)
-    localStorage.setItem('td_daily_notes', JSON.stringify(updated))
+    if (profile) localStorage.setItem(`${storagePrefix}_daily_notes`, JSON.stringify(updated))
   }
 
   const handleDeleteNote = (id) => {
     const updated = dailyNotes.filter(n => n.id !== id)
     setDailyNotes(updated)
-    localStorage.setItem('td_daily_notes', JSON.stringify(updated))
+    if (profile) localStorage.setItem(`${storagePrefix}_daily_notes`, JSON.stringify(updated))
     setActiveTaskMenuId(null)
   }
 
@@ -573,7 +617,7 @@ Format:
         }
         setDailyNotes(prev => {
           const updated = [newNote, ...prev]
-          localStorage.setItem('td_daily_notes', JSON.stringify(updated))
+          if (profile) localStorage.setItem(`${storagePrefix}_daily_notes`, JSON.stringify(updated))
           return updated
         })
 
@@ -743,6 +787,22 @@ Format:
     setCopilotState('expanded')
 
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+    if ((authContext.organization?.subscription_plan || 'Growth') === 'Starter') {
+      setCopilotMessages(prev => [
+        ...prev,
+        { sender: 'user', text: q, timestamp: timeStr },
+        {
+          sender: 'ai',
+          text: '⚡ TalentDesk AI Action Copilot requires Growth or Enterprise Plan. Please upgrade under Organization Settings to unlock automated CRM actions & Copilot controls.',
+          content: {
+            summary: '⚡ TalentDesk AI Action Copilot requires Growth or Enterprise Plan. Please upgrade under Organization Settings to unlock automated CRM actions & Copilot controls.',
+          },
+          timestamp: timeStr
+        }
+      ])
+      return
+    }
     const newMsg = { sender: 'user', text: q, timestamp: timeStr }
     setCopilotMessages(prev => [...prev, newMsg])
     setCopilotLoading(true)
@@ -973,12 +1033,13 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
 
   const [jobStatusFilter, setJobStatusFilter] = useState('All')
   const [searchQuery, setSearchQuery] = useState('')
-  const [scratchpad, setScratchpad] = useState(() => localStorage.getItem('td_scratchpad') || '')
+  const [scratchpad, setScratchpad] = useState('')
   const [lastSavedTime, setLastSavedTime] = useState('Auto-saved')
 
   const handleScratchpadChange = (e) => {
-    setScratchpad(e.target.value)
-    localStorage.setItem('td_scratchpad', e.target.value)
+    const val = e.target.value
+    setScratchpad(val)
+    if (profile) localStorage.setItem(`${storagePrefix}_scratchpad`, val)
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     setLastSavedTime(`Saved ${now}`)
   }

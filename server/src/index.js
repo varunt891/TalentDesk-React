@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.routes.js'
 import dataRoutes from './routes/data.routes.js'
 import adminRoutes from './routes/admin.routes.js'
 import aiRoutes from './routes/ai.routes.js'
+import organizationRoutes from './routes/organization.routes.js'
 
 if (!process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET is required')
@@ -62,6 +63,14 @@ app.use('/api/auth', authRoutes)
 app.use('/api/data', dataRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/ai', aiRoutes)
+app.use('/api/organization', organizationRoutes)
+
+// Fallback redirect for direct browser requests to /signup on backend port
+app.get('/signup', (req, res) => {
+  const targetHost = process.env.CLIENT_URL || 'http://localhost:5173'
+  const queryStr = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''
+  res.redirect(`${targetHost}/signup${queryStr}`)
+})
 
 app.use((err, _req, res, _next) => {
   console.error(err)

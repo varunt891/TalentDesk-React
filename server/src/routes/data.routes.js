@@ -97,8 +97,8 @@ function isAMRole(profile) {
 }
 
 async function visibleOwnerIds(req) {
-  const role = req.profile?.role
-  if (['admin', 'superadmin'].includes(role)) return null
+  const role = (req.memberRole || req.profile?.role || '').toLowerCase()
+  if (['admin', 'superadmin', 'owner'].includes(role)) return null
 
   if (isRMRole(req.profile)) {
     return await getDescendantProfileIds(req.user.id, req.profile.org_id)
@@ -111,6 +111,11 @@ async function visibleOwnerIds(req) {
   return [req.user.id]
 }
 
+function isSuperAdminUser(req) {
+  const role = (req.memberRole || req.profile?.role || '').toLowerCase()
+  return role === 'superadmin'
+}
+
 async function buildWhere(req, table, config) {
   const filters = req.query.filter ? JSON.parse(req.query.filter) : []
   const where = {}
@@ -119,12 +124,11 @@ async function buildWhere(req, table, config) {
     if (filter.op === 'eq') where[filter.column] = coerce(filter.value)
   }
 
-  if (config.orgScoped) {
-    if (req.tenantOrg) {
-      where.org_id = req.tenantOrg.id
-    } else if (req.profile.role !== 'superadmin') {
-      where.org_id = req.profile.org_id
-    }
+  const isSuper = isSuperAdminUser(req)
+  const wantsAllOrgs = isSuper && (req.query.all_orgs === 'true' || req.query.all_orgs === '1')
+
+  if (config.orgScoped && !wantsAllOrgs) {
+    where.org_id = req.organizationId || req.tenantOrg?.id || req.profile.org_id
   }
 
   if (ownedTables.includes(table)) {
@@ -133,16 +137,16 @@ async function buildWhere(req, table, config) {
   }
 
   if (table === 'tasks') {
-    if (['admin', 'superadmin'].includes(req.profile.role)) {
+    if (['ADMIN', 'SUPERADMIN', 'OWNER', 'admin', 'superadmin', 'owner'].includes(req.memberRole || req.profile.role)) {
       // Admins see all tasks in org
     } else if (isRMRole(req.profile)) {
-      const allowedIds = await getDescendantProfileIds(req.user.id, req.profile.org_id)
+      const allowedIds = await getDescendantProfileIds(req.user.id, req.organizationId || req.profile.org_id)
       where.OR = [
         { assigned_to: { in: allowedIds } },
         { assigned_by: { in: allowedIds } }
       ]
     } else if (isAMRole(req.profile)) {
-      const allowedIds = await getDirectTeamProfileIds(req.user.id, req.profile.org_id, req.profile.team)
+      const allowedIds = await getDirectTeamProfileIds(req.user.id, req.organizationId || req.profile.org_id, req.profile.team)
       where.OR = [
         { assigned_to: { in: allowedIds } },
         { assigned_by: { in: allowedIds } }
@@ -156,22 +160,7 @@ async function buildWhere(req, table, config) {
   }
 
   if (table === 'profiles') {
-    if (['admin', 'superadmin'].includes(req.profile.role)) {
-      // Only Admins or Superadmins see all org profiles
-      if (req.tenantOrg) {
-        where.org_id = req.tenantOrg.id
-      } else if (req.profile.role !== 'superadmin' && req.profile.org_id) {
-        where.org_id = req.profile.org_id
-      }
-    } else if (isRMRole(req.profile)) {
-      const allowedIds = await getDescendantProfileIds(req.user.id, req.profile.org_id)
-      where.id = { in: allowedIds }
-    } else if (isAMRole(req.profile)) {
-      const allowedIds = await getDirectTeamProfileIds(req.user.id, req.profile.org_id, req.profile.team)
-      where.id = { in: allowedIds }
-    } else {
-      where.id = req.user.id
-    }
+    where.org_id = req.organizationId || req.profile.org_id
   }
 
   return where
@@ -181,11 +170,7 @@ async function scopedRowWhere(req, table, config, id) {
   const where = { id }
 
   if (config.orgScoped) {
-    if (req.tenantOrg) {
-      where.org_id = req.tenantOrg.id
-    } else if (req.profile.role !== 'superadmin') {
-      where.org_id = req.profile.org_id
-    }
+    where.org_id = req.organizationId || req.profile.org_id
   }
 
   if (ownedTables.includes(table)) {
@@ -208,15 +193,8 @@ function withOwnership(req, table, body) {
   delete data.created_at
   delete data.updated_at
 
-  // Strictly bind orgScoped models to the active tenant workspace or the logged-in user's organization
   if (tables[table]?.orgScoped) {
-    if (req.tenantOrg) {
-      data.org_id = req.tenantOrg.id
-    } else if (req.profile.role === 'superadmin' && body.org_id) {
-      data.org_id = body.org_id
-    } else {
-      data.org_id = req.profile.org_id
-    }
+    data.org_id = req.organizationId || req.profile.org_id
   } else {
     delete data.org_id
   }
@@ -262,12 +240,32 @@ router.get('/:table', async (req, res, next) => {
     const table = req.params.table
     const config = configFor(table)
     const model = prisma[config.model]
-    const rows = await model.findMany({
+
+    const queryOptions = {
       where: await buildWhere(req, table, config),
       orderBy: buildOrder(req),
-    })
+    }
 
-    res.json({ data: sanitize(table, rows) })
+    if (table === 'candidates') {
+      queryOptions.include = {
+        organization: {
+          select: { id: true, name: true }
+        }
+      }
+    }
+
+    const rows = await model.findMany(queryOptions)
+    const sanitized = sanitize(table, rows)
+
+    if (table === 'candidates' && Array.isArray(sanitized)) {
+      const mapped = sanitized.map((c, i) => ({
+        ...c,
+        org_name: rows[i]?.organization?.name || null
+      }))
+      return res.json({ data: mapped })
+    }
+
+    res.json({ data: sanitized })
   } catch (err) {
     next(err)
   }
@@ -280,6 +278,18 @@ router.post('/:table', async (req, res, next) => {
     if (config.readOnly) return res.status(405).json({ error: 'This table is read-only' })
     if (config.adminWrite && !['admin', 'superadmin'].includes(req.profile.role)) {
       return requireAdmin(req, res, () => {})
+    }
+
+    if (table === 'candidates') {
+      const orgId = req.organizationId || req.profile?.org_id
+      if (orgId) {
+        const org = await prisma.organization.findUnique({ where: { id: orgId } })
+        const count = await prisma.candidate.count({ where: { org_id: orgId } })
+        const limit = org?.candidate_limit || (org?.subscription_plan === 'Starter' ? 250 : org?.subscription_plan === 'Growth' ? 500 : 2500)
+        if (count >= limit) {
+          return res.status(403).json({ error: `Candidate limit reached (${count}/${limit} candidates) for your ${org?.subscription_plan || 'Starter'} plan. Please upgrade under Organization Settings.` })
+        }
+      }
     }
 
     const model = prisma[config.model]

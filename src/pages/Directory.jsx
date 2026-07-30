@@ -26,7 +26,7 @@ export default function Directory() {
   const [canScrollRight, setCanScrollRight] = useState(false)
   const tabsRef = useRef(null)
 
-  const isAdmin = ['admin', 'superadmin'].includes(profile?.role)
+  const isAdmin = ['admin', 'superadmin', 'owner', 'ADMIN', 'SUPERADMIN', 'OWNER'].includes(profile?.role)
 
   useEffect(() => {
     if (!user) return

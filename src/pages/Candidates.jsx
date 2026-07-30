@@ -170,11 +170,14 @@ function fallbackExtractSkills(text = '') {
 }
 
 export default function Candidates() {
-  const { candidates, loading, addCandidate, updateCandidate, deleteCandidate } = useCandidates()
-  const { profile } = useAuth()
-  const isAdmin = profile?.role === 'admin' || profile?.role === 'superadmin'
+  const { profile, organization } = useAuth()
+  const isSuperAdmin = profile?.role === 'superadmin' || profile?.role === 'SUPERADMIN'
+  const isAdmin = isSuperAdmin || profile?.role === 'admin'
+  const [allOrgsView, setAllOrgsView] = useState(false)
+  const { candidates, loading, addCandidate, updateCandidate, deleteCandidate } = useCandidates({ allOrgs: isSuperAdmin && allOrgsView })
+
   const [search, setSearch] = useState('')
-  const [filters, setFilters] = useState({ status: [], fe: [], job: [], location: [], feedback: [] })
+  const [filters, setFilters] = useState({ status: [], fe: [], job: [], location: [], feedback: [], org: [] })
   const [showModal, setShowModal] = useState(false)
   const [showDetail, setShowDetail] = useState(null)
   const [packetModal, setPacketModal] = useState({ isOpen: false, candidate: null, job: null })
@@ -182,6 +185,9 @@ export default function Candidates() {
   const [editingId, setEditingId] = useState(null)
 
   const openPacketForCandidate = (cand) => {
+    if ((organization?.subscription_plan || 'Growth') === 'Starter') {
+      return showToast('⚡ 1-Click Client Submission Packets require Growth Plan. Please upgrade under Organization Settings.', 'error')
+    }
     const jobMock = {
       id: cand.job_id || 'JOB-REQ',
       job_id: cand.job_id || 'JOB-REQ',
@@ -196,6 +202,9 @@ export default function Candidates() {
   }
 
   const openAiMatchForCandidate = (cand) => {
+    if ((organization?.subscription_plan || 'Growth') === 'Starter') {
+      return showToast('🎯 Deep AI Candidate Fit Radar requires Growth Plan. Please upgrade under Organization Settings.', 'error')
+    }
     const jobMock = {
       id: cand.job_id || 'JOB-REQ',
       job_id: cand.job_id || 'JOB-REQ',
@@ -238,15 +247,18 @@ export default function Candidates() {
   const feOptions = [...new Set(candidates.map(c => c.fe_name).filter(Boolean))].sort()
   const jobOptions = [...new Set(candidates.map(c => c.job_id).filter(Boolean))].sort()
   const locationOptions = [...new Set(candidates.map(c => c.location).filter(Boolean))].sort()
+  const orgOptions = [...new Set(candidates.map(c => c.org_name || organization?.name || 'TalentDesk').filter(Boolean))].sort()
 
   const filtered = candidates.filter(c => {
     const q = search.toLowerCase()
-    if (q && !`${c.first_name} ${c.last_name} ${c.email} ${c.job_title} ${c.job_id} ${c.client} ${c.location} ${ensureArray(c.skills).join(' ')}`.toLowerCase().includes(q)) return false
+    const cOrg = c.org_name || organization?.name || 'TalentDesk'
+    if (q && !`${c.first_name} ${c.last_name} ${c.email} ${c.job_title} ${c.job_id} ${c.client} ${c.location} ${cOrg} ${ensureArray(c.skills).join(' ')}`.toLowerCase().includes(q)) return false
     if (filters.status.length && !filters.status.includes(c.internal_status)) return false
     if (filters.fe.length && !filters.fe.includes(c.fe_name)) return false
     if (filters.job.length && !filters.job.includes(c.job_id)) return false
     if (filters.location.length && !filters.location.includes(c.location)) return false
     if (filters.feedback.length && !filters.feedback.includes(c.feedback_status)) return false
+    if (filters.org?.length && !filters.org.includes(cOrg)) return false
     return true
   }).sort((a, b) => {
     const av = a[sortField] || '', bv = b[sortField] || ''
@@ -257,7 +269,7 @@ export default function Candidates() {
 
   const clearFilters = () => {
     setSearch('')
-    setFilters({ status: [], fe: [], job: [], location: [], feedback: [] })
+    setFilters({ status: [], fe: [], job: [], location: [], feedback: [], org: [] })
   }
 
   const toggleSort = (field) => {
@@ -523,10 +535,15 @@ export default function Candidates() {
     { field: 'job_id', label: 'Job ID', sortable: true },
     { field: 'job_title', label: 'Job Title', sortable: false },
     { field: 'location', label: 'Location', sortable: true },
+  ]
+  if (isSuperAdmin && allOrgsView) {
+    tableHeaders.push({ field: 'org_name', label: 'Organization', sortable: true })
+  }
+  tableHeaders.push(
     { field: 'internal_status', label: 'Int. Status', sortable: true },
     { field: 'external_status', label: 'Ext. Status', sortable: true },
     { field: 'fe_name', label: 'Front End', sortable: true }
-  ]
+  )
   if (isAdmin) {
     tableHeaders.push({ field: 'recruiter_name', label: 'Recruiter', sortable: true })
   }
@@ -567,6 +584,16 @@ export default function Candidates() {
             </svg>
             {userCollapsed ? 'Show Stats' : 'Collapse Stats'}
           </button>
+          {isSuperAdmin && (
+            <button
+              className={`candidate-btn ${allOrgsView ? 'primary' : 'ghost'} candidates-desktop-global`}
+              onClick={() => setAllOrgsView(prev => !prev)}
+              title="Toggle platform-wide candidate visibility across all organizations"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}
+            >
+              🌐 {allOrgsView ? 'All Orgs View' : 'Single Org View'}
+            </button>
+          )}
           <button className="candidate-btn ghost candidates-desktop-export" onClick={exportAll}>Export XLSX</button>
           <button className="candidate-btn primary candidates-desktop-add" onClick={openAdd}>Add Candidate</button>
         </div>
@@ -576,6 +603,15 @@ export default function Candidates() {
           <span>Search</span>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Name, job, client, skill..." />
         </div>
+        {isSuperAdmin && (
+          <button
+            className={`candidate-btn ${allOrgsView ? 'primary' : 'ghost'}`}
+            onClick={() => setAllOrgsView(prev => !prev)}
+            style={{ fontWeight: '600' }}
+          >
+            🌐 {allOrgsView ? 'All Orgs' : 'Single Org'}
+          </button>
+        )}
         <button className="candidate-btn ghost" onClick={exportAll}>Export XLSX</button>
         <button className="candidate-btn primary" onClick={openAdd}>Add Candidate</button>
       </div>
@@ -592,6 +628,9 @@ export default function Candidates() {
 
       {/* Filters bar */}
       <div className="candidates-filters">
+        {isSuperAdmin && allOrgsView && (
+          <MultiSelect label="All Organizations" options={orgOptions} selected={filters.org || []} onChange={v => setFilters(f => ({ ...f, org: v }))} />
+        )}
         <MultiSelect label="All Statuses" options={STATUSES} selected={filters.status} onChange={v => setFilters(f => ({ ...f, status: v }))} />
         <MultiSelect label="All Front Ends" options={feOptions} selected={filters.fe} onChange={v => setFilters(f => ({ ...f, fe: v }))} />
         <MultiSelect label="All Jobs" options={jobOptions} selected={filters.job} onChange={v => setFilters(f => ({ ...f, job: v }))} />
@@ -678,6 +717,22 @@ export default function Candidates() {
                         <td style={{ ...tdStyle, fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text2)' }}>{c.job_id || '-'}</td>
                         <td style={{ ...tdStyle, fontSize: '12px' }}>{c.job_title || '-'}</td>
                         <td style={{ ...tdStyle, fontSize: '12px' }}>{c.location || '-'}</td>
+                        {isSuperAdmin && allOrgsView && (
+                          <td style={{ ...tdStyle, fontSize: '12px' }}>
+                            <span style={{
+                              background: 'rgba(79,124,255,0.12)',
+                              color: 'var(--accent)',
+                              border: '1px solid rgba(79,124,255,0.25)',
+                              padding: '3px 9px',
+                              borderRadius: '20px',
+                              fontSize: '11px',
+                              fontWeight: '600',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {c.org_name || organization?.name || 'TalentDesk'}
+                            </span>
+                          </td>
+                        )}
                         <td style={tdStyle}><StatusBadge status={c.internal_status} /></td>
                         <td style={tdStyle}><StatusBadge status={c.external_status} /></td>
                         <td style={tdStyle}>

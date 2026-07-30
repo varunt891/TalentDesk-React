@@ -1,8 +1,13 @@
 import { useState, useEffect } from 'react'
 import { apiRequest } from '../lib/api'
+import { useAuth } from '../context/AuthContext'
 import MarkdownView from './MarkdownView'
 
 export default function SubmissionPacketModal({ isOpen, onClose, candidate, job }) {
+  const { organization } = useAuth()
+  const isEnterprise = (organization?.subscription_plan || 'Growth') === 'Enterprise'
+  const brandHeader = isEnterprise ? (organization?.name || 'CONFIDENTIAL').toUpperCase() : 'TALENTDESK'
+
   const [loading, setLoading] = useState(false)
   const [packetText, setPacketText] = useState('')
   const [error, setError] = useState(null)
@@ -187,7 +192,7 @@ export default function SubmissionPacketModal({ isOpen, onClose, candidate, job 
         <body>
           <div style="border-bottom: 2px solid #2563eb; padding-bottom: 12px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-end;">
             <div>
-              <div style="font-size: 20px; font-weight: 800; color: #2563eb;">TALENTDESK SUBMISSION PACKET</div>
+              <div style="font-size: 20px; font-weight: 800; color: #2563eb;">${brandHeader} SUBMISSION PACKET</div>
               <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Confidential Client Submission Profile</div>
             </div>
             <div style="text-align: right; font-size: 12px; color: #64748b;">

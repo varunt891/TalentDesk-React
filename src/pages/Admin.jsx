@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { apiRequest, db } from '../lib/api'
+import { apiRequest, db, organizationApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
 const TABS = ['Overview', 'Org Chart', 'Members', 'Access', 'Company']
@@ -150,8 +150,9 @@ export default function Admin() {
   const [invite, setInvite] = useState({ email: '', role: 'recruiter', team: '', manager_id: '', department: 'Recruiting' })
   const [orgForm, setOrgForm] = useState({ name: '', slug: '', subdomain: '', email_domain: '', primary_color: '#4f7cff', logo_url: '', timezone: 'America/New_York' })
 
-  const isSuperAdmin = profile?.role === 'superadmin'
-  const isAdmin = profile?.role === 'admin' || isSuperAdmin
+  const userRole = (profile?.role || '').toLowerCase()
+  const isSuperAdmin = userRole === 'superadmin'
+  const isAdmin = ['admin', 'superadmin', 'owner'].includes(userRole)
   const orgId = profile?.org_id
 
   // Superadmin org switching
@@ -474,21 +475,18 @@ export default function Admin() {
     setSaving(true)
     try {
       if (platformOp === 'delete_org') {
-        if (target.id === orgId) return showToast('Cannot delete your own org.', 'error')
-        const { error } = await db.from('organizations').delete().eq('id', target.id)
-        if (error) throw error
+        if (target.id === orgId) return showToast('Cannot delete your active workspace.', 'error')
+        const res = await organizationApi.deleteOrg(target.id)
         setAllOrgs(prev => prev.filter(o => o.id !== target.id))
         if (selectedOrgId === target.id) setSelectedOrgId(orgId)
-        showToast(`Organization "${target.name}" permanently deleted.`)
+        showToast(res.message || `Organization "${target.name}" permanently deleted.`)
       } else if (platformOp === 'purge_members') {
-        if (target.id === orgId) return showToast('Cannot purge members of your own org this way. Use Members tab.', 'error')
-        const { error } = await db.from('profiles').delete().eq('org_id', target.id)
-        if (error) throw error
-        showToast(`All members of "${target.name}" removed.`)
+        if (target.id === orgId) return showToast('Cannot purge members of active workspace.', 'error')
+        const res = await organizationApi.purgeMembers(target.id)
+        showToast(res.message || `All members of "${target.name}" removed.`)
       } else if (platformOp === 'purge_candidates') {
-        const { error } = await db.from('candidates').delete().eq('org_id', target.id)
-        if (error) throw error
-        showToast(`All candidates of "${target.name}" purged.`)
+        const res = await organizationApi.purgeCandidates(target.id)
+        showToast(res.message || `All candidates of "${target.name}" purged.`)
       }
       setPlatformOp(null)
       setPlatformConfirmText('')
@@ -562,20 +560,18 @@ export default function Admin() {
             onClick={fetchAdminData}
             disabled={loading || saving}
             type="button"
-            style={{ color: '#ffffff' }}
           >
             <Icons.Refresh className={loading ? 'admin-spin' : ''} />
-            <span style={{ color: '#ffffff' }}>Refresh</span>
+            <span>Refresh</span>
           </button>
           <button
             className="admin-btn admin-btn-primary"
             onClick={seedDemoProfiles}
             disabled={saving}
             type="button"
-            style={{ color: '#ffffff' }}
           >
             <Icons.Plus />
-            <span style={{ color: '#ffffff' }}>Add Demo Profiles</span>
+            <span>Add Demo Profiles</span>
           </button>
         </div>
       </header>

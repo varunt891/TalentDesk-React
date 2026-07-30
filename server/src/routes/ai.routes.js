@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { aiService } from '../services/aiService.js';
+import { requireAuth } from '../auth.js';
 import { createRequire } from 'module';
 import mammoth from 'mammoth';
 
@@ -7,6 +8,7 @@ const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
 
 const router = Router();
+router.use(requireAuth);
 
 router.post('/generate', async (req, res) => {
   try {

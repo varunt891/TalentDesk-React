@@ -8,34 +8,73 @@ datasource db {
 }
 
 model Organization {
-  id            String   @id @default(uuid()) @db.Uuid
-  name          String
-  slug          String?  @unique
-  subdomain     String?  @unique
-  email_domain  String?  @unique
-  industry      String?
-  company_size  String?
-  primary_color String   @default("#4f7cff")
-  logo_url      String?
-  timezone      String   @default("America/New_York")
-  plan          String   @default("starter")
-  is_active     Boolean  @default(true)
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  id                String   @id @default(uuid()) @db.Uuid
+  name              String
+  slug              String?  @unique
+  domain            String?  @unique
+  website           String?
+  subdomain         String?  @unique
+  email_domain      String?  @unique
+  industry          String?
+  company_size      String?
+  primary_color     String   @default("#4f7cff")
+  logo_url          String?
+  timezone          String   @default("America/New_York")
+  plan              String   @default("starter")
+  subscription_plan String   @default("Growth")
+  ai_credit_limit   Int      @default(1000)
+  candidate_limit   Int      @default(500)
+  is_active         Boolean  @default(true)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
 
-  profiles    Profile[]
-  candidates  Candidate[]
-  jobs        Job[]
-  callbacks   Callback[]
-  followups   Followup[]
-  postings    Posting[]
-  invitations UserInvitation[]
-  auditLog    AdminAuditLog[]
-  activityLogs ActivityLog[]
-  tasks       Task[]
-  notifications Notification[]
+  profiles        Profile[]
+  members         OrganizationMember[]
+  org_invitations OrganizationInvitation[]
+  candidates      Candidate[]
+  jobs            Job[]
+  callbacks       Callback[]
+  followups       Followup[]
+  postings        Posting[]
+  invitations     UserInvitation[]
+  auditLog        AdminAuditLog[]
+  activityLogs    ActivityLog[]
+  tasks           Task[]
+  notifications   Notification[]
 
   @@map("organizations")
+}
+
+model OrganizationMember {
+  id              String   @id @default(uuid()) @db.Uuid
+  user_id         String   @db.Uuid
+  organization_id String   @db.Uuid
+  role            String   @default("RECRUITER")
+  status          String   @default("ACTIVE")
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  user         Profile      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, organization_id])
+  @@map("organization_members")
+}
+
+model OrganizationInvitation {
+  id              String   @id @default(uuid()) @db.Uuid
+  organization_id String   @db.Uuid
+  email           String
+  role            String   @default("RECRUITER")
+  token           String   @unique
+  status          String   @default("PENDING")
+  expires_at      DateTime
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  @@map("organization_invitations")
 }
 
 model Profile {
@@ -54,9 +93,10 @@ model Profile {
   created_at   DateTime @default(now())
   updated_at   DateTime @updatedAt
 
-  organization Organization? @relation(fields: [org_id], references: [id], onDelete: SetNull)
-  manager      Profile?      @relation("ProfileManager", fields: [manager_id], references: [id], onDelete: SetNull)
-  reports      Profile[]     @relation("ProfileManager")
+  organization Organization?         @relation(fields: [org_id], references: [id], onDelete: SetNull)
+  memberships  OrganizationMember[]
+  manager      Profile?              @relation("ProfileManager", fields: [manager_id], references: [id], onDelete: SetNull)
+  reports      Profile[]             @relation("ProfileManager")
 
   @@map("profiles")
 }

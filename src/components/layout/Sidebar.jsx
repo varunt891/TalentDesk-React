@@ -17,6 +17,8 @@ const navItems = [
   { id: 'reports', icon: 'reports', label: 'Reports', section: 'Tools' },
   { id: 'postings', icon: 'postings', label: 'Job Postings', section: 'Tools' },
   // Workspace: org/people reference, not a recruiting-workflow tool
+  { id: 'team_management', icon: 'directory', label: 'Team Management', section: 'Workspace' },
+  { id: 'org_settings', icon: 'admin', label: 'Company Settings', section: 'Workspace' },
   { id: 'directory', icon: 'directory', label: 'Team Directory', section: 'Workspace' },
   // Admin: role-gated
   { id: 'admin', icon: 'admin', label: 'Admin Panel', section: 'Admin', adminOnly: true },
@@ -25,9 +27,12 @@ const navItems = [
 const ROLE_COLORS = {
   superadmin: { bg: 'rgba(255,92,135,0.15)', color: '#ff5c87', label: 'Super Admin' },
   admin: { bg: 'rgba(79,124,255,0.15)', color: '#4f7cff', label: 'Admin' },
+  owner: { bg: 'rgba(168,85,247,0.15)', color: '#a855f7', label: 'Owner' },
   manager: { bg: 'rgba(245,200,66,0.15)', color: '#f5c842', label: 'Manager' },
   recruitment_manager: { bg: 'rgba(245,200,66,0.15)', color: '#f5c842', label: 'Recruitment Manager' },
   account_manager: { bg: 'rgba(124,92,255,0.15)', color: '#7c5cff', label: 'Account Manager' },
+  hr_manager: { bg: 'rgba(236,72,153,0.15)', color: '#ec4899', label: 'HR Manager' },
+  hr_team: { bg: 'rgba(244,114,182,0.15)', color: '#f472b6', label: 'HR Team' },
   operations_manager: { bg: 'rgba(255,140,66,0.15)', color: '#ff8c42', label: 'Operations Manager' },
   recruiter: { bg: 'rgba(46,204,143,0.15)', color: '#2ecc8f', label: 'Recruiter' },
   employee: { bg: 'rgba(100,116,139,0.15)', color: '#64748b', label: 'Employee' },
@@ -35,16 +40,15 @@ const ROLE_COLORS = {
 
 function getRoleStyle(profile) {
   if (!profile) return ROLE_COLORS.recruiter
-  const r = profile.role
+  const r = (profile.role || '').toLowerCase()
   if (r === 'recruitment_manager') return ROLE_COLORS.recruitment_manager
   if (r === 'account_manager') return ROLE_COLORS.account_manager
-  if (r === 'operations_manager') return ROLE_COLORS.operations_manager
-  if (r === 'manager') {
-    if (profile.manager_id || (profile.team && profile.team.includes('AM'))) {
-      return ROLE_COLORS.account_manager
-    }
-    return ROLE_COLORS.recruitment_manager
-  }
+  if (r === 'hr_manager') return ROLE_COLORS.hr_manager
+  if (r === 'hr_team') return ROLE_COLORS.hr_team
+  if (r === 'superadmin') return ROLE_COLORS.superadmin
+  if (r === 'admin') return ROLE_COLORS.admin
+  if (r === 'owner') return ROLE_COLORS.owner
+  if (r === 'manager') return ROLE_COLORS.manager
   return ROLE_COLORS[r] || {
     bg: 'rgba(46,204,143,0.15)',
     color: '#2ecc8f',
@@ -63,7 +67,7 @@ function readJson(key, fallback) {
 }
 
 export default function Sidebar({ currentPage, onNavigate, theme, onToggleTheme, isCollapsed, onToggleCollapse, onClose, pendingTasksCount = 0 }) {
-  const { user, profile, profileError, signOut } = useAuth()
+  const { user, profile, organization, profileError, signOut } = useAuth()
   const navigate = useNavigate()
 
   const [favorites, setFavorites] = useState(() => readJson('td_sidebar_favorites', []))
@@ -96,12 +100,12 @@ export default function Sidebar({ currentPage, onNavigate, theme, onToggleTheme,
     onNavigate(id)
   }
 
-  const role = profile?.role || 'recruiter'
+  const role = (profile?.role || 'recruiter').toLowerCase()
   const roleStyle = getRoleStyle(profile)
-  const orgName = 'Recruiter CRM'
+  const orgName = organization?.name || 'Recruiter CRM'
 
   const visibleItems = navItems.filter(item => {
-    if (item.adminOnly) return role === 'admin' || role === 'superadmin'
+    if (item.adminOnly) return ['admin', 'superadmin', 'owner'].includes(role)
     return true
   })
 
@@ -273,8 +277,8 @@ export default function Sidebar({ currentPage, onNavigate, theme, onToggleTheme,
                 </svg>
               </button>
             </div>
-            {profileError && (
-              <div className="sidebar-profile-warning" title={profileError}>
+            {(!profile || (!profile.org_id && !organization)) && (
+              <div className="sidebar-profile-warning" title={profileError || 'No organization assigned'}>
                 Profile not linked
               </div>
             )}

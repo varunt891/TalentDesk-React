@@ -22,7 +22,24 @@ const TEAM_BADGE_COLORS = ['blue', 'purple', 'green', 'yellow', 'orange', 'pink'
 const STAGES = ['Submitted', 'Shortlisted', 'Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired', 'Rejected']
 
 function dateKey(date) {
-  return date.toISOString().slice(0, 10)
+  if (!date) return ''
+  const d = new Date(date)
+  if (isNaN(d.getTime())) return String(date).slice(0, 10)
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function getCandidateDateStr(candidate) {
+  if (!candidate) return ''
+  if (candidate.submission_date) {
+    return candidate.submission_date.slice(0, 10)
+  }
+  if (candidate.created_at) {
+    return dateKey(candidate.created_at)
+  }
+  return ''
 }
 
 function daysAgo(days) {
@@ -34,7 +51,9 @@ function daysAgo(days) {
 
 function isInRange(value, days) {
   if (!value) return false
-  return value >= dateKey(daysAgo(days - 1))
+  const targetDateStr = value.length >= 10 ? value.slice(0, 10) : dateKey(value)
+  const minDateStr = dateKey(daysAgo(days - 1))
+  return targetDateStr >= minDateStr
 }
 
 function getDescendants(userId, allUsers) {
@@ -70,8 +89,8 @@ export default function Reports() {
     })
   }, [])
 
-  const isSuperAdmin = role === 'superadmin'
-  const isAdmin = role === 'admin'
+  const isSuperAdmin = ['superadmin', 'SUPERADMIN'].includes(role)
+  const isAdmin = ['admin', 'owner', 'ADMIN', 'OWNER'].includes(role)
   const isRM = useMemo(() => {
     if (['recruitment_manager', 'operations_manager'].includes(role)) return true
     if (role === 'manager' && (!profile?.manager_id || users.some(u => u.manager_id === profile?.id && ['manager', 'account_manager', 'recruitment_manager'].includes(u.role)))) return true
@@ -163,7 +182,8 @@ export default function Reports() {
 
   const reportCandidates = useMemo(() => {
     return candidates.filter(candidate => {
-      if (!isInRange(candidate.submission_date, rangeDays)) return false
+      const dateStr = getCandidateDateStr(candidate)
+      if (!isInRange(dateStr, rangeDays)) return false
       if (scope.user !== 'all' && selectedUserDescendants) {
         const { userIds, userNames } = selectedUserDescendants
         const matchesUser = userIds.has(candidate.user_id) || userIds.has(candidate.recruiter_id)
@@ -205,9 +225,9 @@ export default function Reports() {
       const key = dateKey(date)
       return {
         label: mode === 'daily' ? 'Today' : date.toLocaleDateString('en-US', { weekday: 'short' }),
-        submissions: reportCandidates.filter(candidate => candidate.submission_date === key).length,
-        callbacks: reportCallbacks.filter(callback => callback.date === key).length,
-        followups: reportFollowups.filter(followup => followup.date === key).length,
+        submissions: reportCandidates.filter(candidate => getCandidateDateStr(candidate) === key).length,
+        callbacks: reportCallbacks.filter(callback => (callback.date ? dateKey(callback.date) : dateKey(callback.created_at)) === key).length,
+        followups: reportFollowups.filter(followup => (followup.date ? dateKey(followup.date) : dateKey(followup.created_at)) === key).length,
       }
     })
   }, [mode, rangeDays, reportCallbacks, reportCandidates, reportFollowups])

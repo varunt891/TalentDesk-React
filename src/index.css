@@ -282,12 +282,20 @@ button {
   padding: 12px 6px;
 }
 
-
 .sidebar-section-divider {
   height: 1px;
   background: var(--border);
   margin: 12px 8px;
   opacity: 0.4;
+}
+
+.sidebar-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 8px 10px 4px;
 }
 
 .sidebar-nav-item {
@@ -14498,25 +14506,25 @@ body {
   outline: none;
   height: 32px;
   box-sizing: border-box;
-  color: #ffffff !important;
-  -webkit-text-fill-color: #ffffff !important;
 }
 
 .admin-btn span,
 .admin-btn svg {
-  color: #ffffff !important;
-  -webkit-text-fill-color: #ffffff !important;
+  stroke: currentColor;
 }
 
 .admin-btn-primary {
   background: #2563eb !important;
   color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  border-color: #2563eb !important;
   box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
 }
 
 .admin-btn-primary:hover {
   background: #1d4ed8 !important;
   color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
 }
 
 .admin-btn-primary span,
@@ -14524,26 +14532,44 @@ body {
 .admin-btn-primary path,
 .admin-btn-primary circle {
   color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
   stroke: currentColor;
 }
 
 .admin-btn-secondary {
-  background: var(--surface2, rgba(255, 255, 255, 0.06)) !important;
-  color: #ffffff !important;
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.15)) !important;
+  background: #ffffff !important;
+  color: #1e293b !important;
+  -webkit-text-fill-color: #1e293b !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+
+[data-theme="dark"] .admin-btn-secondary {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #f8fafc !important;
+  -webkit-text-fill-color: #f8fafc !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
 }
 
 .admin-btn-secondary:hover {
-  background: var(--surface3, rgba(255, 255, 255, 0.12)) !important;
-  border-color: rgba(255, 255, 255, 0.25) !important;
+  background: #f8fafc !important;
+  border-color: #94a3b8 !important;
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+}
+
+[data-theme="dark"] .admin-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
   color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
 }
 
 .admin-btn-secondary span,
 .admin-btn-secondary svg,
 .admin-btn-secondary path,
 .admin-btn-secondary circle {
-  color: #ffffff !important;
+  color: inherit !important;
+  -webkit-text-fill-color: inherit !important;
   stroke: currentColor;
 }
 
@@ -14928,28 +14954,55 @@ body {
 /* Trigger Buttons */
 .platform-danger-trigger-btn {
   flex-shrink: 0;
-  height: 30px;
-  font-size: 11px !important;
-  padding: 0 12px !important;
-  border-radius: 6px !important;
-  background: transparent !important;
+  height: 32px;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  padding: 0 14px !important;
+  border-radius: 8px !important;
   border: 1px solid currentColor !important;
+  transition: all 0.2s ease !important;
 }
 
 .platform-danger-trigger-btn.red {
   color: #dc2626 !important;
+  -webkit-text-fill-color: #dc2626 !important;
+  background: rgba(239, 68, 68, 0.08) !important;
+  border-color: rgba(239, 68, 68, 0.4) !important;
+}
+
+.platform-danger-trigger-btn.red:hover {
+  background: #dc2626 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  border-color: #dc2626 !important;
 }
 
 .platform-danger-trigger-btn.orange {
-  color: #f97316 !important;
+  color: #ea580c !important;
+  -webkit-text-fill-color: #ea580c !important;
+  background: rgba(249, 115, 22, 0.08) !important;
+  border-color: rgba(249, 115, 22, 0.4) !important;
+}
+
+.platform-danger-trigger-btn.orange:hover {
+  background: #ea580c !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  border-color: #ea580c !important;
 }
 
 .platform-danger-trigger-btn.amber {
   color: #d97706 !important;
+  -webkit-text-fill-color: #d97706 !important;
+  background: rgba(245, 158, 11, 0.08) !important;
+  border-color: rgba(245, 158, 11, 0.4) !important;
 }
 
-.platform-danger-trigger-btn:hover {
-  opacity: 0.75;
+.platform-danger-trigger-btn.amber:hover {
+  background: #d97706 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  border-color: #d97706 !important;
 }
 
 /* Confirmation Panel */
@@ -22647,5 +22700,223 @@ select:focus-visible,
   .candidates-table-card {
     border-radius: 10px !important;
     padding: 14px !important;
+  }
+}
+
+
+
+.team-management-page,
+.org-settings-page {
+  padding: 20px 24px;
+}
+
+.team-management-card {
+  padding: 24px;
+}
+
+/* ===== COMPREHENSIVE MOBILE RESPONSIVENESS RULES (< 768px & < 480px) ===== */
+@media (max-width: 768px) {
+  .team-management-page,
+  .org-settings-page,
+  .app-main-content,
+  .dashboard-page,
+  .candidates-page,
+  .jobs-page,
+  .pipeline-page,
+  .reports-page,
+  .admin-page,
+  .directory-page {
+    padding: 12px 12px !important;
+  }
+
+  .team-management-card,
+  .workspace-card {
+    padding: 14px 12px !important;
+    border-radius: 12px !important;
+  }
+
+  /* Slideout Copilot Drawer on Mobile */
+  .copilot-slideout-panel {
+    width: 100% !important;
+    max-width: 100vw !important;
+    height: 100% !important;
+    border-radius: 0 !important;
+  }
+
+  /* Reports Hero Controls & Metric Grid */
+  .reports-hero {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+
+  .reports-metric-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .reports-actions {
+    flex-wrap: wrap !important;
+    width: 100% !important;
+    gap: 8px !important;
+  }
+
+  .reports-actions > * {
+    flex: 1 1 auto !important;
+  }
+
+  /* Modals Full Mobile Responsiveness */
+  .modal-card-responsive,
+  .submission-packet-modal,
+  .ai-match-modal {
+    width: 96% !important;
+    max-width: 96vw !important;
+    max-height: 94vh !important;
+    padding: 14px !important;
+    border-radius: 12px !important;
+  }
+
+  /* 3-Column Plan Tier Cards Grid on Mobile */
+  .org-settings-plan-cards {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .candidates-mobile-actions {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .reports-metric-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ===== TEAM MANAGEMENT & ORG SETTINGS — POLISH + RESPONSIVE ===== */
+
+/* Header toolbar (title + primary action) shared by both workspace pages */
+.workspace-header {
+  flex-wrap: wrap;
+}
+
+/* Generic surface card used across both pages: table wrappers, form panels,
+   subscription/security cards, plan matrix container */
+.workspace-card {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.workspace-card:hover {
+  border-color: rgba(79, 124, 255, 0.35);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.10);
+}
+
+.workspace-table-row {
+  transition: background 0.15s ease;
+}
+
+.workspace-table-row:hover {
+  background: rgba(79, 124, 255, 0.045);
+}
+
+/* Accent CTA buttons (Invite User / Onboard Organization) */
+.td-btn-accent {
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+.td-btn-accent:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(79, 124, 255, 0.35);
+  filter: brightness(1.06);
+}
+
+.td-btn-accent:active {
+  transform: translateY(0);
+}
+
+/* Org Settings: two-column profile form + plan/meter sidebar */
+.org-settings-main-grid {
+  align-items: start;
+}
+
+/* Superadmin "all platform organizations" cards */
+.org-settings-superadmin-card {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.org-settings-superadmin-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.12);
+}
+
+/* Subscription plan tier cards */
+.org-settings-plan-card {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.org-settings-plan-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.14);
+}
+
+@media (max-width: 900px) {
+  .org-settings-main-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* Table → stacked mobile cards for Members / Pending Invitations.
+   Uses the same 768px breakpoint as the rest of the app shell so there's
+   no dead zone between this and the page-padding / sidebar-drawer rules. */
+.workspace-mobile-cards {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.workspace-mobile-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+@media (max-width: 768px) {
+  .workspace-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 14px !important;
+  }
+
+  .workspace-header .td-btn-accent {
+    width: 100% !important;
+  }
+
+  .org-settings-profile-head {
+    flex-wrap: wrap;
+  }
+
+  .org-settings-superadmin-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .workspace-table-wrap {
+    display: none !important;
+  }
+
+  .workspace-mobile-cards {
+    display: flex !important;
+  }
+
+  .org-settings-scroll-hint {
+    display: block !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .org-settings-plan-card {
+    padding: 18px !important;
   }
 }

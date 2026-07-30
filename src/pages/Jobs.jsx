@@ -131,14 +131,26 @@ export default function Jobs() {
   const [showMatchedOnly, setShowMatchedOnly] = useState(false)
   const [packetModal, setPacketModal] = useState({ isOpen: false, candidate: null, job: null })
   const [aiMatchModal, setAiMatchModal] = useState({ isOpen: false, candidate: null, job: null })
+  const aiScoresKey = user?.id ? `talentdesk_ai_scores_${user.id}` : 'talentdesk_ai_scores'
   const [aiScores, setAiScores] = useState(() => {
     try {
-      const saved = localStorage.getItem('talentdesk_ai_scores')
+      const saved = localStorage.getItem(aiScoresKey)
       return saved ? JSON.parse(saved) : {}
     } catch {
       return {}
     }
   })
+
+  // Re-sync AI scores when active user changes
+  useEffect(() => {
+    if (!user) return
+    try {
+      const saved = localStorage.getItem(`talentdesk_ai_scores_${user.id}`)
+      setAiScores(saved ? JSON.parse(saved) : {})
+    } catch {
+      setAiScores({})
+    }
+  }, [user])
 
   const openPacketModal = (candidate, job) => {
     setPacketModal({ isOpen: true, candidate, job })
@@ -158,7 +170,7 @@ export default function Jobs() {
         [`${candId}_${jId2}`]: score
       }
       try {
-        localStorage.setItem('talentdesk_ai_scores', JSON.stringify(updated))
+        localStorage.setItem(aiScoresKey, JSON.stringify(updated))
       } catch { }
       return updated
     })

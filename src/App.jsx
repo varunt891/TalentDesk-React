@@ -16,6 +16,8 @@ import Admin from './pages/Admin'
 import Reports from './pages/Reports'
 import AICenter from './pages/AICenter'
 import TasksPage from './pages/TasksPage'
+import OrgSettings from './pages/OrgSettings'
+import TeamManagement from './pages/TeamManagement'
 import AppLayout from './components/layout/AppLayout'
 import { db } from './lib/api'
 
@@ -61,17 +63,12 @@ function MainApp() {
         for (const callback of callbacks) {
           if (!callback.date || !callback.time || notifiedCallbacks.has(callback.id)) continue
 
-          // Compare full timestamps (not exact-minute string equality) so a check that
-          // runs late still catches it — mobile browsers suspend background tabs, so a
-          // locked screen can make the interval skip the exact scheduled minute entirely.
           const scheduledAt = new Date(`${callback.date}T${callback.time}:00`)
           const msOverdue = now - scheduledAt
 
-          // Reached or just passed, but not stale (ignore anything over a day overdue).
           if (msOverdue >= 0 && msOverdue <= 24 * 60 * 60 * 1000) {
             setCallbackAlert(callback)
             setNotifiedCallbacks(prev => new Set([...prev, callback.id]))
-            // Auto-dismiss after 10 seconds
             setTimeout(() => setCallbackAlert(null), 10000)
           }
         }
@@ -80,13 +77,9 @@ function MainApp() {
       }
     }
 
-    // Check every minute
     const interval = setInterval(checkCallbacks, 60000)
-    checkCallbacks() // Initial check
+    checkCallbacks()
 
-    // Re-check the moment the app is foregrounded again — background tabs on
-    // mobile get frozen, so this is what actually catches a missed reminder
-    // once the user unlocks their phone.
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') checkCallbacks()
     }
@@ -112,7 +105,9 @@ function MainApp() {
       case 'postings': return <Postings />
       case 'directory': return <Directory />
       case 'resubmit': return <Resubmit />
-      case 'admin': return role === 'admin' || role === 'superadmin' ? <Admin /> : <Navigate to="/" />
+      case 'org_settings': return <OrgSettings />
+      case 'team_management': return <TeamManagement />
+      case 'admin': return ['admin', 'superadmin', 'owner', 'ADMIN', 'SUPERADMIN', 'OWNER'].includes(role) ? <Admin /> : <Navigate to="/" />
       default: return (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ textAlign: 'center' }}>

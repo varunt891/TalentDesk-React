@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { db } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
-export function useCandidates() {
+export function useCandidates(options = {}) {
+  const { allOrgs = false } = options
   const { user, profile } = useAuth()
   const [candidates, setCandidates] = useState([])
   const [loading, setLoading] = useState(true)
@@ -10,11 +11,12 @@ export function useCandidates() {
   const fetch = useCallback(async () => {
     try {
       setLoading(true)
-      console.log('[useCandidates] Fetching candidates for user:', user?.id)
-      const { data, error } = await db
-        .from('candidates')
-        .select('*')
-        .order('created_at', { ascending: false })
+      console.log('[useCandidates] Fetching candidates for user:', user?.id, 'allOrgs:', allOrgs)
+      let query = db.from('candidates').select('*').order('created_at', { ascending: false })
+      if (allOrgs) {
+        query = query.param('all_orgs', 'true')
+      }
+      const { data, error } = await query
       
       console.log('[useCandidates] Fetch response:', { data, error })
       
@@ -29,12 +31,12 @@ export function useCandidates() {
       console.error('[useCandidates] Exception:', err)
       setLoading(false)
     }
-  }, [user])
+  }, [user, allOrgs])
 
   useEffect(() => { 
-    console.log('[useCandidates] useEffect triggered, user:', user?.id)
+    console.log('[useCandidates] useEffect triggered, user:', user?.id, 'allOrgs:', allOrgs)
     if (user) fetch() 
-  }, [user, fetch])
+  }, [user, fetch, allOrgs])
 
   const cleanDates = (data) => {
     const dateFields = ['submission_date', 'interview_date', 'followup_date']

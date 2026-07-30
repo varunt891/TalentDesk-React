@@ -63,9 +63,12 @@ export const authApi = {
   },
   async signUp(email, password, metadata = {}) {
     const fullName = metadata.full_name || metadata.data?.full_name || metadata.name
+    const company = metadata.company || metadata.data?.company
+    const invite_token = metadata.invite_token || metadata.data?.invite_token
+
     const session = await apiRequest('/auth/signup', {
       method: 'POST',
-      body: { email, password, full_name: fullName },
+      body: { email, password, full_name: fullName, company, invite_token },
     })
     setAuthToken(session.token)
     return session
@@ -84,6 +87,54 @@ export const authApi = {
     } finally {
       setAuthToken(null)
     }
+  },
+}
+
+export const organizationApi = {
+  async getOrg() {
+    return apiRequest('/organization')
+  },
+  async getAllOrgs() {
+    return apiRequest('/organization/all')
+  },
+  async switchOrg(organization_id) {
+    return apiRequest('/organization/switch', { method: 'POST', body: { organization_id } })
+  },
+  async onboardOrg(payload) {
+    return apiRequest('/organization/onboard', { method: 'POST', body: payload })
+  },
+  async deleteOrg(organization_id) {
+    return apiRequest(`/organization/platform/${organization_id}`, { method: 'DELETE' })
+  },
+  async purgeMembers(organization_id) {
+    return apiRequest('/organization/platform/purge-members', { method: 'POST', body: { organization_id } })
+  },
+  async purgeCandidates(organization_id) {
+    return apiRequest('/organization/platform/purge-candidates', { method: 'POST', body: { organization_id } })
+  },
+  async updateOrg(payload) {
+    return apiRequest('/organization', { method: 'PUT', body: payload })
+  },
+  async getMembers() {
+    return apiRequest('/organization/members')
+  },
+  async updateMemberRole(memberId, role) {
+    return apiRequest(`/organization/members/${memberId}/role`, { method: 'PUT', body: { role } })
+  },
+  async removeMember(memberId) {
+    return apiRequest(`/organization/members/${memberId}`, { method: 'DELETE' })
+  },
+  async createInvitation(email, role) {
+    return apiRequest('/organization/invitations', { method: 'POST', body: { email, role } })
+  },
+  async getInvitations() {
+    return apiRequest('/organization/invitations')
+  },
+  async revokeInvitation(invitationId) {
+    return apiRequest(`/organization/invitations/${invitationId}`, { method: 'DELETE' })
+  },
+  async verifyInvitation(token) {
+    return apiRequest(`/organization/invitations/verify/${token}`)
   },
 }
 
