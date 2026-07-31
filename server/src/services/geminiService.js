@@ -28,6 +28,114 @@ export function isRetryableGeminiError(error) {
 }
 
 export class GeminiService {
+  // Streams text deltas via SSE (`:streamGenerateContent?alt=sse`) instead of
+  // waiting for the full response. Once a model successfully starts
+  // streaming we commit to it — switching models mid-stream isn't possible,
+  // so the model-fallback list only applies to the initial connection.
+  async generateStream({ prompt, toolConfig, onDelta, signal }) {
+    const key = (process.env.GEMINI_API_KEY || '').trim();
+    if (!key) {
+      const err = new Error('GEMINI_API_KEY environment variable is not configured on the server.');
+      err.status = 500;
+      err.code = 'CONFIG_MISSING_GEMINI_KEY';
+      err.isRetryable = false;
+      throw err;
+    }
+
+    const models = ['gemini-2.0-flash', 'gemini-flash-latest', 'gemini-flash-lite-latest'];
+    let lastError = null;
+
+    for (const model of models) {
+      try {
+        const payload = {
+          systemInstruction: { parts: [{ text: toolConfig.systemPrompt }] },
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: toolConfig.temperature,
+            maxOutputTokens: toolConfig.maxTokens
+          }
+        };
+
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${key}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal
+          }
+        );
+
+        if (!response.ok) {
+          const errBody = await response.json().catch(() => ({}));
+          const apiError = new Error(errBody?.error?.message || `Gemini API returned status ${response.status}`);
+          apiError.status = response.status;
+          apiError.code = errBody?.error?.status || `HTTP_${response.status}`;
+          apiError.isRetryable = isRetryableGeminiError(apiError);
+          console.warn(`[Gemini Stream ${model}] Status:${response.status} -> ${apiError.message}`);
+          if (!apiError.isRetryable) throw apiError;
+          lastError = apiError;
+          continue;
+        }
+
+        // Committed to this model's stream now.
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let fullText = '';
+        let sawAnyDelta = false;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split(/\r?\n\r?\n/);
+          buffer = events.pop() || '';
+          for (const evt of events) {
+            const dataLine = evt.split(/\r?\n/).find(line => line.trim().startsWith('data:'));
+            if (!dataLine) continue;
+            const jsonStr = dataLine.trim().slice(5).trim();
+            if (!jsonStr || jsonStr === '[DONE]') continue;
+            try {
+              const chunk = JSON.parse(jsonStr);
+              const parts = chunk?.candidates?.[0]?.content?.parts || [];
+              const text = parts.map(part => part.text || '').join('');
+              if (text) {
+                fullText += text;
+                sawAnyDelta = true;
+                onDelta(text);
+              }
+            } catch {
+              // Partial/invalid JSON chunk — skip, next read will complete it.
+            }
+          }
+        }
+
+        if (!sawAnyDelta) {
+          lastError = new Error('Gemini returned an empty streamed response.');
+          lastError.isRetryable = true;
+          continue;
+        }
+
+        return { provider: 'gemini', model, text: fullText };
+      } catch (err) {
+        if (err.name === 'AbortError') throw err; // caller-initiated cancel — propagate immediately, no fallback
+        if (err.isRetryable === false) throw err;
+        err.isRetryable = isRetryableGeminiError(err);
+        lastError = err;
+        console.error(`[Gemini Stream Error ${model}]`, err.message);
+      }
+    }
+
+    if (lastError) throw lastError;
+
+    const fallbackErr = new Error('All Gemini model requests failed.');
+    fallbackErr.status = 502;
+    fallbackErr.code = 'GEMINI_MODELS_FAILED';
+    fallbackErr.isRetryable = true;
+    throw fallbackErr;
+  }
+
   async generate({ prompt, fileInlineData, toolConfig }) {
     const key = (process.env.GEMINI_API_KEY || '').trim();
     if (!key) {

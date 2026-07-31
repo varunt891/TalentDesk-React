@@ -4,6 +4,66 @@ import { geminiService } from './geminiService.js';
 import { groqService } from './groqService.js';
 
 export class AIService {
+  // Streaming path for the Recruiter Copilot — bypasses the response cache
+  // (a streamed answer is context/history dependent, not a stable cache
+  // key) and does not fall back to Groq mid-stream: if Gemini fails before
+  // any tokens are sent we throw and let the caller offer Retry, rather
+  // than silently restarting the answer on a different provider after the
+  // user has already started reading.
+  async generateStream({ prompt, toolId, onDelta, signal }) {
+    if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
+      const err = new Error('Prompt is required and must be a non-empty text string.');
+      err.status = 400;
+      err.code = 'INVALID_PROMPT';
+      err.isRetryable = false;
+      throw err;
+    }
+
+    const cleanPrompt = prompt.trim();
+    const activeToolId = toolId || 'default';
+    const toolConfig = getToolConfig(activeToolId);
+    const startTime = Date.now();
+
+    // 1. Primary Attempt: Gemini Stream
+    try {
+      const result = await geminiService.generateStream({ prompt: cleanPrompt, toolConfig, onDelta, signal });
+      const durationMs = Date.now() - startTime;
+      console.log(`[AI METRICS] ${new Date().toISOString()} | tool:${activeToolId} | provider:${result.provider} | model:${result.model} | latency:${durationMs}ms | stream:true | status:200`);
+      return { success: true, provider: result.provider, model: result.model, text: result.text };
+    } catch (geminiErr) {
+      if (geminiErr.name === 'AbortError') throw geminiErr;
+      const durationMs = Date.now() - startTime;
+      console.warn(`[AI Stream Fallback Triggered] Gemini stream failed (${geminiErr.message}). Attempting Groq fallback...`);
+    }
+
+    // 2. Fallback Attempt: Groq Stream / Generate
+    try {
+      let groqResult;
+      try {
+        groqResult = await groqService.generateStream({ prompt: cleanPrompt, toolConfig, onDelta, signal });
+      } catch (groqStreamErr) {
+        if (groqStreamErr.name === 'AbortError') throw groqStreamErr;
+        groqResult = await groqService.generate({ prompt: cleanPrompt, toolConfig });
+        if (groqResult?.text && onDelta) {
+          onDelta(groqResult.text);
+        }
+      }
+
+      const durationMs = Date.now() - startTime;
+      console.log(`[AI METRICS] ${new Date().toISOString()} | tool:${activeToolId} | provider:${groqResult.provider} | model:${groqResult.model} | latency:${durationMs}ms | stream:fallback | status:200`);
+      return { success: true, provider: groqResult.provider, model: groqResult.model, text: groqResult.text };
+    } catch (groqErr) {
+      if (groqErr.name === 'AbortError') throw groqErr;
+      const durationMs = Date.now() - startTime;
+      console.error(`[AI METRICS] ${new Date().toISOString()} | tool:${activeToolId} | provider:groq | latency:${durationMs}ms | stream:failed | status:502 | error:${groqErr.message}`);
+
+      const combinedErr = new Error(`Both Gemini and Groq AI providers failed: ${groqErr.message}`);
+      combinedErr.status = 502;
+      combinedErr.code = 'ALL_PROVIDERS_FAILED';
+      throw combinedErr;
+    }
+  }
+
   async generate({ prompt, fileInlineData, toolId }) {
     if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
       const err = new Error('Prompt is required and must be a non-empty text string.');

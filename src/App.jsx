@@ -18,8 +18,12 @@ import AICenter from './pages/AICenter'
 import TasksPage from './pages/TasksPage'
 import OrgSettings from './pages/OrgSettings'
 import TeamManagement from './pages/TeamManagement'
+import StyleGuide from './pages/StyleGuide'
 import AppLayout from './components/layout/AppLayout'
+import Copilot from './components/ai/Copilot'
+import { AIContextProvider } from './lib/ai/context'
 import { db } from './lib/api'
+import { ToastProvider } from './components/ui'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -99,14 +103,14 @@ function MainApp() {
       case 'candidates': return <Candidates />
       case 'jobs': return <Jobs />
       case 'pipeline': return <Pipeline />
-      case 'callbacks': return <Callbacks />
-      case 'followups': return <Followups />
+      case 'callbacks': return <Callbacks onNavigate={setCurrentPage} />
+      case 'followups': return <Followups onNavigate={setCurrentPage} />
       case 'reports': return <Reports />
       case 'postings': return <Postings />
       case 'directory': return <Directory />
-      case 'resubmit': return <Resubmit />
-      case 'org_settings': return <OrgSettings />
-      case 'team_management': return <TeamManagement />
+      case 'resubmit': return <Resubmit onNavigate={setCurrentPage} />
+      case 'org_settings': return <OrgSettings onNavigate={setCurrentPage} />
+      case 'team_management': return <TeamManagement onNavigate={setCurrentPage} />
       case 'admin': return ['admin', 'superadmin', 'owner', 'ADMIN', 'SUPERADMIN', 'OWNER'].includes(role) ? <Admin /> : <Navigate to="/" />
       default: return (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -119,11 +123,13 @@ function MainApp() {
   }
 
   return (
-    <>
+    <AIContextProvider currentPage={currentPage}>
       <AppLayout currentPage={currentPage} onNavigate={setCurrentPage}>
         {renderPage()}
       </AppLayout>
-      
+
+      <Copilot />
+
       {/* Global Callback Alert */}
       {callbackAlert && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }} onClick={() => setCallbackAlert(null)}>
@@ -150,24 +156,31 @@ function MainApp() {
           </div>
         </div>
       )}
-    </>
+    </AIContextProvider>
   )
 }
 
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
-          <Route path="/*" element={
-            <ProtectedRoute>
-              <MainApp />
-            </ProtectedRoute>
-          } />
-        </Routes>
-      </BrowserRouter>
+      <ToastProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
+            <Route path="/style-guide" element={
+              <ProtectedRoute>
+                <StyleGuide />
+              </ProtectedRoute>
+            } />
+            <Route path="/*" element={
+              <ProtectedRoute>
+                <MainApp />
+              </ProtectedRoute>
+            } />
+          </Routes>
+        </BrowserRouter>
+      </ToastProvider>
     </AuthProvider>
   )
 }

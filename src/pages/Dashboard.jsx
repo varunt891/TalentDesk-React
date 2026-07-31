@@ -1,5 +1,7 @@
-import { Fragment, useEffect, useMemo, useState, useRef } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import * as XLSX from 'xlsx'
+import { PageContainer } from '../components/layout/PageContainer'
 import {
   Area,
   AreaChart,
@@ -16,8 +18,17 @@ import {
   YAxis,
 } from 'recharts'
 import { db, apiRequest } from '../lib/api'
+import { computeJobHealth } from '../lib/jobHealth'
+import { useAISetContext } from '../lib/ai/context'
+import { runAiAction } from '../lib/ai/aiClient'
+import { logUsageEvent } from '../lib/ai/usage'
 import { useAuth } from '../context/AuthContext'
 import { useCandidates } from '../hooks/useCandidates'
+import {
+  Button, Card, CardHeader, KPICard, Badge, StatusPill, Table, Tabs,
+  EmptyState, Skeleton, Avatar, Icon, Menu, MenuTrigger, Input,
+} from '../components/ui'
+import MarkdownView from '../components/MarkdownView'
 
 const STAGES = ['Submitted', 'Screening', 'Interview Scheduled', 'Client Review', 'Offer Extended', 'Hired', 'Rejected']
 const COLORS = ['#2563eb', '#8b5cf6', '#f59e0b', '#06b6d4', '#10b981', '#059669', '#ef4444']
@@ -39,6 +50,16 @@ function formatRelativeTime(dateStr) {
   return `${diffDay}d ago`
 }
 
+// Real trend arrow from two real counts — returns null (no arrow shown) when there's
+// no signal to compare, instead of inventing a percentage.
+function computeTrend(current, previous) {
+  if (!current && !previous) return null
+  if (!previous) return { dir: 'up', pct: 100 }
+  const pct = Math.round(((current - previous) / previous) * 100)
+  if (pct === 0) return { dir: 'flat', pct: 0 }
+  return { dir: pct > 0 ? 'up' : 'down', pct: Math.abs(pct) }
+}
+
 function getActivityDateBucket(dateStr) {
   const date = new Date(dateStr)
   const now = new Date()
@@ -56,12 +77,15 @@ function getActivityDateBucket(dateStr) {
 export default function Dashboard({ onNavigate }) {
   const authContext = useAuth() || {}
   const profile = authContext.profile
+  const orgId = authContext.organization?.id || profile?.org_id
+  const userId = authContext.user?.id
 
   const candidatesContext = useCandidates() || {}
   const rawCandidates = candidatesContext.candidates
   const candidates = useMemo(() => Array.isArray(rawCandidates) ? rawCandidates : [], [rawCandidates])
 
   const [jobs, setJobs] = useState([])
+  useAISetContext({ workspace: 'Dashboard', currentRecruiter: profile?.full_name || authContext.user?.email, totalCandidates: candidates.length })
   const [callbacks, setCallbacks] = useState([])
   const [followups, setFollowups] = useState([])
   const [profiles, setProfiles] = useState([])
@@ -248,6 +272,7 @@ export default function Dashboard({ onNavigate }) {
   const [missionTab, setMissionTab] = useState('tasks')
   const [eodSummaryText, setEodSummaryText] = useState('')
   const [eodLoading, setEodLoading] = useState(false)
+  const [eodCopied, setEodCopied] = useState(false)
   const [activeTaskMenuId, setActiveTaskMenuId] = useState(null)
 
   const handleAddNote = (e) => {
@@ -287,16 +312,11 @@ export default function Dashboard({ onNavigate }) {
     const completed = dailyNotes.filter(n => n.done).map(n => `- [x] ${n.text} (${n.tag})`).join('\n') || 'None'
     const pending = dailyNotes.filter(n => !n.done).map(n => `- [ ] ${n.text} (${n.tag})`).join('\n') || 'None'
 
-    const prompt = `You are a Senior Recruiting Operations Manager. Generate a concise, high-impact End of Day (EOD) Recruiter Summary & Action Plan based on the recruiter's daily notes and tasks.
-
-RECRUITER DAILY NOTES STATUS:
-COMPLETED ITEMS:
-${completed}
-
-PENDING FOLLOW-UPS:
-${pending}
-
-Format:
+    // Migrated onto the shared AI Action Framework (Phase 5.4) — same data,
+    // same output shape, now routed through runAiAction/'recommend' with
+    // usage logging instead of a direct /ai/generate call.
+    const content = `RECRUITER DAILY NOTES STATUS:\nCOMPLETED ITEMS:\n${completed}\n\nPENDING FOLLOW-UPS:\n${pending}`
+    const context = `Generate a concise, high-impact End of Day (EOD) Recruiter Summary & Action Plan. Format as:
 ### 🏆 EOD Recruiter Summary & Accomplishments
 - Highlighting key wins from completed notes...
 
@@ -308,19 +328,16 @@ Format:
 2. Action item 2...
 3. Action item 3...`
 
+    const startedAt = new Date().getTime()
     try {
-      const data = await apiRequest('/ai/generate', {
-        method: 'POST',
-        body: { prompt, toolId: 'copilot' }
-      })
-      if (data?.text) {
-        setEodSummaryText(data.text)
-      } else {
-        setEodSummaryText('### 🏆 EOD Summary\n- All priority tasks reviewed for today.')
-      }
+      const res = await runAiAction({ action: 'recommend', content, context })
+      if (res.success === false) throw new Error(res.error || 'EOD summary failed.')
+      setEodSummaryText(res.text)
+      logUsageEvent(orgId, userId, { type: 'action', action: 'recommend', source: 'dashboard', success: true, provider: res.provider, model: res.model, durationMs: new Date().getTime() - startedAt, preview: res.text.slice(0, 140) })
     } catch (err) {
       console.error(err)
       setEodSummaryText('⚠️ AI service temporarily unavailable. Daily notes are saved locally.')
+      logUsageEvent(orgId, userId, { type: 'action', action: 'recommend', source: 'dashboard', success: false, error: err.message, durationMs: new Date().getTime() - startedAt })
     } finally {
       setEodLoading(false)
     }
@@ -421,7 +438,7 @@ Format:
         if (entityId) {
           targetCandidates = candidates.filter(c => String(c.id) === String(entityId))
         } else if (searchName) {
-          targetCandidates = candidates.filter(c => 
+          targetCandidates = candidates.filter(c =>
             `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase().includes(searchName) ||
             (c.email && c.email.toLowerCase().includes(searchName))
           )
@@ -463,7 +480,7 @@ Format:
         if (entityId) {
           targetCandidates = candidates.filter(c => String(c.id) === String(entityId))
         } else if (searchName) {
-          targetCandidates = candidates.filter(c => 
+          targetCandidates = candidates.filter(c =>
             `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase().includes(searchName) ||
             (c.email && c.email.toLowerCase().includes(searchName))
           )
@@ -1089,7 +1106,7 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
     }
     if (searchQuery) {
       const q = searchQuery.toLowerCase()
-      list = list.filter(c => 
+      list = list.filter(c =>
         `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase().includes(q) ||
         (c.email && c.email.toLowerCase().includes(q)) ||
         (c.job_title && c.job_title.toLowerCase().includes(q)) ||
@@ -1132,7 +1149,7 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
     if (jobStatusFilter !== 'All') list = list.filter(job => (job.status || 'Unassigned') === jobStatusFilter)
     if (searchQuery) {
       const q = searchQuery.toLowerCase()
-      list = list.filter(j => 
+      list = list.filter(j =>
         (j.title && j.title.toLowerCase().includes(q)) ||
         (j.client && j.client.toLowerCase().includes(q)) ||
         (j.job_id && j.job_id.toLowerCase().includes(q))
@@ -1342,49 +1359,12 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
   const conversionRate = Math.round((hiredCount / Math.max(filteredCandidates.length, 1)) * 100)
   const pipelineHealthPct = Math.round((qualifiedCount / Math.max(filteredCandidates.length, 1)) * 100)
 
-  // Top Priority Job Requisitions & Health Radar — derived from real candidate/job data
-  const priorityJobs = useMemo(() => {
-    const now = new Date().getTime()
-    return safeJobs.slice(0, 4).map(job => {
-      const jobCandidates = job.job_id ? candidates.filter(c => c.job_id === job.job_id) : []
-      const submittals = jobCandidates.length
-      const interviews = jobCandidates.filter(c => ['Interview Scheduled', 'Interview Done'].includes(c.internal_status || c.external_status)).length
-      const offers = jobCandidates.filter(c => (c.internal_status || c.external_status) === 'Offer Extended').length
-      const hires = jobCandidates.filter(c => (c.internal_status || c.external_status) === 'Hired').length
-
-      const openedAt = job.open_date || job.created_at
-      const openDays = openedAt ? Math.max(0, Math.floor((now - new Date(openedAt).getTime()) / 86400000)) : 0
-
-      // Deterministic placement-probability heuristic from this job's real funnel conversion
-      const placementScore = submittals === 0
-        ? 15
-        : Math.min(95, Math.round(((interviews * 12 + offers * 25 + hires * 40) / submittals) + 20))
-
-      const isStale = openDays > 14 && submittals < 3
-      const priority = isStale ? 'Urgent' : (job.priority || 'Medium')
-
-      let statusTag = 'Healthy'
-      let statusTone = 'green'
-      if (isStale || placementScore < 30) {
-        statusTag = 'Critical'
-        statusTone = 'red'
-      } else if (submittals < 3 || placementScore < 55) {
-        statusTag = 'At Risk'
-        statusTone = 'amber'
-      }
-
-      return {
-        ...job,
-        priority,
-        openDays,
-        submittals,
-        interviews,
-        placementProb: `${placementScore}%`,
-        statusTag,
-        statusTone,
-      }
-    })
-  }, [safeJobs, candidates])
+  // Top Priority Job Requisitions & Health Radar — derived from real candidate/job data.
+  // Shared with the Job Workspace (src/lib/jobHealth.js) so a job's health is identical
+  // wherever it's shown.
+  const priorityJobs = useMemo(() => (
+    safeJobs.slice(0, 4).map(job => ({ ...job, ...computeJobHealth(job, candidates) }))
+  ), [safeJobs, candidates])
 
   // Real-time activity timeline feed — merged from real candidate/callback/followup
   // created_at timestamps (previously fabricated "Xh ago" strings), newest first.
@@ -1430,24 +1410,17 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
     activityFilter === 'all' ? activityFeed : activityFeed.filter(act => act.type === activityFilter)
   ), [activityFeed, activityFilter])
 
-  const stats = [
-    { label: 'Total Candidates', value: filteredCandidates.length, helper: `+${thisWeekCount} this week`, sparkline: [12, 16, 14, 22, 28, 32, 38], tone: 'blue', trend: { dir: 'up', pct: 15 } },
-    { label: 'Qualified Pipeline', value: qualifiedCount, helper: '↑12% vs last week', sparkline: [4, 6, 8, 10, 12, 15, qualifiedCount], tone: 'purple', trend: { dir: 'up', pct: 12 }, progress: { value: qualifiedCount, max: filteredCandidates.length, label: 'of total candidates qualified' } },
-    { label: 'Offers Extended', value: offerCount, helper: `${conversionRate}% placement rate`, sparkline: [1, 2, 2, 3, 2, 4, offerCount], tone: 'yellow', trend: { dir: 'up', pct: 8 } },
-    { label: 'Active Requisitions', value: activeJobsCount, helper: `${filteredJobs.length} total filtered`, sparkline: [8, 9, 11, 10, 12, 12, activeJobsCount], tone: 'green', trend: { dir: 'up', pct: 5 }, progress: { value: activeJobsCount, max: filteredJobs.length, label: 'of filtered requisitions open' } },
-    { label: 'Rejected Candidates', value: rejectedCount, helper: 'Client declined', sparkline: [2, 4, 3, 5, 4, 6, rejectedCount], tone: 'red', trend: { dir: 'down', pct: 3 } },
-    { label: 'Pending Tasks', value: pendingCallbacks.length + dueFollowups.length, helper: `${todaysCallbacks.length} calls today`, sparkline: [10, 8, 6, 7, 5, 4, pendingCallbacks.length], tone: 'orange', trend: { dir: 'down', pct: 15 } },
-  ]
-
   const firstName = profile?.full_name?.split(' ')[0] || 'there'
   const dateStr = currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
   const timeStr = currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-  const avatarInitial = (profile?.full_name || 'U').charAt(0).toUpperCase()
 
   // Fetch Live AI Executive Briefing from backend
+  // Migrated onto the shared AI Action Framework (Phase 5.4) — same
+  // metrics, same output, now routed through runAiAction/'analyze' with
+  // usage logging instead of a direct /ai/generate call.
   const fetchAiBriefing = async () => {
     setBriefingLoading(true)
-    const prompt = `Workspace Recruitment Metrics Snapshot:
+    const content = `Workspace Recruitment Metrics Snapshot:
 - Total Candidates: ${filteredCandidates.length}
 - Qualified Candidates: ${qualifiedCount}
 - Active Open Jobs: ${activeJobsCount}
@@ -1456,21 +1429,18 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
 - Placement Conversion Rate: ${conversionRate}%
 - Pending Callbacks & Tasks: ${pendingCallbacks.length + dueFollowups.length} (${todaysCallbacks.length} scheduled today)
 - Overdue Tasks: ${overdueFollowups.length}
-- Top Recruiter: ${recruiterData[0]?.name || 'Team'} (${recruiterData[0]?.submissions || 0} submittals, ${recruiterData[0]?.hires || 0} hires)
+- Top Recruiter: ${recruiterData[0]?.name || 'Team'} (${recruiterData[0]?.submissions || 0} submittals, ${recruiterData[0]?.hires || 0} hires)`
+    const context = 'Provide a 2-3 sentence strategic executive briefing for the recruitment team. Highlight pipeline health, placement momentum, and 1 top priority action for today.'
 
-Provide a 2-3 sentence strategic executive briefing for the recruitment team. Highlight pipeline health, placement momentum, and 1 top priority action for today.`
-
+    const startedAt = new Date().getTime()
     try {
-      const data = await apiRequest('/ai/generate', {
-        method: 'POST',
-        body: { prompt, toolId: 'dashboard' }
-      })
-
-      if (data?.text) {
-        setAiBriefingText(data.text)
-      }
+      const res = await runAiAction({ action: 'analyze', content, context })
+      if (res.success === false) throw new Error(res.error || 'Briefing failed.')
+      setAiBriefingText(res.text)
+      logUsageEvent(orgId, userId, { type: 'action', action: 'analyze', source: 'dashboard', success: true, provider: res.provider, model: res.model, durationMs: new Date().getTime() - startedAt, preview: res.text.slice(0, 140) })
     } catch (err) {
       console.warn('AI Briefing request failed:', err.message)
+      logUsageEvent(orgId, userId, { type: 'action', action: 'analyze', source: 'dashboard', success: false, error: err.message, durationMs: new Date().getTime() - startedAt })
     } finally {
       setBriefingLoading(false)
     }
@@ -1551,345 +1521,366 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
   const pipelineHealthLabel = pipelineHealthPct >= 70 ? 'Healthy' : pipelineHealthPct >= 40 ? 'At Risk' : 'Critical'
   const estimatedWorkloadHours = Math.max(0.5, Math.round(((todaysCallbacks.length + overdueFollowups.length) * 0.25 + pendingTasks.length * 0.15) * 2) / 2)
 
+  // Real period-over-period comparison (current window vs. the equivalent prior window),
+  // same technique trendData already uses for the submissions chart — feeds KPI trend arrows
+  // so they reflect actual data instead of hardcoded percentages.
+  const periodComparison = useMemo(() => {
+    const windowDays = timeRange === '30d' ? 30 : timeRange === '90d' ? 90 : 7
+    const now = new Date()
+    const currentStart = new Date(now); currentStart.setDate(currentStart.getDate() - windowDays)
+    const currentStartStr = currentStart.toISOString().slice(0, 10)
+    const prevStart = new Date(currentStart); prevStart.setDate(prevStart.getDate() - windowDays)
+    const prevStartStr = prevStart.toISOString().slice(0, 10)
+    const inCurrent = c => c.submission_date && c.submission_date >= currentStartStr
+    const inPrevious = c => c.submission_date && c.submission_date >= prevStartStr && c.submission_date < currentStartStr
+    const isQualified = c => ['Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired'].includes(c.external_status || c.internal_status)
+    const isOffer = c => (c.external_status || c.internal_status) === 'Offer Extended'
+    const isRejected = c => (c.external_status || c.internal_status) === 'Rejected'
+    const jobDate = j => (j.open_date || j.created_at || '').slice(0, 10)
+
+    return {
+      total: { current: candidatesForTrendComparison.filter(inCurrent).length, previous: candidatesForTrendComparison.filter(inPrevious).length },
+      qualified: { current: candidatesForTrendComparison.filter(c => inCurrent(c) && isQualified(c)).length, previous: candidatesForTrendComparison.filter(c => inPrevious(c) && isQualified(c)).length },
+      offers: { current: candidatesForTrendComparison.filter(c => inCurrent(c) && isOffer(c)).length, previous: candidatesForTrendComparison.filter(c => inPrevious(c) && isOffer(c)).length },
+      rejected: { current: candidatesForTrendComparison.filter(c => inCurrent(c) && isRejected(c)).length, previous: candidatesForTrendComparison.filter(c => inPrevious(c) && isRejected(c)).length },
+      jobsOpened: {
+        current: safeJobs.filter(j => jobDate(j) >= currentStartStr).length,
+        previous: safeJobs.filter(j => jobDate(j) >= prevStartStr && jobDate(j) < currentStartStr).length,
+      },
+    }
+  }, [candidatesForTrendComparison, safeJobs, timeRange])
+
+  const stats = [
+    { label: 'Total Candidates', value: filteredCandidates.length, helper: `+${thisWeekCount} this week`, icon: 'users', tone: 'accent', trend: computeTrend(periodComparison.total.current, periodComparison.total.previous) },
+    { label: 'Qualified Pipeline', value: qualifiedCount, helper: `${filteredCandidates.length ? Math.round((qualifiedCount / filteredCandidates.length) * 100) : 0}% of total`, icon: 'checkCircle', tone: 'ai', trend: computeTrend(periodComparison.qualified.current, periodComparison.qualified.previous) },
+    { label: 'Offers Extended', value: offerCount, helper: `${conversionRate}% placement rate`, icon: 'reports', tone: 'yellow', trend: computeTrend(periodComparison.offers.current, periodComparison.offers.previous) },
+    { label: 'Active Requisitions', value: activeJobsCount, helper: `${filteredJobs.length} total filtered`, icon: 'jobs', tone: 'green', trend: computeTrend(periodComparison.jobsOpened.current, periodComparison.jobsOpened.previous) },
+    { label: 'Rejected Candidates', value: rejectedCount, helper: 'Client declined', icon: 'xCircle', tone: 'red', trend: computeTrend(periodComparison.rejected.current, periodComparison.rejected.previous) },
+    { label: 'Pending Tasks', value: pendingCallbacks.length + dueFollowups.length, helper: `${todaysCallbacks.length} calls today`, icon: 'clock', tone: 'orange', trend: null },
+  ]
+
+  // Compact Today/This Week/This Month submissions strip — real submission_date windows only
+  // (there's no hired-date/completed-date field in the data model, so this stays to what's
+  // actually measurable rather than approximating hires/completions by submission date).
+  const performanceSnapshot = useMemo(() => {
+    const now = new Date()
+    const todayStr = now.toISOString().slice(0, 10)
+    const weekAgoDate = new Date(now); weekAgoDate.setDate(weekAgoDate.getDate() - 7)
+    const weekAgoStr = weekAgoDate.toISOString().slice(0, 10)
+    const monthAgoDate = new Date(now); monthAgoDate.setDate(monthAgoDate.getDate() - 30)
+    const monthAgoStr = monthAgoDate.toISOString().slice(0, 10)
+    return {
+      today: candidates.filter(c => c.submission_date === todayStr).length,
+      week: candidates.filter(c => c.submission_date && c.submission_date >= weekAgoStr).length,
+      month: candidates.filter(c => c.submission_date && c.submission_date >= monthAgoStr).length,
+    }
+  }, [candidates])
+
+  // Transparent composite score (not a magic number): blends pipeline health, placement
+  // conversion, and today's task-completion rate — replaces the old hardcoded "94/100".
+  const productivityScore = useMemo(() => {
+    const taskTotal = pendingTasks.length + completedTasks.length
+    const taskCompletionPct = taskTotal > 0 ? Math.round((completedTasks.length / taskTotal) * 100) : 100
+    const score = pipelineHealthPct * 0.4 + conversionRate * 0.3 + taskCompletionPct * 0.3
+    return Math.max(0, Math.min(100, Math.round(score)))
+  }, [pipelineHealthPct, conversionRate, pendingTasks, completedTasks])
+
+  // Priority Workspace — the "what actually needs attention today" row, consolidating
+  // callbacks/follow-ups/offers/at-risk requisitions into one real, clickable set.
+  const priorityWorkspaceItems = useMemo(() => {
+    const atRiskJobs = priorityJobs.filter(j => j.statusTag === 'Critical' || j.statusTag === 'At Risk')
+    return [
+      { id: 'callbacks', label: 'Due Callbacks', count: todaysCallbacks.length, icon: 'callbacks', tone: 'accent', page: 'callbacks', helper: todaysCallbacks.length > 0 ? `${todaysCallbacks.length} scheduled today` : 'All caught up' },
+      { id: 'followups', label: 'Overdue Follow-ups', count: overdueFollowups.length, icon: 'followups', tone: 'red', page: 'followups', helper: overdueFollowups.length > 0 ? 'Needs immediate attention' : 'Nothing overdue' },
+      { id: 'offers', label: 'Offers Awaiting Decision', count: offerCount, icon: 'reports', tone: 'yellow', page: 'candidates', helper: offerCount > 0 ? 'Follow up with candidates' : 'No pending offers' },
+      { id: 'atrisk', label: 'At-Risk Requisitions', count: atRiskJobs.length, icon: 'jobs', tone: 'orange', page: 'jobs', helper: atRiskJobs.length > 0 ? 'Stale or under-submitted' : 'Pipeline healthy' },
+    ]
+  }, [todaysCallbacks, overdueFollowups, offerCount, priorityJobs])
+
+  const notificationItems = useMemo(() => {
+    const items = []
+    if (todaysFocus) items.push({ id: 'focus', title: todaysFocus.title, desc: todaysFocus.desc })
+    if (overdueFollowups.length > 0) items.push({ id: 'overdue', title: `${overdueFollowups.length} overdue follow-up${overdueFollowups.length === 1 ? '' : 's'}`, desc: 'Past their scheduled date.' })
+    if (offerCount > 0) items.push({ id: 'offers', title: `${offerCount} offer${offerCount === 1 ? '' : 's'} awaiting decision`, desc: 'Candidates with an extended offer.' })
+    return items
+  }, [todaysFocus, overdueFollowups, offerCount])
+
+  // Quick action shortcuts — not memoized, same reasoning as commandActionItems above:
+  // it closes over onNavigate/handleCopilotSend and is cheap to recreate each render.
+  const quickActions = [
+    { label: 'New Candidate', icon: 'users', onClick: () => onNavigate && onNavigate('candidates') },
+    { label: 'Submit Candidate', icon: 'arrowUpRight', onClick: () => onNavigate && onNavigate('pipeline') },
+    { label: 'Schedule Interview', icon: 'calendar', onClick: () => onNavigate && onNavigate('candidates') },
+    { label: 'New Job', icon: 'jobs', onClick: () => onNavigate && onNavigate('jobs') },
+    { label: 'Log Call', icon: 'callbacks', onClick: () => onNavigate && onNavigate('callbacks') },
+    { label: 'AI Search', icon: 'sparkles', ai: true, onClick: () => handleCopilotSend('Search top React candidates submitted this week') },
+  ]
+
   return (
-    <div className="dashboard-page ai-command-center-page">
-      {/* 1. GLASSMORTHIC EXECUTIVE COMMAND BAR */}
-      <header className="dash-executive-bar">
-        <div className="dash-bar-left">
-          <div className="dash-avatar-ring-glow">{avatarInitial}</div>
-          <div className="dash-greeting-box">
-            <div className="dash-greeting-row">
-              <h1>Good Morning, {firstName} 👋</h1>
-              <span className="dash-time-badge">🕒 {timeStr}</span>
+    <PageContainer>
+      {/* EXECUTIVE HEADER */}
+      <header className="flex flex-col gap-4 pb-6 mb-7 border-b border-border lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <Avatar name={profile?.full_name || firstName} size="lg" />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-[22px] font-extrabold text-text leading-tight tracking-tight">Good morning, {firstName}</h1>
+              <Badge tone="neutral" size="sm">{timeStr}</Badge>
             </div>
-            <p className="dash-greeting-sub">
-              TalentDesk AI Command Center • <span>{dateStr}</span> • <b>94/100</b> Productivity Score
-            </p>
+            <p className="text-[13px] text-text3 mt-1.5 truncate">{dateStr} · {todaysFocus.title}</p>
           </div>
         </div>
 
-        <div className="dash-bar-right">
-          <div className="dash-quick-kpi-pill">
-            <span className="dash-kpi-chip green" onClick={() => onNavigate && onNavigate('jobs')}>
-              <b>{activeJobsCount}</b> Active Jobs
-            </span>
-            <span className="dash-kpi-chip purple" onClick={() => onNavigate && onNavigate('candidates')}>
-              <b>{qualifiedCount}</b> Qualified
-            </span>
-            <span className="dash-kpi-chip orange" onClick={() => onNavigate && onNavigate('callbacks')}>
-              <b>{pendingCallbacks.length + dueFollowups.length}</b> Due Tasks
-            </span>
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-2.5 bg-surface border border-border rounded-[var(--radius-lg)] pl-2 pr-3.5 py-1.5">
+            <div
+              className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+              style={{ background: `conic-gradient(var(--accent) ${productivityScore * 3.6}deg, var(--surface3) 0deg)` }}
+              title="Composite of pipeline health, placement conversion, and today's task completion"
+            >
+              <div className="w-[26px] h-[26px] rounded-full bg-surface flex items-center justify-center text-[10px] font-extrabold text-text font-mono">{productivityScore}</div>
+            </div>
+            <div className="leading-tight">
+              <div className="text-[10px] font-bold text-text3 uppercase tracking-wide">Productivity</div>
+              <StatusPill status={pipelineHealthLabel} tone={pipelineHealthPct >= 70 ? 'green' : pipelineHealthPct >= 40 ? 'yellow' : 'red'} size="sm" />
+            </div>
           </div>
 
-          <div className="dash-top-actions">
-            <button className="dash-command-trigger" onClick={() => setCommandOpen(true)} type="button" title="Open Command Palette (Ctrl+K)">
-              <span className="cmd-icon">⌘K</span>
-              <span>Search...</span>
-            </button>
-            <button className="dash-notif-trigger" onClick={() => setShowNotifications(prev => !prev)} type="button">
-              🔔 <span className="notif-badge">3</span>
-            </button>
-          </div>
+          <Button variant="secondary" size="md" leftIcon="search" onClick={() => setCommandOpen(true)} className="hidden sm:inline-flex">
+            Search <span className="ml-1.5 text-[10px] text-text3 font-mono">⌘K</span>
+          </Button>
+          <Button variant="secondary" size="md" iconOnly aria-label={`Notifications${notificationItems.length ? `, ${notificationItems.length} items` : ''}`} onClick={() => setShowNotifications(prev => !prev)} className="relative">
+            <Icon name="bell" size={15} />
+            {notificationItems.length > 0 && (
+              <span className="absolute top-1 right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-red text-white text-[9px] font-extrabold flex items-center justify-center leading-none">{notificationItems.length}</span>
+            )}
+          </Button>
         </div>
       </header>
 
-      {/* 2. UNIFIED COHESIVE TOP COMMAND CENTER CARD */}
-      <div className="dash-unified-command-center">
-        {/* UNIFIED AI EXECUTIVE BRIEFING HERO */}
-        <section className="dash-ai-executive-panel">
-          <div className="ai-executive-header">
-            <div className="ai-brand-group">
-              <span className="ai-sparkle-animated">✨</span>
-              <strong>Today's Recruiting Brief</strong>
-              <span className="ai-tag-live">AI COPILOT</span>
-            </div>
-          </div>
-
-          <ul className="ai-brief-list">
-            <li className="ai-brief-item">
-              <span className="brief-dot blue" />
-              <span>{todaysFocus.title}</span>
-            </li>
-            <li className="ai-brief-item">
-              <span className="brief-dot red" />
-              <span>{atRiskCount} candidate{atRiskCount === 1 ? '' : 's'} awaiting recruiter feedback</span>
-            </li>
-            <li className="ai-brief-item">
-              <span className="brief-dot amber" />
-              <span>{recommendedJobLabel} requires additional submittals this week</span>
-            </li>
-            <li className="ai-brief-item">
-              <span className="brief-dot green" />
-              <span>Pipeline Health: <b>{pipelineHealthLabel}</b> ({pipelineHealthPct}% yield)</span>
-            </li>
-            <li className="ai-brief-item muted">
-              <span className="brief-dot purple" />
-              <span>Estimated workload: <b>{estimatedWorkloadHours}h</b> to clear today's queue</span>
-            </li>
-          </ul>
-
-          <div className="ai-brief-actions">
+      {/* PRIORITY WORKSPACE — what actually needs attention today, unfiltered by the toolbar below */}
+      <section className="mb-8">
+        <h2 className="text-[11px] font-bold text-text3 uppercase tracking-wider mb-3">Priority Workspace</h2>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {priorityWorkspaceItems.map(item => (
             <button
-              className="ai-brief-action-btn primary"
+              key={item.id}
               type="button"
-              onClick={() => onNavigate && onNavigate(todaysCallbacks.length > 0 ? 'callbacks' : 'candidates')}
+              onClick={() => onNavigate && onNavigate(item.page)}
+              className="text-left bg-surface border border-border shadow-xs rounded-[var(--radius-lg)] p-4 transition-[box-shadow,border-color,transform] duration-[var(--duration-fast)] ease-[var(--ease-standard)] hover:border-border-strong hover:shadow-sm hover:-translate-y-px"
             >
-              Start Working
+              <div className="flex items-center justify-between mb-2.5">
+                <span
+                  className="w-7 h-7 rounded-[var(--radius-sm)] flex items-center justify-center"
+                  style={{ background: `color-mix(in srgb, var(--${item.tone}) 12%, transparent)`, color: `var(--${item.tone})`, boxShadow: `inset 0 0 0 1px color-mix(in srgb, var(--${item.tone}) 18%, transparent)` }}
+                >
+                  <Icon name={item.icon} size={14} />
+                </span>
+                <span className="text-2xl font-extrabold text-text font-mono leading-none tracking-tight tabular-nums">{item.count}</span>
+              </div>
+              <div className="text-[12.5px] font-bold text-text">{item.label}</div>
+              <div className="text-[11px] text-text3 mt-1 truncate">{item.helper}</div>
             </button>
-            <button className="ai-brief-action-btn" onClick={() => setAiBriefExpanded(!aiBriefExpanded)} type="button">
-              {aiBriefExpanded ? 'Collapse Brief ▲' : 'Expand Brief ▼'}
+          ))}
+        </div>
+      </section>
+
+      {/* QUICK ACTIONS — compact action cards, not stacked buttons */}
+      <section className="mb-8">
+        <h2 className="text-[11px] font-bold text-text3 uppercase tracking-wider mb-3">Quick Actions</h2>
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5">
+          {quickActions.map(action => (
+            <button
+              key={action.label}
+              type="button"
+              onClick={action.onClick}
+              className={`flex flex-col items-center justify-center gap-1.5 rounded-[var(--radius-md)] border p-3 text-center transition-[box-shadow,border-color,color] duration-[var(--duration-fast)] ${action.ai ? 'bg-ai-soft border-ai/20 text-ai hover:border-ai/45 hover:shadow-sm' : 'bg-surface2/60 border-border text-text2 hover:border-border-strong hover:bg-surface hover:text-text hover:shadow-xs'}`}
+            >
+              <Icon name={action.icon} size={16} />
+              <span className="text-[11px] font-semibold leading-tight">{action.label}</span>
             </button>
-            <button className="ai-brief-action-btn ai" onClick={fetchAiBriefing} disabled={briefingLoading} type="button">
-              {briefingLoading ? '⚡ Synthesizing...' : '⚡ Generate AI Plan'}
-            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* AI INTELLIGENCE — briefing / opportunity / risk / recommendation, not a chatbot */}
+      <div
+        className="mb-8 rounded-[var(--radius-lg)] border border-ai/20 shadow-sm p-4"
+        style={{ background: 'linear-gradient(160deg, color-mix(in srgb, var(--ai) 6%, var(--surface)), var(--surface) 55%)' }}
+      >
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+          <div className="flex items-center gap-2.5">
+            <span className="w-8 h-8 rounded-[var(--radius-sm)] bg-ai-soft text-ai flex items-center justify-center shadow-[inset_0_0_0_1px_rgba(139,92,246,0.18)]"><Icon name="sparkles" size={15} /></span>
+            <div>
+              <h2 className="text-[13px] font-bold text-text tracking-tight">AI Intelligence Briefing</h2>
+              <p className="text-[11.5px] text-text3">Synthesized from live pipeline, requisition & task data</p>
+            </div>
           </div>
-
-          {aiBriefExpanded && (
-            <div className="ai-expanded-insight-box">
-              {briefingLoading ? (
-                <p className="briefing-loading-text">Synthesizing live candidate pipeline health & recruiter workload...</p>
-              ) : (
-                <p>{aiBriefingText || `Pipeline health is operating at ${pipelineHealthPct}% yield with ${qualifiedCount} qualified candidates in stage. Priority action today: execute ${todaysCallbacks.length} scheduled recruiter calls and review ${activeJobsCount} open requisitions.`}</p>
-              )}
-            </div>
-          )}
-        </section>
-
-        {/* SUBTLE INNER SEPARATOR DIVIDER */}
-        <div className="dash-command-divider" />
-
-        {/* HORIZONTALLY SCROLLABLE QUICK ACTION TOOLBAR — tiered by importance */}
-        <section className="dash-quick-actions-bar">
-          <div className="quick-actions-group primary-group">
-            <button onClick={() => onNavigate && onNavigate('candidates')} className="quick-action-item primary" type="button">
-              <span className="action-icon">👤</span>
-              <span>New Candidate</span>
-            </button>
-            <button onClick={() => onNavigate && onNavigate('pipeline')} className="quick-action-item primary" type="button">
-              <span className="action-icon">📤</span>
-              <span>Submit Candidate</span>
-            </button>
-            <button onClick={() => onNavigate && onNavigate('candidates')} className="quick-action-item primary" type="button">
-              <span className="action-icon">📅</span>
-              <span>Schedule Interview</span>
-            </button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="primary" onClick={() => onNavigate && onNavigate(todaysCallbacks.length > 0 ? 'callbacks' : 'candidates')}>Start Working</Button>
+            <Button size="sm" variant="ghost" onClick={() => setAiBriefExpanded(!aiBriefExpanded)}>{aiBriefExpanded ? 'Collapse' : 'Expand'}</Button>
+            <Button size="sm" variant="ai" leftIcon="sparkles" loading={briefingLoading} onClick={fetchAiBriefing}>Generate Plan</Button>
           </div>
-          <div className="quick-actions-group secondary-group">
-            <button onClick={() => onNavigate && onNavigate('jobs')} className="quick-action-item secondary" type="button">
-              <span className="action-icon">💼</span>
-              <span>New Job</span>
-            </button>
-            <button onClick={() => onNavigate && onNavigate('callbacks')} className="quick-action-item secondary" type="button">
-              <span className="action-icon">📞</span>
-              <span>Log Call</span>
-            </button>
-            <button onClick={() => handleCopilotSend('Search top React candidates submitted this week')} className="quick-action-item secondary ai" type="button">
-              <span className="action-icon">⚡</span>
-              <span>AI Search</span>
-            </button>
-            <button onClick={() => handleCopilotSend('Generate precision Boolean search string for Senior React Developer')} className="quick-action-item secondary ai" type="button">
-              <span className="action-icon">🔍</span>
-              <span>Generate Boolean</span>
-            </button>
+        </div>
+
+        <div className="grid sm:grid-cols-3 gap-3">
+          <div className="rounded-[var(--radius-md)] bg-surface2 border border-border p-3">
+            <div className="text-[10px] font-bold text-accent uppercase tracking-wide mb-1.5">Opportunity</div>
+            <p className="text-xs text-text2 leading-relaxed">{recommendedJobLabel} could use additional submittals this week — {todaysFocus.title.toLowerCase()}.</p>
           </div>
-        </section>
+          <div className="rounded-[var(--radius-md)] bg-surface2 border border-border p-3">
+            <div className="text-[10px] font-bold text-red uppercase tracking-wide mb-1.5">Risk</div>
+            <p className="text-xs text-text2 leading-relaxed">{atRiskCount} candidate{atRiskCount === 1 ? '' : 's'} awaiting feedback · pipeline health is <b className="text-text">{pipelineHealthLabel.toLowerCase()}</b> at {pipelineHealthPct}%.</p>
+          </div>
+          <div className="rounded-[var(--radius-md)] bg-surface2 border border-border p-3">
+            <div className="text-[10px] font-bold text-green uppercase tracking-wide mb-1.5">Recommendation</div>
+            <p className="text-xs text-text2 leading-relaxed">Budget ~{estimatedWorkloadHours}h today to clear {todaysCallbacks.length} calls and {overdueFollowups.length} overdue follow-ups.</p>
+          </div>
+        </div>
 
-        {/* SUBTLE INNER SEPARATOR DIVIDER */}
-        <div className="dash-command-divider" />
-
-        {/* CONSOLIDATED SINGLE 1-LINE SEARCH & FILTER TOOLBAR */}
-        <section className="dash-single-line-toolbar">
-          <div className="dash-toolbar-left-group">
-            <div className="dash-search-compact">
-              <span className="search-icon">🔍</span>
-              <input 
-                type="text" 
-                placeholder="Search candidates, jobs, clients... (Ctrl+K)" 
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-              />
-              {searchQuery && <button onClick={() => setSearchQuery('')} className="clear-btn" type="button">×</button>}
-            </div>
-
-            <div className="dash-filter-dropdown-pill">
-              <button
-                ref={recruiterBtnRef}
-                type="button"
-                className="filter-trigger-btn"
-                onClick={() => {
-                  if (!showOwnerDropdown && recruiterBtnRef.current) {
-                    const r = recruiterBtnRef.current.getBoundingClientRect()
-                    setRecruiterPos({ top: r.bottom + 6, left: r.left })
-                  }
-                  setShowOwnerDropdown(prev => !prev)
-                }}
-              >
-                <span>👤 {selectedOwners.length === 0 ? 'All Recruiters' : `${selectedOwners.length} Selected`}</span>
-                <small>▾</small>
-              </button>
-            </div>
-
-            {showOwnerDropdown && createPortal(
-              <div
-                onClick={e => e.stopPropagation()}
-                onMouseDown={e => e.stopPropagation()}
-                style={{
-                  position: 'fixed',
-                  top: recruiterPos.top,
-                  left: recruiterPos.left,
-                  width: 260,
-                  zIndex: 2147483647,
-                  background: '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: 12,
-                  boxShadow: '0 12px 40px rgba(15,23,42,0.22), 0 2px 8px rgba(15,23,42,0.08)',
-                  padding: 10,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 6,
-                  maxHeight: 300,
-                  overflow: 'hidden',
-                }}
-              >
-                <input
-                  autoFocus
-                  type="text"
-                  placeholder="Search recruiters..."
-                  value={recruiterSearch}
-                  onChange={e => setRecruiterSearch(e.target.value)}
-                  style={{
-                    width: '100%', padding: '7px 10px',
-                    border: '1px solid #cbd5e1', borderRadius: 8,
-                    fontSize: 12, color: '#0f172a', background: '#f8fafc',
-                    outline: 'none', boxSizing: 'border-box', flexShrink: 0
-                  }}
-                />
-                <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <label style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 8px', borderRadius:6, cursor:'pointer', fontSize:12.5, color:'#334155' }}>
-                    <input type="checkbox" checked={selectedOwners.length === 0} onChange={() => setSelectedOwners([])} style={{ accentColor:'#2563eb', width:15, height:15 }} />
-                    <span>All recruiters</span>
-                  </label>
-                  <div style={{ height:1, background:'#e2e8f0', margin:'2px 0' }} />
-                  {filteredRecruiterOptions.map(([id, name]) => {
-                    const isChecked = selectedOwners.includes(id)
-                    return (
-                      <label key={id} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 8px', borderRadius:6, cursor:'pointer', fontSize:12.5, color:'#334155', transition:'background 0.1s' }}>
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => setSelectedOwners(prev => isChecked ? prev.filter(i => i !== id) : [...prev, id])}
-                          style={{ accentColor:'#2563eb', width:15, height:15 }}
-                        />
-                        <span>{name}</span>
-                      </label>
-                    )
-                  })}
-                </div>
-              </div>,
-              document.body
-            )}
-
-            <div className="dash-select-compact">
-              <span>📊</span>
-              <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}>
-                <option value="All">All Stages</option>
-                {stageOptions.filter(s => s !== 'All').map(stage => <option key={stage} value={stage}>{stage}</option>)}
-              </select>
-            </div>
-
-            <div className="dash-select-compact">
-              <span>💼</span>
-              <select value={jobStatusFilter} onChange={e => setJobStatusFilter(e.target.value)}>
-                <option value="All">All Statuses</option>
-                {jobStatusOptions.filter(s => s !== 'All').map(status => <option key={status} value={status}>{status}</option>)}
-              </select>
-            </div>
-
-            {/* Time Range Selector */}
-            <div className="dash-select-compact">
-              <span>📅</span>
-              <select value={timeRange} onChange={e => setTimeRange(e.target.value)}>
-                <option value="all">All Time</option>
-                <option value="7d">Last 7 Days</option>
-                <option value="30d">Last 30 Days</option>
-                <option value="90d">Last 90 Days</option>
-              </select>
-            </div>
-
-            {(searchQuery || selectedOwners.length > 0 || stageFilter !== 'All' || jobStatusFilter !== 'All' || timeRange !== 'all') && (
-              <button className="dash-reset-compact-btn" type="button" onClick={() => { setTimeRange('all'); setSelectedOwners([]); setStageFilter('All'); setJobStatusFilter('All'); setSearchQuery('') }}>
-                ↺ Reset
-              </button>
+        {aiBriefExpanded && (
+          <div className="mt-3 rounded-[var(--radius-md)] bg-ai-soft border border-ai/20 p-3.5">
+            {briefingLoading ? (
+              <p className="text-xs text-text3">Synthesizing live candidate pipeline health &amp; recruiter workload...</p>
+            ) : (
+              <p className="text-xs text-text2 leading-relaxed">{aiBriefingText || `Pipeline health is operating at ${pipelineHealthPct}% yield with ${qualifiedCount} qualified candidates in stage. Priority action today: execute ${todaysCallbacks.length} scheduled recruiter calls and review ${activeJobsCount} open requisitions.`}</p>
             )}
           </div>
-
-          <div className="dash-toolbar-right-meta">
-            <span><b>{filteredCandidates.length}</b> Candidates</span> • <span><b>{filteredJobs.length}</b> Jobs</span>
-          </div>
-        </section>
+        )}
       </div>
 
-      {/* 5. KPI STAT CARDS WITH MINI SVG SPARKLINES */}
-      <section className="dash-kpi-grid">
-        {stats.map(stat => (
-          <article className={`dash-kpi-card ${stat.tone}`} key={stat.label}>
-            <div className="kpi-top">
-              <span>{stat.label}</span>
-              {stat.trend && (
-                <span className={`kpi-trend ${stat.trend.dir}`}>
-                  {stat.trend.dir === 'up' ? '↑' : '↓'} {stat.trend.pct}%
-                </span>
-              )}
-            </div>
-            <div className="kpi-mid-row">
-              <strong>{stat.value}</strong>
-              <svg className="mini-sparkline" viewBox="0 0 100 30">
-                <path
-                  d={`M 0 ${30 - stat.sparkline[0]} Q 15 ${30 - stat.sparkline[1]}, 30 ${30 - stat.sparkline[2]} T 60 ${30 - stat.sparkline[4]} T 100 ${30 - stat.sparkline[6]}`}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                />
-              </svg>
-            </div>
-            <small>{stat.helper}</small>
-            {stat.progress && stat.progress.max > 0 && (
-              <div className="kpi-progress-track" title={`${stat.progress.value} ${stat.progress.label || ''}`}>
-                <div
-                  className="kpi-progress-fill"
-                  style={{ width: `${Math.min(100, Math.round((stat.progress.value / stat.progress.max) * 100))}%` }}
-                />
+      {/* FILTER TOOLBAR — scopes the KPI grid and analytics panels below */}
+      <section className="flex flex-col sm:flex-row sm:items-center gap-2.5 mb-4">
+        <div className="relative w-full sm:max-w-xs">
+          <Input leftIcon="search" placeholder="Search candidates, jobs, clients..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} rightIcon={searchQuery ? 'x' : undefined} />
+          {searchQuery && (
+            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text3 hover:text-text" aria-label="Clear search">
+              <Icon name="x" size={13} />
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            ref={recruiterBtnRef}
+            type="button"
+            onClick={() => {
+              if (!showOwnerDropdown && recruiterBtnRef.current) {
+                const r = recruiterBtnRef.current.getBoundingClientRect()
+                setRecruiterPos({ top: r.bottom + 6, left: r.left })
+              }
+              setShowOwnerDropdown(prev => !prev)
+            }}
+            className="h-9 px-3 rounded-[var(--radius-sm)] border border-border bg-surface2 text-xs font-semibold text-text2 hover:text-text flex items-center gap-1.5"
+          >
+            <Icon name="users" size={13} />
+            {selectedOwners.length === 0 ? 'All Recruiters' : `${selectedOwners.length} Selected`}
+            <Icon name="chevronDown" size={11} />
+          </button>
+
+          {showOwnerDropdown && createPortal(
+            <div
+              onClick={e => e.stopPropagation()}
+              onMouseDown={e => e.stopPropagation()}
+              className="fixed w-[260px] bg-surface border border-border rounded-[var(--radius-md)] shadow-[var(--shadow-lg)] p-2.5 flex flex-col gap-1.5 max-h-[300px] overflow-hidden"
+              style={{ top: recruiterPos.top, left: recruiterPos.left, zIndex: 'var(--z-dropdown)' }}
+            >
+              <input
+                autoFocus
+                type="text"
+                placeholder="Search recruiters..."
+                value={recruiterSearch}
+                onChange={e => setRecruiterSearch(e.target.value)}
+                className="w-full px-2.5 py-1.5 rounded-[var(--radius-sm)] border border-border bg-surface2 text-xs text-text placeholder:text-text3 outline-none shrink-0"
+              />
+              <div className="overflow-y-auto flex-1 flex flex-col gap-0.5">
+                <label className="flex items-center gap-2 px-2 py-1.5 rounded-[var(--radius-sm)] cursor-pointer text-xs text-text2 hover:bg-surface2">
+                  <input type="checkbox" checked={selectedOwners.length === 0} onChange={() => setSelectedOwners([])} className="w-3.5 h-3.5 rounded accent-accent" />
+                  All recruiters
+                </label>
+                <div className="h-px bg-border my-0.5" />
+                {filteredRecruiterOptions.map(([id, name]) => {
+                  const isChecked = selectedOwners.includes(id)
+                  return (
+                    <label key={id} className="flex items-center gap-2 px-2 py-1.5 rounded-[var(--radius-sm)] cursor-pointer text-xs text-text2 hover:bg-surface2">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => setSelectedOwners(prev => isChecked ? prev.filter(i => i !== id) : [...prev, id])}
+                        className="w-3.5 h-3.5 rounded accent-accent"
+                      />
+                      {name}
+                    </label>
+                  )
+                })}
               </div>
-            )}
-          </article>
+            </div>,
+            document.body
+          )}
+
+          <select value={stageFilter} onChange={e => setStageFilter(e.target.value)} className="h-9 px-2.5 rounded-[var(--radius-sm)] border border-border bg-surface2 text-xs font-semibold text-text2">
+            <option value="All">All Stages</option>
+            {stageOptions.filter(s => s !== 'All').map(stage => <option key={stage} value={stage}>{stage}</option>)}
+          </select>
+
+          <select value={jobStatusFilter} onChange={e => setJobStatusFilter(e.target.value)} className="h-9 px-2.5 rounded-[var(--radius-sm)] border border-border bg-surface2 text-xs font-semibold text-text2">
+            <option value="All">All Statuses</option>
+            {jobStatusOptions.filter(s => s !== 'All').map(status => <option key={status} value={status}>{status}</option>)}
+          </select>
+
+          <select value={timeRange} onChange={e => setTimeRange(e.target.value)} className="h-9 px-2.5 rounded-[var(--radius-sm)] border border-border bg-surface2 text-xs font-semibold text-text2">
+            <option value="all">All Time</option>
+            <option value="7d">Last 7 Days</option>
+            <option value="30d">Last 30 Days</option>
+            <option value="90d">Last 90 Days</option>
+          </select>
+
+          {(searchQuery || selectedOwners.length > 0 || stageFilter !== 'All' || jobStatusFilter !== 'All' || timeRange !== 'all') && (
+            <button type="button" onClick={() => { setTimeRange('all'); setSelectedOwners([]); setStageFilter('All'); setJobStatusFilter('All'); setSearchQuery('') }} className="text-xs font-semibold text-text3 hover:text-red px-1">
+              Reset
+            </button>
+          )}
+        </div>
+
+        <div className="sm:ml-auto text-xs text-text3 whitespace-nowrap">
+          <b className="text-text">{filteredCandidates.length}</b> Candidates · <b className="text-text">{filteredJobs.length}</b> Jobs
+        </div>
+      </section>
+
+      {/* KPI GRID */}
+      <section className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-7">
+        {stats.map(stat => (
+          <KPICard
+            key={stat.label}
+            label={stat.label}
+            value={stat.value}
+            icon={stat.icon}
+            tone={stat.tone}
+            helper={stat.helper}
+            trend={stat.trend?.dir}
+            trendValue={stat.trend ? (stat.trend.dir === 'flat' ? 'No change' : `${stat.trend.dir === 'up' ? '+' : '-'}${stat.trend.pct}%`) : undefined}
+          />
         ))}
       </section>
 
-      {/* 6. MAIN WORKFLOW 2-COLUMN GRID */}
-      <section className="dash-main-columns">
-        {/* Left Column: Funnel, Priority Jobs, Performance Table */}
-        <div className="dash-col">
-          {/* REFINED INTERACTIVE CONNECTED PIPELINE FLOW VISUALIZATION */}
-          <Panel
-            title="Interactive Pipeline Flow Visualization"
-            subtitle="Connected candidate funnel · Click any stage to filter workspace"
-            action={
-              <button
-                type="button"
-                className="panel-ai-action-btn"
-                onClick={() => handleCopilotSend('Explain the current pipeline bottlenecks and recommend actions to improve conversion')}
-              >
-                ✨ Explain Bottlenecks
-              </button>
-            }
-          >
-            <div className="pipeline-flow-connected-strip">
+      {/* MAIN WORKFLOW 2-COLUMN GRID */}
+      <section className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+        {/* Left Column: Pipeline Health, Requisition Health, Today's Actions, Leaderboard */}
+        <div className="flex flex-col gap-6 min-w-0">
+          {/* PIPELINE HEALTH */}
+          <Card>
+            <CardHeader
+              title="Pipeline Health"
+              subtitle="Connected candidate funnel · click any stage to filter"
+              action={<Button size="sm" variant="ai" leftIcon="sparkles" onClick={() => handleCopilotSend('Explain the current pipeline bottlenecks and recommend actions to improve conversion')}>Explain Bottlenecks</Button>}
+            />
+            <div className="flex items-stretch gap-1 overflow-x-auto pb-1">
               {pipelineData.map((stg, i) => {
                 const isSelected = stageFilter === stg.rawStage
                 return (
-                  <div key={stg.stage} className="pipeline-flow-step-wrapper">
-                    <div
-                      className={`pipeline-flow-chip compact ${isSelected ? 'selected' : ''}`}
+                  <div key={stg.stage} className="flex items-center shrink-0">
+                    <button
+                      type="button"
                       onClick={() => {
                         setStageFilter(prev => prev === stg.rawStage ? 'All' : stg.rawStage)
                         onNavigate && onNavigate('candidates')
@@ -1897,488 +1888,428 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
                       onMouseEnter={() => setHoveredStage(stg.rawStage)}
                       onMouseLeave={() => setHoveredStage(prev => prev === stg.rawStage ? null : prev)}
                       title={`Filter candidates by ${stg.stage} • Avg Time: ${stg.avgDays} days • Drop-off: ${stg.dropOff}`}
+                      className={`flex flex-col gap-1 rounded-[var(--radius-md)] border px-2.5 py-2 min-w-[92px] text-left transition-colors duration-[var(--duration-fast)] ${isSelected ? 'border-accent bg-accent/8' : 'border-border bg-surface2 hover:border-text3'}`}
                     >
-                      <div className="chip-header">
-                        <span className="dot" style={{ background: stg.color }} />
-                        <span className="name">{stg.stage}</span>
-                      </div>
-                      <div className="chip-metrics">
-                        <b className="count">{stg.count}</b>
-                        <span className="pct">{stg.pct}%</span>
-                      </div>
-                    </div>
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: stg.color }} />
+                        <span className="text-[10px] font-bold text-text2 truncate">{stg.stage}</span>
+                      </span>
+                      <span className="flex items-baseline gap-1">
+                        <b className="text-sm font-extrabold text-text font-mono">{stg.count}</b>
+                        <span className="text-[10px] text-text3">{stg.pct}%</span>
+                      </span>
+                    </button>
                     {i < pipelineData.length - 1 && (
-                      <span className="pipeline-flow-arrow" title="Next funnel stage">→</span>
+                      <span className="text-text3 px-0.5 shrink-0" aria-hidden="true">→</span>
                     )}
                   </div>
                 )
               })}
             </div>
 
-            {/* PROGRESSIVE DISCLOSURE: stage detail rail, revealed on hover (falls back to the selected stage) */}
             {(() => {
               const focusStage = pipelineData.find(s => s.rawStage === (hoveredStage || stageFilter))
               return (
-                <div className="pipeline-detail-rail">
+                <div className="flex items-center gap-3 flex-wrap text-xs text-text3 bg-surface2 rounded-[var(--radius-sm)] px-3 py-2 mt-2.5">
                   {focusStage ? (
                     <>
-                      <span className="pipeline-detail-stage" style={{ '--stage-hue': focusStage.color }}>{focusStage.stage}</span>
-                      <span className="pipeline-detail-metric">Avg time in stage: <b>{focusStage.avgDays} days</b></span>
-                      <span className="pipeline-detail-metric">Drop-off: <b>{focusStage.dropOff}</b></span>
-                      <span className="pipeline-detail-metric">{focusStage.count} candidates · {focusStage.pct}% of pipeline</span>
+                      <span className="font-bold text-text">{focusStage.stage}</span>
+                      <span>Avg time in stage: <b className="text-text2">{focusStage.avgDays} days</b></span>
+                      <span>Drop-off: <b className="text-text2">{focusStage.dropOff}</b></span>
+                      <span>{focusStage.count} candidates · {focusStage.pct}% of pipeline</span>
                     </>
                   ) : (
-                    <span className="pipeline-detail-hint">Hover a stage for avg time & drop-off, or click to filter</span>
+                    <span>Hover a stage for avg time &amp; drop-off, or click to filter</span>
                   )}
                 </div>
               )
             })()}
 
-            {/* COMPRESSED 145PX SUPPORTING BAR CHART */}
-            <div className="dashboard-chart compact-chart">
-              <ResponsiveContainer width="100%" height={145}>
+            <div className="mt-3 -mx-1">
+              <ResponsiveContainer width="100%" height={140}>
                 <BarChart data={pipelineData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                  <CartesianGrid stroke="rgba(226,232,240,0.6)" vertical={false} />
-                  <XAxis dataKey="stage" interval={0} angle={-35} textAnchor="end" height={48} tick={{ fill: '#64748b', fontSize: 9 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <CartesianGrid stroke="var(--border)" vertical={false} />
+                  <XAxis dataKey="stage" interval={0} angle={-35} textAnchor="end" height={48} tick={{ fill: 'var(--text3)', fontSize: 9 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: 'var(--text3)', fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
                   <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={{ fill: 'rgba(37,99,235,0.04)' }} />
-                  <Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={20}>
-                    {pipelineData.map(item => <Cell key={item.stage} fill={item.color} />)}
+                  <Bar
+                    dataKey="count"
+                    radius={[4, 4, 0, 0]}
+                    barSize={20}
+                    onClick={(data) => {
+                      if (data && data.rawStage) setStageFilter(prev => prev === data.rawStage ? 'All' : data.rawStage)
+                    }}
+                  >
+                    {pipelineData.map(item => (
+                      <Cell
+                        key={item.stage}
+                        fill={stageFilter === item.rawStage ? 'var(--accent)' : item.color}
+                        cursor="pointer"
+                        opacity={stageFilter === 'All' || stageFilter === item.rawStage ? 1 : 0.35}
+                      />
+                    ))}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
-          </Panel>
+          </Card>
 
-          {/* Top Priority Jobs & Requisition Health Cards */}
-          <Panel
-            title="Top Priority Requisition Health Radar"
-            subtitle="Active job requirements, submittal pace & placement probability"
-            action={
-              <button
-                type="button"
-                className="panel-ai-action-btn"
-                onClick={() => handleCopilotSend('Explain which requisitions are most at risk and why, based on the priority job health radar')}
-              >
-                ✨ Explain Risk
-              </button>
-            }
-          >
-            <div className="job-health-grid">
-              {priorityJobs.map(job => (
-                <div key={job.id} className={`job-health-card ${job.statusTone}`}>
-                  <div className="job-health-top">
-                    <span className={`priority-badge ${job.priority.toLowerCase()}`}>{job.priority} Priority</span>
-                    <span className={`status-indicator-dot ${job.statusTone}`} title={`Status: ${job.statusTag}`} />
-                  </div>
-                  <strong className="job-title">{job.title}</strong>
-                  <span className="job-client">{job.client || 'Client Account'} · {job.openDays} days open</span>
-                  <div className="job-health-stats">
-                    <span><b>{job.submittals}</b> Sub</span>
-                    <span><b>{job.interviews}</b> Int</span>
-                    <span className="green-text"><b>{job.placementProb}</b> Prob</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Panel>
-
-          {/* Action Center & Today's Tasks */}
-          <Panel title="Today's Priority Action Center" subtitle="Complete pending callbacks and follow-ups inline">
-            <div className="dashboard-work-list interactive-action-list">
-              {[...todaysCallbacks.slice(0, 4), ...overdueFollowups.slice(0, 4)].length === 0 ? (
-                <div className="dash-empty-action-center">
-                  <span className="empty-celebrate-icon">🎉</span>
-                  <strong>You're all caught up.</strong>
-                  <p>No pending callbacks or follow-ups today.</p>
-                  <div className="empty-suggested-actions">
-                    <button type="button" onClick={() => onNavigate && onNavigate('candidates')}>Review Pipeline</button>
-                    <button type="button" onClick={() => handleCopilotSend('Draft candidate outreach for open requisitions')}>Generate Outreach</button>
-                    <button type="button" onClick={() => handleCopilotSend('Search passive candidates for our top open roles')}>Search Passive Candidates</button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {todaysCallbacks.slice(0, 4).map(item => (
-                    <div className="action-task-card yellow" key={`c-${item.id}`}>
-                      <div className="task-content">
-                        <strong>📞 Callback: {item.candidate_name}</strong>
-                        <small>{item.time || 'Schedule'} · {item.phone || 'No phone'}</small>
-                      </div>
-                      <div className="task-actions">
-                        {item.phone && (
-                          <a href={`tel:${item.phone}`} className="task-action-btn phone-btn" title="Call candidate">
-                            📞
-                          </a>
-                        )}
-                        <button onClick={() => handleCompleteCallback(item.id)} className="task-action-btn check-btn" title="Mark Done" type="button">
-                          ✓
-                        </button>
-                      </div>
+          {/* REQUISITION HEALTH */}
+          <Card>
+            <CardHeader
+              title="Requisition Health"
+              subtitle="Submittal pace &amp; placement probability for top open roles"
+              action={<Button size="sm" variant="ai" leftIcon="sparkles" onClick={() => handleCopilotSend('Explain which requisitions are most at risk and why, based on the priority job health radar')}>Explain Risk</Button>}
+            />
+            {priorityJobs.length === 0 ? (
+              <EmptyState icon="jobs" title="No open requisitions" description="Post a job to start tracking its health here." />
+            ) : (
+              <div className="grid sm:grid-cols-2 gap-2.5">
+                {priorityJobs.map(job => (
+                  <div key={job.id} className="rounded-[var(--radius-md)] border border-border bg-surface2 p-3 flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <Badge tone={job.priority === 'Urgent' ? 'red' : job.priority === 'High' ? 'orange' : 'neutral'} size="sm">{job.priority}</Badge>
+                      <StatusPill status={job.statusTag} tone={job.statusTone === 'amber' ? 'yellow' : job.statusTone} size="sm" />
                     </div>
-                  ))}
-                  {overdueFollowups.slice(0, 4).map(item => (
-                    <div className="action-task-card red" key={`f-${item.id}`}>
-                      <div className="task-content">
-                        <strong>🔔 Follow-up: {item.candidate_name}</strong>
-                        <small>{item.date} · {item.priority || 'Medium'} priority</small>
-                      </div>
-                      <div className="task-actions">
-                        <button onClick={() => handleCompleteFollowup(item.id)} className="task-action-btn check-btn" title="Mark Done" type="button">
-                          ✓
-                        </button>
-                      </div>
+                    <strong className="text-xs font-bold text-text truncate">{job.title}</strong>
+                    <span className="text-[11px] text-text3 truncate">{job.client || 'Client Account'} · {job.openDays}d open</span>
+                    <div className="flex items-center gap-3 text-[11px] text-text2 mt-0.5">
+                      <span><b className="text-text">{job.submittals}</b> Sub</span>
+                      <span><b className="text-text">{job.interviews}</b> Int</span>
+                      <span className="text-green"><b>{job.placementProb}</b> Prob</span>
                     </div>
-                  ))}
-                </>
-              )}
-            </div>
-          </Panel>
-
-          {/* Recruiter Performance Table */}
-          <Panel 
-            title="Recruiter Performance Analytics Table" 
-            subtitle="Real-time team submittals, interviews & placement conversion rankings"
-            action={
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {selectedOwners.length > 0 && (
-                  <button
-                    type="button"
-                    className="dash-table-reset-btn"
-                    onClick={() => setSelectedOwners([])}
-                    title="Clear recruiter selection to view all recruiters"
-                  >
-                    ↺ Reset View ({selectedOwners.length} Selected)
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="panel-ai-action-btn"
-                  onClick={() => handleCopilotSend('Explain why recruiter productivity and performance changed this period')}
-                >
-                  ✨ Explain Productivity
-                </button>
-              </div>
-            }
-          >
-            {selectedOwners.length > 0 && (
-              <div className="table-active-filter-banner">
-                <div className="filter-banner-info">
-                  <span className="filter-badge-icon">🔍</span>
-                  <span>Filtered analytics for: <strong>{selectedOwnerNamesStr}</strong></span>
-                </div>
-                <button 
-                  type="button" 
-                  className="filter-banner-clear-btn"
-                  onClick={() => setSelectedOwners([])}
-                >
-                  ✕ Clear Filter (Show All)
-                </button>
+                  </div>
+                ))}
               </div>
             )}
-            <div className="leaderboard-table-wrapper">
-              <table className="leaderboard-table">
-                <thead>
-                  <tr>
-                    <th className="sortable-th" onClick={() => setTableSortKey(null)} title="Reset to default ranking">Rank</th>
-                    <th className="sortable-th" onClick={() => handleTableSort('name')}>
-                      Recruiter {tableSortKey === 'name' && (tableSortDir === 'asc' ? '▲' : '▼')}
-                    </th>
-                    <th className="sortable-th" onClick={() => handleTableSort('submissions')}>
-                      Submittals {tableSortKey === 'submissions' && (tableSortDir === 'asc' ? '▲' : '▼')}
-                    </th>
-                    <th className="sortable-th" onClick={() => handleTableSort('interviews')}>
-                      Interviews {tableSortKey === 'interviews' && (tableSortDir === 'asc' ? '▲' : '▼')}
-                    </th>
-                    <th className="sortable-th" onClick={() => handleTableSort('offers')}>
-                      Offers {tableSortKey === 'offers' && (tableSortDir === 'asc' ? '▲' : '▼')}
-                    </th>
-                    <th className="sortable-th" onClick={() => handleTableSort('hires')}>
-                      Hires {tableSortKey === 'hires' && (tableSortDir === 'asc' ? '▲' : '▼')}
-                    </th>
-                    <th className="sortable-th" onClick={() => handleTableSort('fillRate')}>
-                      Yield % {tableSortKey === 'fillRate' && (tableSortDir === 'asc' ? '▲' : '▼')}
-                    </th>
-                    <th className="sortable-th" onClick={() => handleTableSort('aiScore')}>
-                      AI Score {tableSortKey === 'aiScore' && (tableSortDir === 'asc' ? '▲' : '▼')}
-                    </th>
-                    <th className="expand-th" aria-label="Expand row" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedRecruiterData.length === 0 ? (
-                    <tr>
-                      <td colSpan="9" className="empty-td">
-                        No submittals in selected timeframe
-                        {selectedOwners.length > 0 && (
-                          <div style={{ marginTop: 8 }}>
-                            <button
-                              type="button"
-                              className="dash-table-reset-btn"
-                              onClick={() => setSelectedOwners([])}
-                            >
-                              ↺ Reset Filter
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ) : (
-                    sortedRecruiterData.map(row => {
-                      const ownerMatch = ownerOptions.find(([id, name]) => name === row.name)
-                      const ownerId = ownerMatch ? ownerMatch[0] : null
-                      const isSelected = ownerId && selectedOwners.includes(ownerId)
-                      const isExpanded = expandedRecruiterName === row.name
-                      const medal = row.rank === 1 ? '🥇' : row.rank === 2 ? '🥈' : row.rank === 3 ? '🥉' : null
+          </Card>
 
-                      return (
-                        <Fragment key={row.name}>
-                          <tr
-                            className={`clickable-row ${isSelected ? 'selected-row' : ''}`}
-                            onClick={() => {
-                              if (ownerId) {
-                                setSelectedOwners(prev => prev.includes(ownerId) ? [] : [ownerId])
-                              }
-                            }}
-                            title={isSelected ? "Click to deselect and view all recruiters" : `Click to filter analytics by ${row.name}`}
-                          >
-                            <td><span className={`rank-pill ${medal ? 'medal' : ''}`}>{medal || `#${row.rank}`}</span></td>
-                            <td>
-                              <div className="recruiter-name-cell">
-                                <strong>{row.name}</strong>
-                                {isSelected && <span className="selected-active-pill">Active</span>}
-                              </div>
-                            </td>
-                            <td><b>{row.submissions}</b></td>
-                            <td>{row.interviews}</td>
-                            <td>{row.offers}</td>
-                            <td><b className="green-text">{row.hires}</b></td>
-                            <td><span className="yield-badge">{row.fillRate}%</span></td>
-                            <td><span className="ai-score-pill">⚡ {row.aiScore}</span></td>
-                            <td>
-                              <button
-                                type="button"
-                                className="row-expand-btn"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setExpandedRecruiterName(prev => prev === row.name ? null : row.name)
-                                }}
-                                title={isExpanded ? 'Hide funnel breakdown' : 'Show funnel breakdown'}
-                              >
-                                {isExpanded ? '▲' : '▾'}
-                              </button>
-                            </td>
-                          </tr>
-                          {isExpanded && (
-                            <tr className="row-expand-detail">
-                              <td colSpan="9">
-                                <div className="recruiter-mini-trend">
-                                  {[
-                                    { label: 'Submittals', value: row.submissions, tone: 'blue' },
-                                    { label: 'Interviews', value: row.interviews, tone: 'purple' },
-                                    { label: 'Offers', value: row.offers, tone: 'yellow' },
-                                    { label: 'Hires', value: row.hires, tone: 'green' },
-                                  ].map(bar => (
-                                    <div className="mini-trend-bar-row" key={bar.label}>
-                                      <span className="mini-trend-label">{bar.label}</span>
-                                      <div className="mini-trend-track">
-                                        <div
-                                          className={`mini-trend-fill ${bar.tone}`}
-                                          style={{ width: `${Math.min(100, Math.round((bar.value / Math.max(row.submissions, 1)) * 100))}%` }}
-                                        />
-                                      </div>
-                                      <span className="mini-trend-value">{bar.value}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
-                      )
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Panel>
+          {/* TODAY'S ACTIONS — the actionable list; Priority Workspace above is the scannable summary */}
+          <Card>
+            <CardHeader title="Today's Actions" subtitle="Complete pending callbacks and follow-ups inline" />
+            {[...todaysCallbacks.slice(0, 4), ...overdueFollowups.slice(0, 4)].length === 0 ? (
+              <EmptyState
+                icon="checkCircle"
+                title="You're all caught up"
+                description="No pending callbacks or follow-ups today."
+                action={
+                  <div className="flex items-center gap-2 mt-2 flex-wrap justify-center">
+                    <Button size="sm" variant="secondary" onClick={() => onNavigate && onNavigate('candidates')}>Review Pipeline</Button>
+                    <Button size="sm" variant="ghost" onClick={() => handleCopilotSend('Draft candidate outreach for open requisitions')}>Generate Outreach</Button>
+                  </div>
+                }
+              />
+            ) : (
+              <div className="flex flex-col gap-2">
+                {todaysCallbacks.slice(0, 4).map(item => (
+                  <div key={`c-${item.id}`} className="flex items-center justify-between gap-3 rounded-[var(--radius-md)] border border-yellow/25 bg-yellow/8 px-3 py-2.5">
+                    <div className="min-w-0">
+                      <strong className="text-xs font-bold text-text block truncate">Callback: {item.candidate_name}</strong>
+                      <small className="text-[11px] text-text3">{item.time || 'Schedule'} · {item.phone || 'No phone'}</small>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {item.phone && (
+                        <a href={`tel:${item.phone}`} title="Call candidate" className="w-7 h-7 rounded-[var(--radius-sm)] flex items-center justify-center text-text2 hover:bg-surface2">
+                          <Icon name="callbacks" size={13} />
+                        </a>
+                      )}
+                      <button type="button" onClick={() => handleCompleteCallback(item.id)} title="Mark done" className="w-7 h-7 rounded-[var(--radius-sm)] flex items-center justify-center text-green hover:bg-green/10">
+                        <Icon name="check" size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {overdueFollowups.slice(0, 4).map(item => (
+                  <div key={`f-${item.id}`} className="flex items-center justify-between gap-3 rounded-[var(--radius-md)] border border-red/25 bg-red/8 px-3 py-2.5">
+                    <div className="min-w-0">
+                      <strong className="text-xs font-bold text-text block truncate">Follow-up: {item.candidate_name}</strong>
+                      <small className="text-[11px] text-text3">{item.date} · {item.priority || 'Medium'} priority</small>
+                    </div>
+                    <button type="button" onClick={() => handleCompleteFollowup(item.id)} title="Mark done" className="w-7 h-7 rounded-[var(--radius-sm)] flex items-center justify-center text-green hover:bg-green/10 shrink-0">
+                      <Icon name="check" size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* RECRUITER LEADERBOARD */}
+          <Card>
+            <CardHeader
+              title="Recruiter Leaderboard"
+              subtitle="Real-time team submittals, interviews &amp; placement conversion"
+              action={
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    leftIcon="download"
+                    onClick={() => {
+                      const data = sortedRecruiterData.map(r => ({
+                        Rank: r.rank,
+                        Recruiter: r.name,
+                        Submissions: r.submissions,
+                        Interviews: r.interviews,
+                        Offers: r.offers,
+                        Hires: r.hires,
+                        'Yield %': `${r.fillRate}%`,
+                        'AI Score': r.aiScore
+                      }))
+                      const workbook = XLSX.utils.book_new()
+                      const worksheet = XLSX.utils.json_to_sheet(data)
+                      XLSX.utils.book_append_sheet(workbook, worksheet, 'Leaderboard')
+                      XLSX.writeFile(workbook, `Recruiter_Leaderboard_${new Date().toISOString().slice(0, 10)}.xlsx`)
+                    }}
+                    title="Export Leaderboard metrics to XLSX Excel Spreadsheet"
+                  >
+                    Export XLSX
+                  </Button>
+                  <Button size="sm" variant="ai" leftIcon="sparkles" onClick={() => handleCopilotSend('Explain why recruiter productivity and performance changed this period')}>Explain</Button>
+                </div>
+              }
+            />
+            {selectedOwners.length > 0 && (
+              <div className="flex items-center justify-between gap-2 rounded-[var(--radius-md)] bg-accent/8 border border-accent/25 px-3 py-2 mb-3 text-xs">
+                <span className="text-text2">Filtered for: <strong className="text-text">{selectedOwnerNamesStr}</strong></span>
+                <button type="button" onClick={() => setSelectedOwners([])} className="font-semibold text-accent hover:underline shrink-0">Clear</button>
+              </div>
+            )}
+            <Table
+              columns={[
+                {
+                  key: 'rank', header: '#', width: '36px', render: row => {
+                    const medal = row.rank === 1 ? '🥇' : row.rank === 2 ? '🥈' : row.rank === 3 ? '🥉' : null
+                    return <span className="text-xs font-bold text-text3">{medal || `#${row.rank}`}</span>
+                  }
+                },
+                {
+                  key: 'name', header: 'Recruiter', sortable: true, render: row => {
+                    const ownerMatch = ownerOptions.find(([, name]) => name === row.name)
+                    const ownerId = ownerMatch ? ownerMatch[0] : null
+                    const isSelected = ownerId && selectedOwners.includes(ownerId)
+                    return (
+                      <span className="flex items-center gap-2">
+                        <span className="font-bold text-text">{row.name}</span>
+                        {isSelected && <Badge tone="accent" size="sm">Active</Badge>}
+                      </span>
+                    )
+                  }
+                },
+                { key: 'submissions', header: 'Sub', sortable: true, align: 'right' },
+                { key: 'interviews', header: 'Int', sortable: true, align: 'right' },
+                { key: 'offers', header: 'Offers', sortable: true, align: 'right' },
+                { key: 'hires', header: 'Hires', sortable: true, align: 'right', render: row => <b className="text-green">{row.hires}</b> },
+                { key: 'fillRate', header: 'Yield %', sortable: true, align: 'right', render: row => <Badge tone="green" size="sm">{row.fillRate}%</Badge> },
+                { key: 'aiScore', header: 'AI Score', sortable: true, align: 'right', render: row => <span className="text-ai font-bold text-xs">⚡ {row.aiScore}</span> },
+              ]}
+              data={sortedRecruiterData}
+              getRowId={row => row.name}
+              sortKey={tableSortKey}
+              sortDir={tableSortDir}
+              onSortChange={handleTableSort}
+              onRowClick={row => {
+                const ownerMatch = ownerOptions.find(([, name]) => name === row.name)
+                const ownerId = ownerMatch ? ownerMatch[0] : null
+                if (ownerId) setSelectedOwners(prev => prev.includes(ownerId) ? [] : [ownerId])
+              }}
+              rowActions={row => (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setExpandedRecruiterName(prev => prev === row.name ? null : row.name) }}
+                  title={expandedRecruiterName === row.name ? 'Hide funnel breakdown' : 'Show funnel breakdown'}
+                  className="w-6 h-6 rounded-[var(--radius-sm)] flex items-center justify-center text-text3 hover:bg-surface2 hover:text-text"
+                >
+                  <Icon name={expandedRecruiterName === row.name ? 'chevronUp' : 'chevronDown'} size={12} />
+                </button>
+              )}
+              emptyState={
+                <EmptyState
+                  icon="users"
+                  title="No submittals in selected timeframe"
+                  action={selectedOwners.length > 0 ? <Button size="sm" variant="secondary" onClick={() => setSelectedOwners([])}>Reset Filter</Button> : undefined}
+                />
+              }
+            />
+            {expandedRecruiterName && (() => {
+              const row = sortedRecruiterData.find(r => r.name === expandedRecruiterName)
+              if (!row) return null
+              return (
+                <div className="mt-3 rounded-[var(--radius-md)] bg-surface2 border border-border p-3 flex flex-col gap-2">
+                  <div className="text-xs font-bold text-text">{row.name} · Funnel breakdown</div>
+                  {[
+                    { label: 'Submittals', value: row.submissions, tone: 'accent' },
+                    { label: 'Interviews', value: row.interviews, tone: 'ai' },
+                    { label: 'Offers', value: row.offers, tone: 'yellow' },
+                    { label: 'Hires', value: row.hires, tone: 'green' },
+                  ].map(bar => (
+                    <div key={bar.label} className="flex items-center gap-2.5">
+                      <span className="text-[11px] text-text3 w-16 shrink-0">{bar.label}</span>
+                      <div className="flex-1 h-1.5 rounded-full bg-surface3 overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.round((bar.value / Math.max(row.submissions, 1)) * 100))}%`, background: `var(--${bar.tone})` }} />
+                      </div>
+                      <span className="text-xs font-bold text-text w-6 text-right shrink-0">{bar.value}</span>
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
+          </Card>
         </div>
 
         {/* Right Column: Mission Board, Activity Feed & Workspace */}
-        <div className="dash-col">
-          {/* REFINED RECRUITER MISSION BOARD */}
-          <Panel title="Recruiter Mission Board" subtitle="Track daily action items & auto-generate EOD briefings">
-            <div className="todo-panel-wrapper">
-              {/* COMPRESSED UNIFIED ACTION BAR */}
-              <div className="todo-nav-row compact-action-bar">
-                <div className="todo-tabs">
-                  <button type="button" className={`todo-tab-btn ${missionTab === 'tasks' ? 'active' : ''}`} onClick={() => setMissionTab('tasks')}>
-                    📝 Daily Checklist ({pendingTasks.length})
-                  </button>
-                  <button type="button" className={`todo-tab-btn ${missionTab === 'eod' ? 'active' : ''}`} onClick={() => setMissionTab('eod')}>
-                    ⚡ EOD AI Briefing
-                  </button>
+        <div className="flex flex-col gap-6 min-w-0">
+          {/* RECRUITER MISSION BOARD */}
+          {/* PERFORMANCE SNAPSHOT — compact, real submission_date windows only */}
+          <Card padding="sm">
+            <div className="grid grid-cols-3 divide-x divide-border">
+              {[
+                { label: 'Today', value: performanceSnapshot.today },
+                { label: 'This Week', value: performanceSnapshot.week },
+                { label: 'This Month', value: performanceSnapshot.month },
+              ].map(item => (
+                <div key={item.label} className="text-center px-2">
+                  <div className="text-lg font-extrabold text-text font-mono">{item.value}</div>
+                  <div className="text-[10px] font-semibold text-text3 uppercase tracking-wide mt-0.5">{item.label}</div>
                 </div>
-
-                <button type="button" className="ai-eod-generate-btn compact" onClick={handleGenerateEODSummary} disabled={eodLoading}>
-                  {eodLoading ? '⚡ Synthesizing...' : '✨ Generate AI EOD'}
-                </button>
-              </div>
-
-              {missionTab === 'tasks' && (
-                <div className="todo-content">
-                  {/* WIDER INPUT FIELD WITH COMPACT ADD BUTTON */}
-                  <form className="todo-add-form compact-form" onSubmit={handleAddNote}>
-                    <select value={noteTag} onChange={e => setNoteTag(e.target.value)} className="todo-tag-select">
-                      <option value="Follow-up">📌 Follow-up</option>
-                      <option value="Call">📞 Call</option>
-                      <option value="Screening">🔍 Screening</option>
-                      <option value="Interview">📅 Interview</option>
-                      <option value="Offer">💼 Offer</option>
-                      <option value="EOD Review">📝 EOD Review</option>
-                    </select>
-                    <input
-                      type="text"
-                      placeholder="Add recruiter action item..."
-                      value={newNoteText}
-                      onChange={e => setNewNoteText(e.target.value)}
-                      className="todo-input-field flex-grow"
-                      required
-                    />
-                    <button type="submit" className="todo-add-btn compact">
-                      + Add
-                    </button>
-                  </form>
-
-                  {/* ACTIVE PENDING TASKS WITH CLEAR HIERARCHY */}
-                  <div className="todo-items-list">
-                    {pendingTasks.length === 0 ? (
-                      <div className="todo-empty-state">
-                        <span className="celebrate-icon">🎉</span>
-                        <strong>All pending tasks completed!</strong>
-                        <p>Add a new task above or generate your EOD AI briefing.</p>
-                      </div>
-                    ) : (
-                      pendingTasks.map(item => (
-                        <div key={item.id} className="todo-item-card enhanced">
-                          <span className="task-drag-handle" title="Drag to reorder">⋮⋮</span>
-                          <label className="todo-checkbox-label">
-                            <input
-                              type="checkbox"
-                              checked={item.done}
-                              onChange={() => handleToggleNote(item.id)}
-                              className="todo-checkbox"
-                            />
-                            <span className={`todo-tag-pill ${item.tag.toLowerCase().replace(/\s+/g, '-')}`}>
-                              {item.tag}
-                            </span>
-                            <div className="task-text-group">
-                              <span className="todo-item-text">{item.text}</span>
-                              <div className="task-meta-row">
-                                {item.priority && (
-                                  <span className={`priority-badge ${item.priority.toLowerCase()}`}>{item.priority}</span>
-                                )}
-                                <span className="task-effort-chip">⏱ {TASK_EFFORT_MINUTES[item.tag] || 15} min</span>
-                                <span className="task-due-chip">Due Today</span>
-                                {item.candidate && (
-                                  <small className="task-sub-ref">{item.candidate} · {item.job || 'Requisition'}</small>
-                                )}
-                              </div>
-                            </div>
-                          </label>
-
-                          <div className="task-quick-actions">
-                            <button type="button" onClick={() => onNavigate && onNavigate('candidates')} title="Open in workspace">
-                              View
-                            </button>
-                            <button type="button" onClick={() => handleCopilotSend(`Draft a follow-up for: ${item.text}`)} title="AI Draft">
-                              AI
-                            </button>
-                          </div>
-
-                          <div className="task-context-menu-wrapper">
-                            <button 
-                              type="button" 
-                              className="task-options-trigger-btn"
-                              onClick={() => setActiveTaskMenuId(prev => prev === item.id ? null : item.id)}
-                              title="Task options"
-                            >
-                              ⋮
-                            </button>
-                            {activeTaskMenuId === item.id && (
-                              <div className="task-options-dropdown">
-                                <button type="button" onClick={() => { handleToggleNote(item.id); setActiveTaskMenuId(null) }}>
-                                  ✓ Mark Complete
-                                </button>
-                                <button type="button" onClick={() => handleDeleteNote(item.id)}>
-                                  🗑 Delete Task
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-
-                  {/* COLLAPSED COMPLETED TASKS SECTION */}
-                  {completedTasks.length > 0 && (
-                    <details className="completed-tasks-collapsible">
-                      <summary className="completed-tasks-summary">
-                        <span>✓ Completed Today ({completedTasks.length})</span>
-                        <small>▾</small>
-                      </summary>
-                      <div className="completed-tasks-list">
-                        {completedTasks.map(item => (
-                          <div key={item.id} className="todo-item-card completed">
-                            <label className="todo-checkbox-label">
-                              <input
-                                type="checkbox"
-                                checked={item.done}
-                                onChange={() => handleToggleNote(item.id)}
-                                className="todo-checkbox"
-                              />
-                              <span className="todo-item-text">{item.text}</span>
-                            </label>
-                            <button type="button" className="todo-delete-btn" onClick={() => handleDeleteNote(item.id)} title="Delete Note">
-                              ✕
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </details>
-                  )}
-                </div>
-              )}
-
-              {missionTab === 'eod' && (
-                <div className="todo-eod-content">
-                  {eodLoading && (
-                    <div className="ai-loading-box">
-                      <div className="loading-pulse" />
-                      <p>AI is synthesizing your daily accomplishments & priority EOD plan...</p>
-                    </div>
-                  )}
-                  {!eodLoading && !eodSummaryText && (
-                    <div className="ai-placeholder-box">
-                      <div className="placeholder-icon">⚡</div>
-                      <h5>EOD AI Summary Ready</h5>
-                      <p>Click <strong>Generate AI EOD</strong> to auto-synthesize your daily accomplishments and tomorrow's priority checklist.</p>
-                    </div>
-                  )}
-                  {!eodLoading && eodSummaryText && (
-                    <div className="ai-output-content">
-                      <MarkdownView content={eodSummaryText} />
-                    </div>
-                  )}
-                </div>
-              )}
+              ))}
             </div>
-          </Panel>
+            <div className="text-center text-[11px] text-text3 mt-2 pt-2 border-t border-border">Submissions · {completedTasks.length}/{pendingTasks.length + completedTasks.length} of today's tasks done</div>
+          </Card>
+
+          {/* RECRUITER MISSION BOARD */}
+          <Card>
+            <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+              <Tabs
+                items={[{ id: 'tasks', label: 'Daily Checklist', count: pendingTasks.length }, { id: 'eod', label: 'EOD AI Briefing' }]}
+                value={missionTab}
+                onChange={setMissionTab}
+              />
+              <Button size="sm" variant="ai" leftIcon="sparkles" loading={eodLoading} onClick={handleGenerateEODSummary}>Generate EOD</Button>
+            </div>
+
+            {missionTab === 'tasks' && (
+              <div className="flex flex-col gap-3">
+                <form onSubmit={handleAddNote} className="flex items-center gap-2">
+                  <select value={noteTag} onChange={e => setNoteTag(e.target.value)} className="h-9 px-2 rounded-[var(--radius-sm)] border border-border bg-surface2 text-xs font-semibold text-text2 shrink-0">
+                    <option value="Follow-up">Follow-up</option>
+                    <option value="Call">Call</option>
+                    <option value="Screening">Screening</option>
+                    <option value="Interview">Interview</option>
+                    <option value="Offer">Offer</option>
+                    <option value="EOD Review">EOD Review</option>
+                  </select>
+                  <Input placeholder="Add recruiter action item..." value={newNoteText} onChange={e => setNewNoteText(e.target.value)} required className="flex-1" />
+                  <Button type="submit" size="md">Add</Button>
+                </form>
+
+                <div className="flex flex-col gap-1.5">
+                  {pendingTasks.length === 0 ? (
+                    <EmptyState icon="checkCircle" title="All pending tasks completed" description="Add a new task above or generate your EOD AI briefing." />
+                  ) : (
+                    pendingTasks.map(item => (
+                      <div key={item.id} className="relative flex items-start gap-2.5 rounded-[var(--radius-md)] border border-border bg-surface2 px-3.5 py-3 transition-colors duration-[var(--duration-fast)] hover:border-border-strong hover:bg-surface3/60">
+                        <input type="checkbox" checked={item.done} onChange={() => handleToggleNote(item.id)} className="w-4 h-4 mt-0.5 rounded accent-accent shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                            <Badge tone="accent" size="sm">{item.tag}</Badge>
+                            {item.priority && <Badge tone={item.priority === 'Urgent' || item.priority === 'High' ? 'red' : 'neutral'} size="sm">{item.priority}</Badge>}
+                            <span className="text-[10px] text-text3">⏱ {TASK_EFFORT_MINUTES[item.tag] || 15} min</span>
+                          </div>
+                          <div className="text-xs font-semibold text-text">{item.text}</div>
+                          {item.candidate && <div className="text-[11px] text-text3 mt-0.5">{item.candidate} · {item.job || 'Requisition'}</div>}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!onNavigate) return
+                              if (item.tag === 'Offer' || item.tag === 'Interview' || item.tag === 'Screening' || item.candidate) {
+                                onNavigate('candidates')
+                              } else {
+                                onNavigate('jobs')
+                              }
+                            }}
+                            title="Open in workspace"
+                            className="text-[11px] font-semibold text-text3 hover:text-text px-1.5"
+                          >
+                            View
+                          </button>
+                          <button type="button" onClick={() => handleCopilotSend(`Draft a follow-up for: ${item.text}`)} title="AI Draft" className="text-[11px] font-semibold text-ai hover:underline px-1.5">AI</button>
+                          <Menu
+                            align="end"
+                            trigger={({ toggle }) => <MenuTrigger open={activeTaskMenuId === item.id} toggle={() => { toggle(); setActiveTaskMenuId(prev => prev === item.id ? null : item.id) }} />}
+                            items={[
+                              { label: 'Mark complete', icon: 'check', onClick: () => handleToggleNote(item.id) },
+                              { label: 'Delete task', icon: 'trash', danger: true, onClick: () => handleDeleteNote(item.id) },
+                            ]}
+                          />
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {completedTasks.length > 0 && (
+                  <details className="group">
+                    <summary className="flex items-center justify-between cursor-pointer text-xs font-bold text-text2 py-1.5 list-none">
+                      <span>Completed Today ({completedTasks.length})</span>
+                      <Icon name="chevronDown" size={12} className="text-text3 group-open:rotate-180 transition-transform" />
+                    </summary>
+                    <div className="flex flex-col gap-1.5 mt-1.5">
+                      {completedTasks.map(item => (
+                        <div key={item.id} className="flex items-center gap-2.5 rounded-[var(--radius-md)] bg-surface2/60 px-3 py-2">
+                          <input type="checkbox" checked={item.done} onChange={() => handleToggleNote(item.id)} className="w-4 h-4 rounded accent-accent shrink-0" />
+                          <span className="text-xs text-text3 line-through flex-1 truncate">{item.text}</span>
+                          <button type="button" onClick={() => handleDeleteNote(item.id)} title="Delete" className="text-text3 hover:text-red shrink-0"><Icon name="x" size={12} /></button>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+            )}
+
+            {missionTab === 'eod' && (
+              <div>
+                {eodLoading && (
+                  <div className="flex flex-col items-center gap-2 py-8 text-text3">
+                    <Skeleton className="w-8 h-8 rounded-full" />
+                    <p className="text-xs">AI is synthesizing your daily accomplishments &amp; priority EOD plan...</p>
+                  </div>
+                )}
+                {!eodLoading && !eodSummaryText && (
+                  <EmptyState icon="sparkles" title="EOD AI summary ready" description="Click Generate EOD to auto-synthesize your daily accomplishments and tomorrow's priority checklist." />
+                )}
+                {!eodLoading && eodSummaryText && (
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-3 pb-2.5 border-b border-border">
+                      <Badge tone="ai" size="sm">EOD Summary</Badge>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        leftIcon={eodCopied ? 'check' : 'copy'}
+                        onClick={() => {
+                          if (navigator.clipboard) {
+                            navigator.clipboard.writeText(eodSummaryText)
+                            setEodCopied(true)
+                            setTimeout(() => setEodCopied(false), 2500)
+                          }
+                        }}
+                      >
+                        {eodCopied ? 'Copied!' : 'Copy Summary'}
+                      </Button>
+                    </div>
+                    <MarkdownView content={eodSummaryText} />
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
 
           {/* Activity Stream Feed with Hover Quick Actions */}
-          <Panel title="Real-Time Workspace Activity Feed" subtitle="Chronological submittals, callbacks & follow-ups">
-            <div className="activity-feed-filters">
+          <Card>
+            <div className="flex items-center gap-1.5 flex-wrap mb-3">
               {[
                 { key: 'all', label: 'All' },
                 { key: 'submission', label: 'Submissions' },
@@ -2388,204 +2319,213 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
                 <button
                   key={f.key}
                   type="button"
-                  className={`activity-filter-chip ${activityFilter === f.key ? 'active' : ''}`}
                   onClick={() => setActivityFilter(f.key)}
+                  className={`h-7 px-2.5 rounded-full text-[11px] font-semibold transition-colors duration-[var(--duration-fast)] ${activityFilter === f.key ? 'bg-accent/12 text-accent' : 'bg-surface2 text-text3 hover:text-text2'}`}
                 >
                   {f.label}
                 </button>
               ))}
-              <button
-                type="button"
-                className="activity-filter-chip ai"
-                onClick={() => handleCopilotSend("Summarize today's workspace activity")}
-                title="AI: Summarize today's activity"
-              >
+              <button type="button" onClick={() => handleCopilotSend("Summarize today's workspace activity")} title="AI: Summarize today's activity" className="h-7 px-2.5 rounded-full text-[11px] font-semibold text-ai bg-ai-soft ml-auto">
                 ✨ Summarize
               </button>
             </div>
 
-            <div className="activity-feed-list">
-              {filteredActivityFeed.length === 0 ? (
-                <div className="dash-empty-action-center">
-                  <span className="empty-celebrate-icon">🗓️</span>
-                  <strong>No activity yet</strong>
-                  <p>Submittals, callbacks & follow-ups will show up here as they happen.</p>
-                  <div className="empty-suggested-actions">
-                    <button type="button" onClick={() => onNavigate && onNavigate('candidates')}>Review Pipeline</button>
-                    <button type="button" onClick={() => handleCopilotSend('Draft outreach for passive candidates')}>Generate Outreach</button>
-                  </div>
-                </div>
-              ) : (
-                filteredActivityFeed.map((act, i) => {
+            {filteredActivityFeed.length === 0 ? (
+              <EmptyState
+                icon="calendar"
+                title="No activity yet"
+                description="Submittals, callbacks & follow-ups will show up here as they happen."
+                action={<Button size="sm" variant="secondary" onClick={() => onNavigate && onNavigate('candidates')}>Review Pipeline</Button>}
+              />
+            ) : (
+              <div className="flex flex-col max-h-[320px] overflow-y-auto pr-1">
+                {filteredActivityFeed.map((act, i) => {
                   const bucket = getActivityDateBucket(act.timestamp)
                   const showBucket = i === 0 || getActivityDateBucket(filteredActivityFeed[i - 1].timestamp) !== bucket
-                  const typeIcon = act.type === 'submission' ? '📤' : act.type === 'callback' ? '📞' : '🔔'
+                  const typeIcon = act.type === 'submission' ? 'arrowUpRight' : act.type === 'callback' ? 'callbacks' : 'followups'
                   return (
                     <div key={act.id}>
-                      {showBucket && <div className="activity-feed-group-label">{bucket}</div>}
-                      <div className="activity-feed-item interactive-feed-item">
-                        <div className="feed-avatar-ring">{act.actor.charAt(0)}</div>
-                        <div className="feed-details">
-                          <strong>{typeIcon} {act.title}</strong>
-                          <span>{act.sub}</span>
+                      {showBucket && <div className="text-[10px] font-bold text-text3 uppercase tracking-wide pt-3 pb-1.5 first:pt-0">{bucket}</div>}
+                      <div className="group/item flex items-center gap-2.5 py-2 border-b border-border last:border-0">
+                        <Avatar name={act.actor} size="xs" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <Icon name={typeIcon} size={11} className="text-text3 shrink-0" />
+                            <strong className="text-xs font-bold text-text truncate">{act.title}</strong>
+                          </div>
+                          <span className="text-[11px] text-text3 truncate block">{act.sub}</span>
                         </div>
-                        <div className="feed-hover-actions">
-                          <button onClick={() => onNavigate && onNavigate('candidates')} type="button" title="View Candidate">View</button>
-                          <button onClick={() => handleCopilotSend(`Summarize activity: ${act.title}`)} type="button" title="AI Summary">AI</button>
+                        <div className="hidden group-hover/item:flex items-center gap-2 shrink-0">
+                          <button onClick={() => onNavigate && onNavigate('candidates')} type="button" className="text-[11px] font-semibold text-text3 hover:text-text">View</button>
+                          <button onClick={() => handleCopilotSend(`Summarize activity: ${act.title}`)} type="button" className="text-[11px] font-semibold text-ai hover:underline">AI</button>
                         </div>
-                        <span className="feed-time">{formatRelativeTime(act.timestamp)}</span>
+                        <span className="text-[10px] text-text3 shrink-0 group-hover/item:hidden">{formatRelativeTime(act.timestamp)}</span>
                       </div>
                     </div>
                   )
-                })
-              )}
-            </div>
-          </Panel>
+                })}
+              </div>
+            )}
+          </Card>
 
           {/* Submissions & Activity Trend Chart */}
-          <Panel title={`${timeRange === '7d' ? '7-Day' : timeRange === '30d' ? '30-Day' : timeRange === '90d' ? '90-Day' : '7-Day'} Submissions Trend`} subtitle="Submissions and follow-up activities over time">
-            <div className="dashboard-chart">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={trendData}>
-                  <defs>
-                    <linearGradient id="submissions" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#2563eb" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="followups" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="rgba(226,232,240,0.6)" vertical={false} />
-                  <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} interval={timeRange === '90d' ? 14 : timeRange === '30d' ? 4 : 0} />
-                  <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                  <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} iconType="circle" iconSize={8} />
-                  <Area type="monotone" dataKey="submissions" name="Submissions" stroke="#2563eb" fill="url(#submissions)" strokeWidth={2} />
-                  <Area type="monotone" dataKey="followups" name="Follow-ups" stroke="#10b981" fill="url(#followups)" strokeWidth={2} />
-                  <Area
-                    type="monotone"
-                    dataKey="previousSubmissions"
-                    name="Previous Period"
-                    stroke="#94a3b8"
-                    strokeDasharray="4 3"
-                    fill="none"
-                    strokeWidth={1.5}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </Panel>
+          <Card>
+            <CardHeader title={`${timeRange === '30d' ? '30-Day' : timeRange === '90d' ? '90-Day' : '7-Day'} Submissions Trend`} subtitle="Submissions and follow-up activities over time" />
+            <ResponsiveContainer width="100%" height={220}>
+              <AreaChart data={trendData}>
+                <defs>
+                  <linearGradient id="submissions" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="followups" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="date" tick={{ fill: 'var(--text3)', fontSize: 10 }} axisLine={false} tickLine={false} interval={timeRange === '90d' ? 14 : timeRange === '30d' ? 4 : 0} />
+                <YAxis tick={{ fill: 'var(--text3)', fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
+                <Legend wrapperStyle={{ fontSize: 11 }} iconType="circle" iconSize={8} />
+                <Area type="monotone" dataKey="submissions" name="Submissions" stroke="#2563eb" fill="url(#submissions)" strokeWidth={2} />
+                <Area type="monotone" dataKey="followups" name="Follow-ups" stroke="#10b981" fill="url(#followups)" strokeWidth={2} />
+                <Area
+                  type="monotone"
+                  dataKey="previousSubmissions"
+                  name="Previous Period"
+                  stroke="#94a3b8"
+                  strokeDasharray="4 3"
+                  fill="none"
+                  strokeWidth={1.5}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </Card>
 
           {/* Job Donut & Smart AI Workspace Scratchpad */}
-          <Panel title="Job Requisitions & Smart AI Workspace" subtitle="Job status breakdown & autosaved call notes">
-            <div className="dash-split-panel">
-              <div className="donut-column">
-                <div className="dashboard-donut compact-donut">
-                  {sourceData.length === 0 ? <EmptyLine text="No job data yet" /> : (
+          <Card>
+            <CardHeader title="Requisitions &amp; Workspace" subtitle="Job status breakdown &amp; autosaved call notes" />
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="flex flex-col items-center">
+                <div className="relative w-full" style={{ height: 160 }}>
+                  {sourceData.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-xs text-text3">No job data yet</div>
+                  ) : (
                     <>
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
-                          <Pie data={sourceData} dataKey="value" nameKey="name" innerRadius={42} outerRadius={64} paddingAngle={4}>
-                            {sourceData.map((entry, index) => <Cell key={entry.name} fill={COLORS[index]} />)}
+                          <Pie
+                            data={sourceData}
+                            dataKey="value"
+                            nameKey="name"
+                            innerRadius={42}
+                            outerRadius={64}
+                            paddingAngle={4}
+                            onClick={(data) => {
+                              if (data && data.name) setJobStatusFilter(prev => prev === data.name ? 'All' : data.name)
+                            }}
+                          >
+                            {sourceData.map((entry, index) => (
+                              <Cell
+                                key={entry.name}
+                                fill={COLORS[index]}
+                                cursor="pointer"
+                                stroke={jobStatusFilter === entry.name ? 'var(--accent)' : 'none'}
+                                strokeWidth={jobStatusFilter === entry.name ? 2 : 0}
+                                opacity={jobStatusFilter === 'All' || jobStatusFilter === entry.name ? 1 : 0.35}
+                              />
+                            ))}
                           </Pie>
                           <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
                         </PieChart>
                       </ResponsiveContainer>
-                      <div className="donut-center-label">
-                        <strong>{activeJobsCount}</strong>
-                        <span>Active</span>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                        <strong className="text-lg font-extrabold text-text font-mono">{activeJobsCount}</strong>
+                        <span className="text-[10px] text-text3 font-semibold uppercase tracking-wide">Active</span>
                       </div>
                     </>
                   )}
                 </div>
                 {sourceData.length > 0 && (
-                  <div className="donut-legend">
+                  <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 mt-2">
                     {sourceData.map((entry, index) => (
-                      <span className="donut-legend-item" key={entry.name}>
-                        <span className="donut-legend-dot" style={{ background: COLORS[index] }} />
-                        {entry.name} <b>{entry.value}</b>
+                      <span key={entry.name} className="flex items-center gap-1.5 text-[11px] text-text3">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: COLORS[index] }} />
+                        {entry.name} <b className="text-text">{entry.value}</b>
                       </span>
                     ))}
                   </div>
                 )}
               </div>
 
-              <div className="dashboard-notepad-container">
-                <div className="notepad-header">
-                  <span className="notepad-title">Smart AI Workspace</span>
-                  <span className="notepad-status">● {lastSavedTime}</span>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-text">Smart AI Workspace</span>
+                  <span className="text-[10px] text-text3">● {lastSavedTime}</span>
                 </div>
                 <textarea
                   value={scratchpad}
                   onChange={handleScratchpadChange}
                   placeholder="Type quick candidate numbers, interview notes, or call snippets here..."
-                  className="dashboard-scratchpad"
+                  className="w-full flex-1 min-h-[130px] rounded-[var(--radius-md)] border border-border bg-surface2 p-2.5 text-xs text-text placeholder:text-text3 outline-none focus:border-accent resize-none font-mono"
                 />
               </div>
             </div>
-          </Panel>
+          </Card>
         </div>
       </section>
 
       {/* SLIDE-OUT RIGHT-SIDE AI COPILOT PANEL WITH 3 WINDOW STATES (EXPANDED, MINIMIZED, CLOSED) */}
-      {copilotState === 'closed' && (
-        <button className="copilot-floating-trigger-btn" onClick={() => setCopilotState('expanded')} type="button">
-          <span className="sparkle">✨</span>
-          <span>AI Action Copilot</span>
-        </button>
-      )}
-
-      {copilotState === 'minimized' && (
-        <button className="copilot-minimized-pill-btn" onClick={() => setCopilotState('expanded')} type="button">
-          <span className="sparkle-pulse">✨</span>
-          <strong>TalentDesk AI Copilot</strong>
-          <span className="minimized-status-dot" title="Copilot Active" />
+      {(copilotState === 'closed' || copilotState === 'minimized') && (
+        <button
+          type="button"
+          onClick={() => setCopilotState('expanded')}
+          title="TalentDesk AI Copilot"
+          aria-label="TalentDesk AI Copilot"
+          className="fixed bottom-5 right-5 rounded-full flex items-center justify-center text-white shadow-[var(--shadow-lg)] transition-all duration-200 hover:scale-105 group"
+          style={{
+            zIndex: 'var(--z-overlay)',
+            background: 'linear-gradient(135deg, #4f7cff, #7c5cff)',
+            width: 52,
+            height: 52,
+          }}
+        >
+          <span className="relative flex items-center justify-center">
+            <Icon name="sparkles" size={22} className="text-white transition-transform duration-200 group-hover:rotate-12" />
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-green border-2 border-surface" title="Copilot Active" />
+          </span>
         </button>
       )}
 
       {(copilotState === 'expanded' || copilotState === 'maximized') && (
-        <div className="copilot-slideout-overlay" onClick={() => setCopilotState('minimized')}>
-          <div className={`copilot-slideout-panel ${copilotState === 'maximized' ? 'maximized' : ''}`} onClick={e => e.stopPropagation()}>
-            {/* ENHANCED COPILOT HEADER WITH NEW CHAT (🧹), MINIMIZE (—), POP-OUT (□), AND CLOSE (×) */}
-            <div className="copilot-window-header">
-              <div className="title-group">
-                <span className="sparkle">✨</span>
-                <strong>TalentDesk AI Copilot</strong>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end justify-end p-0 sm:p-5" style={{ zIndex: 'var(--z-modal)' }} onClick={() => setCopilotState('minimized')}>
+          <div
+            onClick={e => e.stopPropagation()}
+            className={`w-full flex flex-col bg-surface border border-border shadow-[var(--shadow-lg)] overflow-hidden ${copilotState === 'maximized' ? 'h-full sm:rounded-[var(--radius-lg)]' : 'h-[85vh] sm:h-[600px] sm:max-w-md sm:rounded-[var(--radius-lg)]'}`}
+          >
+            <div className="flex items-center justify-between px-4 h-14 border-b border-border shrink-0">
+              <div className="flex items-center gap-2">
+                <Icon name="sparkles" size={15} className="text-ai" />
+                <strong className="text-sm font-bold text-text">TalentDesk AI Copilot</strong>
               </div>
-              <div className="copilot-header-controls">
-                <button 
-                  className="header-ctrl-btn new-chat" 
-                  onClick={handleNewChat} 
-                  type="button" 
-                  title="New Chat Session (🧹)"
-                >
-                  🧹
+              <div className="flex items-center gap-1">
+                <button onClick={handleNewChat} type="button" title="New chat" className="w-7 h-7 rounded-[var(--radius-sm)] flex items-center justify-center text-text3 hover:bg-surface2 hover:text-text">
+                  <Icon name="edit" size={13} />
                 </button>
-                <button 
-                  className="header-ctrl-btn minimize" 
-                  onClick={() => setCopilotState('minimized')} 
-                  type="button" 
-                  title="Minimize to pill (—)"
-                >
-                  —
+                <button onClick={() => setCopilotState('minimized')} type="button" title="Minimize" className="w-7 h-7 rounded-[var(--radius-sm)] flex items-center justify-center text-text3 hover:bg-surface2 hover:text-text">
+                  <Icon name="minus" size={13} />
                 </button>
-                <button 
-                  className="header-ctrl-btn popout" 
-                  onClick={() => setCopilotState(prev => prev === 'maximized' ? 'expanded' : 'maximized')} 
-                  type="button" 
-                  title={copilotState === 'maximized' ? "Restore floating window (❐)" : "Maximize window (□)"}
+                <button
+                  onClick={() => setCopilotState(prev => prev === 'maximized' ? 'expanded' : 'maximized')}
+                  type="button"
+                  title={copilotState === 'maximized' ? 'Restore' : 'Maximize'}
+                  className="hidden sm:flex w-7 h-7 rounded-[var(--radius-sm)] items-center justify-center text-text3 hover:bg-surface2 hover:text-text"
                 >
-                  {copilotState === 'maximized' ? '❐' : '□'}
+                  <Icon name={copilotState === 'maximized' ? 'chevronDown' : 'arrowUpRight'} size={13} />
                 </button>
-                <button 
-                  className="header-ctrl-btn close" 
-                  onClick={() => setCopilotState('closed')} 
-                  type="button" 
-                  title="Close Copilot (×)"
-                >
-                  ×
+                <button onClick={() => setCopilotState('closed')} type="button" title="Close" className="w-7 h-7 rounded-[var(--radius-sm)] flex items-center justify-center text-text3 hover:bg-surface2 hover:text-text">
+                  <Icon name="x" size={14} />
                 </button>
               </div>
             </div>
@@ -2619,15 +2559,15 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
                             </div>
                             <p className="confirm-prompt">{msg.content.pendingAction.confirmPrompt || `Execute '${msg.content.pendingAction.type}' operation?`}</p>
                             <div className="confirm-button-row">
-                              <button 
-                                type="button" 
+                              <button
+                                type="button"
                                 className="copilot-confirm-btn danger"
                                 onClick={() => handleExecutePendingAction(msg.content.pendingAction, i)}
                               >
                                 ✓ Confirm & Execute
                               </button>
-                              <button 
-                                type="button" 
+                              <button
+                                type="button"
                                 className="copilot-confirm-btn cancel"
                                 onClick={() => handleCancelPendingAction(i)}
                               >
@@ -2710,7 +2650,7 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
                         {isObjContent && Array.isArray(msg.content.actions) && msg.content.actions.length > 0 && !isPendingAction && (
                           <div className="copilot-action-buttons-grid">
                             {msg.content.actions.map((act, aIdx) => (
-                              <button 
+                              <button
                                 key={aIdx}
                                 type="button"
                                 className="copilot-rendered-action-btn"
@@ -2752,89 +2692,94 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
               )}
             </div>
 
-            {/* SMART ONBOARDING WELCOME STRIP: Hide prompt chips once conversation begins */}
+            {/* Hide prompt chips once conversation begins */}
             {copilotMessages.length <= 1 && (
-              <div className="copilot-prompts-strip">
-                <button onClick={() => !copilotLoading && handleCopilotSend('Close the Senior React Developer job')} disabled={copilotLoading} type="button">
-                  Close job
-                </button>
-                <button onClick={() => !copilotLoading && handleCopilotSend('Log a callback for Alex Rivera')} disabled={copilotLoading} type="button">
-                  Log callback
-                </button>
-                <button onClick={() => !copilotLoading && handleCopilotSend('Create a task to review submittals tomorrow')} disabled={copilotLoading} type="button">
-                  Create task
-                </button>
+              <div className="flex items-center gap-1.5 flex-wrap px-4 pb-2 shrink-0">
+                {[
+                  { label: 'Close job', prompt: 'Close the Senior React Developer job' },
+                  { label: 'Log callback', prompt: 'Log a callback for Alex Rivera' },
+                  { label: 'Create task', prompt: 'Create a task to review submittals tomorrow' },
+                ].map(chip => (
+                  <button
+                    key={chip.label}
+                    onClick={() => !copilotLoading && handleCopilotSend(chip.prompt)}
+                    disabled={copilotLoading}
+                    type="button"
+                    className="text-xs font-semibold text-text2 bg-surface2 border border-border rounded-full px-2.5 py-1 hover:text-text disabled:opacity-50"
+                  >
+                    {chip.label}
+                  </button>
+                ))}
               </div>
             )}
 
-            <div className="copilot-input-box">
-              <input 
-                type="text" 
-                placeholder={copilotLoading ? "Processing request..." : "Ask Copilot a question or trigger a CRM action..."} 
-                value={copilotQuery} 
+            <div className="flex items-center gap-2 p-3 border-t border-border shrink-0">
+              <Input
+                placeholder={copilotLoading ? 'Processing request...' : 'Ask Copilot a question or trigger a CRM action...'}
+                value={copilotQuery}
                 disabled={copilotLoading}
-                onChange={e => setCopilotQuery(e.target.value)} 
+                onChange={e => setCopilotQuery(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && !copilotLoading && handleCopilotSend()}
+                className="flex-1"
               />
-              <button onClick={() => handleCopilotSend()} disabled={copilotLoading} type="button">
-                {copilotLoading ? '⚡ Working...' : 'Send'}
-              </button>
+              <Button onClick={() => handleCopilotSend()} loading={copilotLoading} size="md">
+                Send
+              </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* CTRL+K COMMAND PALETTE MODAL */}
+      {/* CTRL+K COMMAND PALETTE */}
       {commandOpen && (
-        <div className="dash-command-modal-overlay" onClick={() => setCommandOpen(false)}>
-          <div className="dash-command-modal-content" onClick={e => e.stopPropagation()}>
-            <div className="command-modal-input-row">
-              <span className="cmd-icon">🔍</span>
+        <div className="fixed inset-0 flex items-start justify-center pt-[12vh] px-4 bg-black/60 backdrop-blur-sm" style={{ zIndex: 'var(--z-modal)' }} onClick={() => setCommandOpen(false)}>
+          <div className="w-full max-w-lg bg-surface border border-border rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden animate-[modal-in_var(--duration-base)_var(--ease-standard)]" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border">
+              <Icon name="search" size={15} className="text-text3 shrink-0" />
               <input
                 type="text"
-                placeholder="Type a command or search candidates, jobs, clients... (e.g. 'Find React candidates')"
+                placeholder="Search candidates, jobs, clients, or run an action..."
                 value={commandQuery}
                 onChange={e => setCommandQuery(e.target.value)}
                 autoFocus
+                className="flex-1 bg-transparent border-none outline-none text-sm text-text placeholder:text-text3"
               />
-              <span className="cmd-esc-tag">ESC</span>
+              <span className="text-[10px] font-bold text-text3 bg-surface2 border border-border rounded px-1.5 py-0.5 shrink-0">ESC</span>
             </div>
 
-            <div className="command-modal-results">
+            <div className="max-h-80 overflow-y-auto p-2">
               {commandQuery.trim() === '' ? (
-                <div className="command-modal-empty">
+                <div className="px-2 py-3">
                   {recentSearches.length > 0 ? (
                     <>
-                      <div className="command-modal-section-label">Recent Searches</div>
-                      <div className="command-recent-chips">
+                      <div className="text-[10px] font-bold text-text3 uppercase tracking-wide mb-2">Recent Searches</div>
+                      <div className="flex flex-wrap gap-1.5">
                         {recentSearches.map((term, i) => (
-                          <button key={i} type="button" className="command-recent-chip" onClick={() => setCommandQuery(term)}>
-                            🕐 {term}
+                          <button key={i} type="button" onClick={() => setCommandQuery(term)} className="text-xs font-medium text-text2 bg-surface2 border border-border rounded-full px-2.5 py-1 hover:text-text">
+                            {term}
                           </button>
                         ))}
                       </div>
                     </>
                   ) : (
-                    <span>Type to search across Candidates, Jobs & Workspace Actions...</span>
+                    <span className="text-xs text-text3">Type to search across Candidates, Jobs &amp; Workspace Actions...</span>
                   )}
                 </div>
               ) : commandResults.length === 0 ? (
-                <div className="command-modal-empty">
-                  <span>No matches for "{commandQuery}". Try a candidate name, job title, or action.</span>
-                </div>
+                <div className="px-2 py-3 text-xs text-text3">No matches for "{commandQuery}". Try a candidate name, job title, or action.</div>
               ) : (
                 commandResults.map((res, i) => {
                   const showLabel = i === 0 || commandResults[i - 1].type !== res.type
                   return (
                     <div key={i}>
-                      {showLabel && <div className="command-modal-section-label">{commandGroupLabel[res.type]}</div>}
+                      {showLabel && <div className="text-[10px] font-bold text-text3 uppercase tracking-wide px-2 pt-2 pb-1">{commandGroupLabel[res.type]}</div>}
                       <div
-                        className={`command-modal-item ${commandActiveIndex === i ? 'active' : ''}`}
                         onMouseEnter={() => setCommandActiveIndex(i)}
                         onClick={() => runCommandResult(res)}
+                        className={`px-2.5 py-2 rounded-[var(--radius-sm)] cursor-pointer ${commandActiveIndex === i ? 'bg-accent/10' : ''}`}
                       >
-                        <strong>{res.title}</strong>
-                        <span>{res.meta}</span>
+                        <strong className="text-xs font-bold text-text block">{res.title}</strong>
+                        <span className="text-[11px] text-text3">{res.meta}</span>
                       </div>
                     </div>
                   )
@@ -2845,69 +2790,37 @@ Provide a 2-3 sentence strategic executive briefing for the recruitment team. Hi
         </div>
       )}
 
-      {/* NOTIFICATIONS DRAWER */}
+      {/* NOTIFICATIONS PANEL — real items only (priority focus, overdue follow-ups, pending offers) */}
       {showNotifications && (
-        <div className="dash-notifications-drawer">
-          <div className="notif-drawer-header">
-            <strong>Notifications & System Alerts</strong>
-            <button onClick={() => setShowNotifications(false)} type="button">×</button>
-          </div>
-          <div className="notif-drawer-list">
-            <div className="notif-item unread">
-              <strong>🔔 Priority Focus: {todaysFocus.title}</strong>
-              <span>{todaysFocus.desc}</span>
-              <small>Live update</small>
+        <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)}>
+          <div
+            onClick={e => e.stopPropagation()}
+            className="absolute top-16 right-3 sm:right-6 w-[min(360px,calc(100vw-1.5rem))] bg-surface border border-border rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] overflow-hidden"
+            style={{ zIndex: 'var(--z-dropdown)' }}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <strong className="text-sm font-bold text-text">Notifications</strong>
+              <button onClick={() => setShowNotifications(false)} type="button" className="w-6 h-6 rounded-full flex items-center justify-center text-text3 hover:bg-surface2 hover:text-text">
+                <Icon name="x" size={13} />
+              </button>
             </div>
-            <div className="notif-item unread">
-              <strong>💼 Active Requisition: {safeJobs[0]?.title || 'Open Requisition'}</strong>
-              <span>{safeJobs[0]?.client || 'Client'} • Status: {safeJobs[0]?.status || 'Open'}</span>
-              <small>1h ago</small>
-            </div>
-            <div className="notif-item">
-              <strong>✨ AI Insight Generated</strong>
-              <span>Pipeline conversion score updated to 18%.</span>
-              <small>3h ago</small>
+            <div className="max-h-80 overflow-y-auto">
+              {notificationItems.length === 0 ? (
+                <EmptyState icon="checkCircle" title="All clear" description="No urgent items right now." className="py-8" />
+              ) : (
+                notificationItems.map(item => (
+                  <div key={item.id} className="px-4 py-3 border-b border-border last:border-0">
+                    <strong className="text-xs font-bold text-text block">{item.title}</strong>
+                    <span className="text-[11px] text-text3">{item.desc}</span>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
-}
-
-function Panel({ title, subtitle, action, children }) {
-  return (
-    <article className="dashboard-panel">
-      <div className="dashboard-panel-head">
-        <div>
-          <h2>{title}</h2>
-          {subtitle && <p>{subtitle}</p>}
-        </div>
-        {action && <div className="dashboard-panel-action">{action}</div>}
-      </div>
-      {children}
-    </article>
-  )
-}
-
-function EmptyLine({ text }) {
-  return <div className="dashboard-empty-line">{text}</div>
-}
-
-function MarkdownView({ content }) {
-  if (typeof content !== 'string') return null
-  return <div className="markdown-rendered-view" dangerouslySetInnerHTML={{ __html: simpleMarkdownToHtml(content) }} />
-}
-
-function simpleMarkdownToHtml(text = '') {
-  if (typeof text !== 'string') return ''
-  return text
-    .replace(/^### (.*$)/gim, '<h4>$1</h4>')
-    .replace(/^## (.*$)/gim, '<h3>$1</h3>')
-    .replace(/^# (.*$)/gim, '<h2>$1</h2>')
-    .replace(/^\- (.*$)/gim, '<li>$1</li>')
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\n/g, '<br />')
 }
 
 const tooltipStyle = {

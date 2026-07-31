@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import Sidebar from './Sidebar'
+import TopBar from './TopBar'
 import { db } from '../../lib/api'
+import { cn } from '../ui/utils'
 
 export default function AppLayout({ currentPage, onNavigate, children }) {
   const [theme, setTheme] = useState(() => localStorage.getItem('td_theme') || 'dark')
@@ -29,15 +31,11 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
     const checkTasks = async () => {
       try {
         const { data } = await db.from('tasks').select('*')
-        if (data) {
-          const pending = data.filter(t => t.status !== 'Completed').length
-          setPendingTasksCount(pending)
-        }
-      } catch (err) {
+        if (data) setPendingTasksCount(data.filter(t => t.status !== 'Completed').length)
+      } catch {
         // silent catch
       }
     }
-
     checkTasks()
     const interval = setInterval(checkTasks, 10000)
     return () => clearInterval(interval)
@@ -49,42 +47,43 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
   }
 
   return (
-    <div className={`app-shell ${sidebarOpen ? 'sidebar-open' : ''} ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+    <div className="flex h-dvh w-full max-w-[100vw] overflow-hidden bg-bg text-text">
+      {sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+          className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden"
+        />
+      )}
+
       <div
-        className="mobile-sidebar-backdrop"
-        onClick={() => setSidebarOpen(false)}
-        aria-hidden="true"
-      />
-      <Sidebar
-        currentPage={currentPage}
-        onNavigate={handleNavigate}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-        isCollapsed={sidebarCollapsed}
-        onToggleCollapse={toggleSidebarCollapse}
-        onClose={() => setSidebarOpen(false)}
-        pendingTasksCount={pendingTasksCount}
-      />
-      <main className="app-main">
-        <header className="mobile-topbar">
-          <button
-            className="mobile-menu-button"
-            type="button"
-            onClick={() => setSidebarOpen(prev => !prev)}
-            aria-label={sidebarOpen ? 'Close navigation' : 'Open navigation'}
-            aria-expanded={sidebarOpen}
-          >
-            <span />
-            <span />
-            <span />
-          </button>
-          <div className="mobile-topbar-title-group">
-            <span className="mobile-brand-name">TalentDesk</span>
-            <span className="mobile-page-badge">{currentPage}</span>
-          </div>
-        </header>
-        {children}
-      </main>
+        className={cn(
+          'fixed inset-y-0 left-0 z-40 lg:relative lg:z-auto transition-transform duration-200 ease-[var(--ease-standard)]',
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        )}
+      >
+        <Sidebar
+          currentPage={currentPage}
+          onNavigate={handleNavigate}
+          isCollapsed={sidebarCollapsed}
+          onToggleCollapse={toggleSidebarCollapse}
+          onClose={() => setSidebarOpen(false)}
+          pendingTasksCount={pendingTasksCount}
+        />
+      </div>
+
+      <div className="flex-1 min-w-0 flex flex-col">
+        <TopBar
+          onOpenSidebar={() => setSidebarOpen(true)}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          pendingTasksCount={pendingTasksCount}
+          onNavigate={handleNavigate}
+        />
+        <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col">
+          {children}
+        </main>
+      </div>
     </div>
   )
 }

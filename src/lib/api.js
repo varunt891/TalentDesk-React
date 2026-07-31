@@ -3,6 +3,7 @@ if (rawUrl.startsWith('http') && !rawUrl.endsWith('/api')) {
   rawUrl = `${rawUrl}/api`
 }
 const API_BASE = rawUrl
+export { API_BASE }
 const TOKEN_KEY = 'td_session_token'
 
 export function getAuthToken() {
@@ -24,9 +25,8 @@ export function setAuthToken(token) {
 
 export async function apiRequest(path, options = {}) {
   const url = `${API_BASE}${path}`
-  console.log('[apiRequest] Fetching:', url, 'Method:', options.method || 'GET')
   const token = getAuthToken()
-  
+
   try {
     const response = await fetch(url, {
       method: options.method || 'GET',
@@ -39,17 +39,14 @@ export async function apiRequest(path, options = {}) {
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     })
 
-    console.log('[apiRequest] Response status:', response.status, 'for', path)
-    
     const payload = await response.json().catch(() => ({}))
-    
+
     if (!response.ok) {
       console.error('[apiRequest] Error response:', response.status, payload)
       if (response.status === 401) setAuthToken(null)
       throw new Error(payload.error || `Request failed with status ${response.status}`)
     }
-    
-    console.log('[apiRequest] Success response:', path, 'Data items:', Array.isArray(payload.data) ? payload.data.length : 'N/A')
+
     return payload
   } catch (err) {
     console.error('[apiRequest] Exception on', path, ':', err.message)

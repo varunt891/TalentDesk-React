@@ -277,7 +277,7 @@ router.post('/:table', async (req, res, next) => {
     const config = configFor(table)
     if (config.readOnly) return res.status(405).json({ error: 'This table is read-only' })
     if (config.adminWrite && !['admin', 'superadmin'].includes(req.profile.role)) {
-      return requireAdmin(req, res, () => {})
+      return requireAdmin(req, res, () => { })
     }
 
     if (table === 'candidates') {
@@ -314,7 +314,7 @@ router.put('/:table/:id', async (req, res, next) => {
     const config = configFor(table)
     if (config.readOnly) return res.status(405).json({ error: 'This table is read-only' })
     if (config.adminWrite && !['admin', 'superadmin'].includes(req.profile.role)) {
-      return requireAdmin(req, res, () => {})
+      return requireAdmin(req, res, () => { })
     }
 
     const model = prisma[config.model]
@@ -338,7 +338,7 @@ router.delete('/:table/:id', async (req, res, next) => {
     const config = configFor(table)
     if (config.readOnly) return res.status(405).json({ error: 'This table is read-only' })
     if (config.adminWrite && !['admin', 'superadmin'].includes(req.profile.role)) {
-      return requireAdmin(req, res, () => {})
+      return requireAdmin(req, res, () => { })
     }
 
     const model = prisma[config.model]

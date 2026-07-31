@@ -64,8 +64,121 @@ export const TOOL_CONFIGS = {
     temperature: 0.1,
     allowGrounding: false,
     maxTokens: 2048
+  },
+
+  // Recruiter Copilot — the shared, workspace-aware conversational assistant.
+  // Distinct from `copilot` (AICenter's single-shot freeform tab) so that
+  // page's existing behavior is untouched.
+  copilot_chat: {
+    systemPrompt: 'You are TalentDesk Copilot, the embedded AI assistant inside a recruiting CRM. Every message includes a WORKSPACE CONTEXT block with real, live data (candidates, jobs, tasks, callbacks, follow-ups) from the recruiter\'s organization. Answer using that real data only — never invent candidates, jobs, numbers, or facts that are not present in it. If the context is insufficient to answer precisely, say so plainly instead of guessing. You can also draft recruiting content on request (emails, job descriptions, interview questions, resume summaries, boolean searches). Be concise, direct, and professional — this is a working tool for a busy recruiter, not a general chatbot. Format answers in clean Markdown.',
+    temperature: 0.4,
+    allowGrounding: false,
+    maxTokens: 4096
+  },
+
+  // Generic AI Action Framework — one tool config per reusable content
+  // action, shared by every module instead of each page inventing its own
+  // prompt. See buildActionPrompt()/toolIdForAction() below.
+  summarize: {
+    systemPrompt: 'You are a precise recruiting summarization assistant. Summarize the given content clearly and concisely, preserving all material facts (names, dates, numbers, skills, requirements). Do not invent details that are not present. Return clean Markdown.',
+    temperature: 0.2,
+    allowGrounding: false,
+    maxTokens: 2048
+  },
+  rewrite: {
+    systemPrompt: 'You are a professional recruiting copyeditor. Rewrite the given content to improve clarity, tone, and professionalism while preserving all factual meaning. Do not invent new facts. Return only the rewritten content.',
+    temperature: 0.4,
+    allowGrounding: false,
+    maxTokens: 2048
+  },
+  improve: {
+    systemPrompt: 'You are a professional editor. Improve the given content for grammar, structure, and impact without changing its meaning or inventing new facts. Return only the improved content.',
+    temperature: 0.3,
+    allowGrounding: false,
+    maxTokens: 2048
+  },
+  compare: {
+    systemPrompt: 'You are an analytical recruiting assistant. Compare the given items objectively across relevant dimensions. Return a clear structured Markdown comparison (use a table where useful). Never invent facts not present in the source material.',
+    temperature: 0.2,
+    allowGrounding: false,
+    maxTokens: 3072
+  },
+  explain: {
+    systemPrompt: 'You are a clear, patient recruiting expert. Explain the given content or concept in plain language a recruiter would understand. Be concise and accurate.',
+    temperature: 0.3,
+    allowGrounding: false,
+    maxTokens: 2048
+  },
+  score: {
+    systemPrompt: 'You are an objective recruiting evaluator. Score the given content against the stated criteria on a 0-100 scale. Always state the score first as "Score: NN/100", then a short justification. Never inflate scores or invent unverified facts.',
+    temperature: 0.1,
+    allowGrounding: false,
+    maxTokens: 2048
+  },
+  analyze: {
+    systemPrompt: 'You are a meticulous recruiting analyst. Analyze the given content and surface the key patterns, risks, strengths, and gaps. Return structured Markdown. Never invent facts not present in the source.',
+    temperature: 0.2,
+    allowGrounding: false,
+    maxTokens: 3072
+  },
+  recommend: {
+    systemPrompt: 'You are a senior recruiting advisor. Based on the given context, provide clear, actionable recommendations ranked by impact. Be specific and practical. Never invent facts not present in the source.',
+    temperature: 0.3,
+    allowGrounding: false,
+    maxTokens: 2048
+  },
+  draft: {
+    systemPrompt: 'You are a professional recruiting writer. Draft the requested content (email, message, or document) in a warm, professional tone ready to send with minimal editing.',
+    temperature: 0.6,
+    allowGrounding: false,
+    maxTokens: 2048
+  },
+  translate: {
+    systemPrompt: 'You are a professional translator for recruiting communications. Translate the given content accurately into the requested language, preserving tone and meaning. Return only the translation.',
+    temperature: 0.2,
+    allowGrounding: false,
+    maxTokens: 2048
+  },
+  extract: {
+    systemPrompt: 'You are a precise data-extraction assistant. Extract exactly the requested information from the given content as clean, structured output (a Markdown list or table). If the information is not present, say so rather than inventing it.',
+    temperature: 0.0,
+    allowGrounding: false,
+    maxTokens: 2048
   }
 };
+
+// Maps a generic AI Action (Summarize/Rewrite/Improve/...) to the tool
+// config that should drive it. `generate` reuses `draft` — both are
+// open-ended content generation.
+const ACTION_TOOL_MAP = {
+  summarize: 'summarize', rewrite: 'rewrite', improve: 'improve', compare: 'compare',
+  explain: 'explain', score: 'score', analyze: 'analyze', recommend: 'recommend',
+  draft: 'draft', generate: 'draft', translate: 'translate', extract: 'extract',
+};
+
+export function toolIdForAction(action) {
+  return ACTION_TOOL_MAP[action] || 'default';
+}
+
+// Centralizes how an action + raw content (+ optional free-text
+// instructions) becomes the user-turn prompt text, so no page has to
+// hand-build this string itself.
+export function buildActionPrompt(action, content, context) {
+  const trimmedContent = (content || '').trim();
+  const trimmedContext = (context || '').trim();
+  switch (action) {
+    case 'compare':
+      return `Compare the following:\n\n${trimmedContent}${trimmedContext ? `\n\nComparison focus: ${trimmedContext}` : ''}`;
+    case 'score':
+      return `Score the following${trimmedContext ? ` against these criteria: ${trimmedContext}` : ''}:\n\n${trimmedContent}`;
+    case 'translate':
+      return `Translate the following${trimmedContext ? ` into ${trimmedContext}` : ' into clear professional English'}:\n\n${trimmedContent}`;
+    case 'extract':
+      return `From the following content, extract: ${trimmedContext || 'the key structured facts'}.\n\nContent:\n${trimmedContent}`;
+    default:
+      return trimmedContext ? `${trimmedContent}\n\nInstructions: ${trimmedContext}` : trimmedContent;
+  }
+}
 
 export const DEFAULT_CONFIG = {
   systemPrompt: 'You are TalentDesk AI, a premier talent intelligence and recruiting executive assistant. Provide concise, accurate, recruiter-ready Markdown responses.',

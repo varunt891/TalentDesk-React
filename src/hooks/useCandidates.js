@@ -11,18 +11,14 @@ export function useCandidates(options = {}) {
   const fetch = useCallback(async () => {
     try {
       setLoading(true)
-      console.log('[useCandidates] Fetching candidates for user:', user?.id, 'allOrgs:', allOrgs)
       let query = db.from('candidates').select('*').order('created_at', { ascending: false })
       if (allOrgs) {
         query = query.param('all_orgs', 'true')
       }
       const { data, error } = await query
-      
-      console.log('[useCandidates] Fetch response:', { data, error })
-      
+
       if (!error) {
         setCandidates(data || [])
-        console.log('[useCandidates] Candidates set:', data?.length || 0, 'items')
       } else {
         console.error('[useCandidates] Fetch error:', error)
       }
@@ -31,11 +27,10 @@ export function useCandidates(options = {}) {
       console.error('[useCandidates] Exception:', err)
       setLoading(false)
     }
-  }, [user, allOrgs])
+  }, [allOrgs])
 
-  useEffect(() => { 
-    console.log('[useCandidates] useEffect triggered, user:', user?.id, 'allOrgs:', allOrgs)
-    if (user) fetch() 
+  useEffect(() => {
+    if (user) fetch()
   }, [user, fetch, allOrgs])
 
   const cleanDates = (data) => {

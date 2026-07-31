@@ -2,6 +2,16 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { organizationApi } from '../lib/api'
+import { Button, FormField, Input, Select } from '../components/ui'
+import { Icon } from '../components/ui/icons'
+
+const INDUSTRY_OPTIONS = ['Staffing & Recruiting', 'IT Services', 'Healthcare', 'Corporate HR', 'Consulting'].map(v => ({ value: v, label: v }))
+
+const HIGHLIGHTS = [
+  { icon: 'layers', title: 'Unified pipeline', body: 'Candidates, jobs, callbacks, and follow-ups in one focused workspace.' },
+  { icon: 'sparkles', title: 'AI copilot built in', body: 'Draft, summarize, and score candidates without leaving your flow.' },
+  { icon: 'lock', title: 'Isolated by design', body: 'Your organization\'s data stays yours — private by default, team-ready from day one.' },
+]
 
 export default function Signup() {
   const { signUp } = useAuth()
@@ -18,7 +28,6 @@ export default function Signup() {
   const [companyName, setCompanyName] = useState('')
   const [website, setWebsite] = useState('')
   const [domain, setDomain] = useState('')
-  const [logoUrl, setLogoUrl] = useState('')
   const [industry, setIndustry] = useState('Staffing & Recruiting')
 
   // Step 2: Account Credentials Form
@@ -35,9 +44,7 @@ export default function Signup() {
             setEmail(res.data.email || '')
           }
         })
-        .catch(err => {
-          setError(err.message || 'Invalid invitation token')
-        })
+        .catch(err => setError(err.message || 'Invalid invitation token'))
     }
   }, [inviteToken])
 
@@ -60,15 +67,7 @@ export default function Signup() {
       full_name: name,
       ...(inviteToken
         ? { invite_token: inviteToken }
-        : {
-            company: {
-              name: companyName,
-              website,
-              domain,
-              logo_url: logoUrl,
-              industry,
-            },
-          }),
+        : { company: { name: companyName, website, domain, industry } }),
     }
 
     const { error: signUpError } = await signUp(email, password, payload)
@@ -81,190 +80,182 @@ export default function Signup() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
-      <div style={{ width: '100%', maxWidth: '520px' }}>
-        {/* Header Branding */}
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div style={{ fontFamily: "'Space Mono', monospace", fontSize: '32px', fontWeight: '700', color: 'var(--accent)', letterSpacing: '-1px' }}>TalentDesk</div>
-          <div style={{ fontSize: '12px', color: 'var(--text3)', letterSpacing: '2px', textTransform: 'uppercase', marginTop: '6px' }}>Multi-Tenant Recruiter Platform</div>
+    <main className="relative min-h-dvh w-full bg-bg text-text overflow-hidden flex items-center justify-center p-6">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+        <div
+          className="absolute -top-40 -left-32 w-[560px] h-[560px] rounded-full opacity-[0.12] blur-[120px]"
+          style={{ background: 'var(--accent)' }}
+        />
+        <div
+          className="absolute -bottom-48 -right-32 w-[560px] h-[560px] rounded-full opacity-[0.10] blur-[120px]"
+          style={{ background: 'var(--ai)' }}
+        />
+      </div>
+
+      <section className="relative w-full max-w-5xl grid lg:grid-cols-2 gap-10 lg:gap-16 items-center py-10">
+        <div className="hidden lg:flex flex-col gap-10">
+          <Link to="/" aria-label="TalentDesk home" className="focus-ring inline-flex items-center gap-2.5 w-fit rounded-[var(--radius-sm)]">
+            <span className="w-9 h-9 rounded-[var(--radius-sm)] flex items-center justify-center text-sm font-extrabold bg-gradient-to-br from-accent to-accent2 text-white shrink-0">
+              TD
+            </span>
+            <span className="flex flex-col leading-tight">
+              <span className="text-[15px] font-extrabold text-text tracking-tight">TalentDesk</span>
+              <span className="text-[10px] font-semibold text-text3 uppercase tracking-wider">Recruiter CRM</span>
+            </span>
+          </Link>
+
+          <div className="flex flex-col gap-4 max-w-md">
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-accent bg-accent/10 rounded-full px-2.5 py-1 w-fit">
+              {inviteToken ? "You're invited" : 'Start hiring smarter'}
+            </span>
+            <h1 className="text-[32px] leading-[1.15] font-extrabold text-text tracking-[-0.02em]">
+              {inviteToken ? 'Join your team on TalentDesk.' : 'Set up your recruiting workspace.'}
+            </h1>
+            <p className="text-[14px] text-text2 leading-relaxed">
+              {inviteToken
+                ? 'Create your credentials to start collaborating with your team.'
+                : 'A focused, AI-assisted CRM for staffing teams — candidates, jobs, and pipeline in one place.'}
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-4 max-w-md" aria-label="What you get with TalentDesk">
+            {HIGHLIGHTS.map(h => (
+              <div className="flex items-start gap-3" key={h.title}>
+                <span className="w-9 h-9 rounded-[var(--radius-sm)] bg-surface border border-border shadow-xs flex items-center justify-center text-accent shrink-0">
+                  <Icon name={h.icon} size={16} />
+                </span>
+                <div className="min-w-0">
+                  <strong className="block text-[13px] font-bold text-text">{h.title}</strong>
+                  <span className="block text-[12.5px] text-text3 leading-relaxed mt-0.5">{h.body}</span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Card */}
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '20px', padding: '36px', boxShadow: '0 20px 40px rgba(0,0,0,0.3)' }}>
+        <div className="bg-surface border border-border rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] p-7 sm:p-8 w-full max-w-md mx-auto lg:mx-0" aria-busy={loading}>
+          <div className="flex lg:hidden items-center gap-2.5 mb-6">
+            <span className="w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center text-sm font-extrabold bg-gradient-to-br from-accent to-accent2 text-white shrink-0">
+              TD
+            </span>
+            <span className="text-[15px] font-extrabold text-text tracking-tight">TalentDesk</span>
+          </div>
 
-          {/* Invitation Banner */}
           {inviteDetails && (
-            <div style={{ background: 'rgba(79, 124, 255, 0.1)', border: '1px solid var(--accent)', borderRadius: '12px', padding: '14px 18px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ fontSize: '24px' }}>🏢</div>
-              <div>
-                <div style={{ fontSize: '13px', color: 'var(--text3)' }}>You were invited to join</div>
-                <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text)' }}>{inviteDetails.organization?.name}</div>
-                <div style={{ fontSize: '12px', color: 'var(--accent)', marginTop: '2px' }}>Role: {inviteDetails.role}</div>
+            <div className="flex items-start gap-3 bg-accent/8 border border-accent/25 rounded-[var(--radius-md)] px-3.5 py-3 mb-5">
+              <span className="w-8 h-8 rounded-[var(--radius-sm)] bg-surface border border-border flex items-center justify-center text-accent shrink-0">
+                <Icon name="building" size={15} />
+              </span>
+              <div className="min-w-0">
+                <div className="text-[11px] text-text3">You were invited to join</div>
+                <strong className="block text-sm font-bold text-text">{inviteDetails.organization?.name}</strong>
+                <span className="block text-xs text-text3">Role: {inviteDetails.role}</span>
               </div>
             </div>
           )}
 
-          {/* Stepper Progress Bar */}
           {!inviteToken && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '28px' }}>
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: step >= 1 ? 'var(--accent)' : 'var(--surface2)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: '700' }}>1</div>
-                <span style={{ fontSize: '13px', fontWeight: '600', color: step >= 1 ? 'var(--text)' : 'var(--text3)' }}>Company Details</span>
-              </div>
-              <div style={{ width: '40px', height: '2px', background: step === 2 ? 'var(--accent)' : 'var(--border)' }}></div>
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: step === 2 ? 'var(--accent)' : 'var(--surface2)', color: step === 2 ? '#fff' : 'var(--text3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: '700' }}>2</div>
-                <span style={{ fontSize: '13px', fontWeight: '600', color: step === 2 ? 'var(--text)' : 'var(--text3)' }}>Admin User</span>
-              </div>
+            <div className="flex items-center gap-2.5 mb-6" aria-label="Signup progress">
+              <StepDot active={step >= 1} done={step > 1}>1</StepDot>
+              <span className="text-xs font-semibold text-text3">Company details</span>
+              <span className={cnStepLine(step > 1)} aria-hidden="true" />
+              <StepDot active={step === 2} done={false}>2</StepDot>
+              <span className="text-xs font-semibold text-text3">Admin account</span>
             </div>
           )}
 
           {error && (
-            <div style={{ background: 'rgba(255,77,106,0.12)', border: '1px solid rgba(255,77,106,0.3)', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px', fontSize: '13px', color: '#ff4d6a' }}>
-              ⚠️ {error}
+            <div role="alert" aria-live="polite" className="flex items-start gap-2 bg-red/10 border border-red/25 text-red text-[13px] rounded-[var(--radius-sm)] px-3 py-2.5 mb-5">
+              <Icon name="alertCircle" size={14} className="shrink-0 mt-0.5" />
+              {error}
             </div>
           )}
 
-          {/* STEP 1: Company Profile Setup */}
           {step === 1 && !inviteToken && (
-            <form onSubmit={handleStep1Next}>
-              <h2 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text)', marginBottom: '6px' }}>Set up your Organization</h2>
-              <p style={{ fontSize: '13px', color: 'var(--text3)', marginBottom: '24px' }}>Create your company workspace for data isolation and team management.</p>
-
-              <div style={{ marginBottom: '18px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text2)', marginBottom: '6px' }}>Company Name *</label>
-                <input
-                  type="text"
-                  value={companyName}
-                  onChange={e => setCompanyName(e.target.value)}
-                  placeholder="e.g. ABC Staffing Corp"
-                  required
-                  style={{ width: '100%', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 16px', color: 'var(--text)', fontSize: '14px', outline: 'none' }}
-                />
+            <form className="flex flex-col gap-4" onSubmit={handleStep1Next}>
+              <div>
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-accent mb-2">Step 1 of 2</p>
+                <h2 className="text-xl font-extrabold text-text tracking-tight">Set up your organization</h2>
+                <p className="text-[13px] text-text3 mt-1.5">Create your company workspace for data isolation and team management.</p>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '18px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text2)', marginBottom: '6px' }}>Domain (Optional)</label>
-                  <input
-                    type="text"
-                    value={domain}
-                    onChange={e => setDomain(e.target.value)}
-                    placeholder="abcstaffing.com"
-                    style={{ width: '100%', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 16px', color: 'var(--text)', fontSize: '14px', outline: 'none' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text2)', marginBottom: '6px' }}>Industry</label>
-                  <select
-                    value={industry}
-                    onChange={e => setIndustry(e.target.value)}
-                    style={{ width: '100%', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 16px', color: 'var(--text)', fontSize: '14px', outline: 'none' }}
-                  >
-                    <option value="Staffing & Recruiting">Staffing & Recruiting</option>
-                    <option value="IT Services">IT Services</option>
-                    <option value="Healthcare">Healthcare</option>
-                    <option value="Corporate HR">Corporate HR</option>
-                    <option value="Consulting">Consulting</option>
-                  </select>
-                </div>
+              <FormField label="Company name" htmlFor="signup-company">
+                <Input id="signup-company" type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="e.g. ABC Staffing Corp" autoComplete="organization" required />
+              </FormField>
+
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Domain (optional)" htmlFor="signup-domain">
+                  <Input id="signup-domain" type="text" value={domain} onChange={e => setDomain(e.target.value)} placeholder="abcstaffing.com" />
+                </FormField>
+                <FormField label="Industry" htmlFor="signup-industry">
+                  <Select value={industry} onChange={setIndustry} options={INDUSTRY_OPTIONS} />
+                </FormField>
               </div>
 
-              <div style={{ marginBottom: '24px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text2)', marginBottom: '6px' }}>Website URL (Optional)</label>
-                <input
-                  type="url"
-                  value={website}
-                  onChange={e => setWebsite(e.target.value)}
-                  placeholder="https://www.abcstaffing.com"
-                  style={{ width: '100%', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 16px', color: 'var(--text)', fontSize: '14px', outline: 'none' }}
-                />
-              </div>
+              <FormField label="Website (optional)" htmlFor="signup-website">
+                <Input id="signup-website" type="url" value={website} onChange={e => setWebsite(e.target.value)} placeholder="https://www.abcstaffing.com" autoComplete="url" />
+              </FormField>
 
-              <button
-                type="submit"
-                style={{ width: '100%', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '10px', padding: '13px', fontSize: '15px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }}
-              >
-                Continue to Account Setup →
-              </button>
+              <Button type="submit" size="lg" className="w-full mt-1.5">Continue to account setup</Button>
             </form>
           )}
 
-          {/* STEP 2: First User Credentials */}
           {step === 2 && (
-            <form onSubmit={handleFinalSubmit}>
-              <h2 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text)', marginBottom: '6px' }}>
-                {inviteToken ? 'Create Account' : 'Create Owner Account'}
-              </h2>
-              <p style={{ fontSize: '13px', color: 'var(--text3)', marginBottom: '24px' }}>
-                {inviteToken ? 'Set up your credentials to join your team.' : `You will be the primary OWNER of ${companyName || 'your company'}.`}
-              </p>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text2)', marginBottom: '6px' }}>Full Name *</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  placeholder="Jane Doe"
-                  required
-                  style={{ width: '100%', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 16px', color: 'var(--text)', fontSize: '14px', outline: 'none' }}
-                />
+            <form className="flex flex-col gap-4" onSubmit={handleFinalSubmit}>
+              <div>
+                {!inviteToken && <p className="text-[10px] font-extrabold uppercase tracking-widest text-accent mb-2">Step 2 of 2</p>}
+                <h2 className="text-xl font-extrabold text-text tracking-tight">{inviteToken ? 'Create your account' : 'Create the owner account'}</h2>
+                <p className="text-[13px] text-text3 mt-1.5">{inviteToken ? 'Set up your credentials to join your team.' : `You'll be the primary owner of ${companyName || 'your company'}.`}</p>
               </div>
 
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text2)', marginBottom: '6px' }}>Work Email *</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="jane@company.com"
-                  required
-                  disabled={!!inviteToken}
-                  style={{ width: '100%', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 16px', color: 'var(--text)', fontSize: '14px', outline: 'none' }}
-                />
-              </div>
+              <FormField label="Full name" htmlFor="signup-name">
+                <Input id="signup-name" type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Jane Doe" autoComplete="name" required />
+              </FormField>
 
-              <div style={{ marginBottom: '24px' }}>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: 'var(--text2)', marginBottom: '6px' }}>Password *</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  placeholder="At least 6 characters"
-                  required
-                  style={{ width: '100%', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 16px', color: 'var(--text)', fontSize: '14px', outline: 'none' }}
-                />
-              </div>
+              <FormField label="Work email" htmlFor="signup-email">
+                <Input id="signup-email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="jane@company.com" autoComplete="email" required disabled={!!inviteToken} />
+              </FormField>
 
-              <div style={{ display: 'flex', gap: '12px' }}>
+              <FormField label="Password" htmlFor="signup-password">
+                <Input id="signup-password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 6 characters" autoComplete="new-password" minLength={6} required />
+              </FormField>
+
+              <div className="flex items-center gap-2 mt-1.5">
                 {!inviteToken && (
-                  <button
-                    type="button"
-                    onClick={() => setStep(1)}
-                    style={{ flex: 1, background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '10px', padding: '13px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}
-                  >
-                    ← Back
-                  </button>
+                  <Button type="button" variant="secondary" size="lg" onClick={() => setStep(1)}>Back</Button>
                 )}
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  style={{ flex: 2, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '10px', padding: '13px', fontSize: '15px', fontWeight: '600', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}
-                >
-                  {loading ? 'Creating Organization...' : 'Complete Registration 🚀'}
-                </button>
+                <Button type="submit" size="lg" loading={loading} className="flex-1">
+                  {loading ? 'Creating organization...' : 'Complete registration'}
+                </Button>
               </div>
             </form>
           )}
 
-          <p style={{ textAlign: 'center', marginTop: '24px', fontSize: '13px', color: 'var(--text3)' }}>
+          <p className="text-center text-[13px] text-text3 mt-6">
             Already have an account?{' '}
-            <Link to="/login" style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: '600' }}>Sign in</Link>
+            <Link to="/login" className="text-accent font-semibold hover:underline">
+              Sign in
+            </Link>
           </p>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
+  )
+}
+
+function cnStepLine(done) {
+  return `flex-1 h-px min-w-6 ${done ? 'bg-accent' : 'bg-border'}`
+}
+
+function StepDot({ active, done, children }) {
+  return (
+    <span
+      className={
+        'w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold ' +
+        (active || done ? 'bg-accent text-white' : 'bg-surface2 border border-border text-text3')
+      }
+    >
+      {done ? <Icon name="check" size={11} /> : children}
+    </span>
   )
 }

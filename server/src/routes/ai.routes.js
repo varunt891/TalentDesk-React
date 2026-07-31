@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { aiService } from '../services/aiService.js';
+import { buildActionPrompt, toolIdForAction } from '../services/promptService.js';
 import { requireAuth } from '../auth.js';
 import { createRequire } from 'module';
 import mammoth from 'mammoth';
@@ -229,6 +230,72 @@ Output ONLY a valid raw JSON object with keys:
     return res.status(status).json({
       success: false,
       error: err.message || 'File parsing failed.',
+      code: err.code || `HTTP_${status}`
+    });
+  }
+});
+
+// Recruiter Copilot — streams the answer back over SSE so the panel can
+// render tokens as they arrive instead of waiting for the full response.
+router.post('/copilot/stream', async (req, res) => {
+  const { message, history, context } = req.body || {};
+  if (!message || !String(message).trim()) {
+    return res.status(400).json({ success: false, error: 'A message is required.' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  const controller = new AbortController();
+  req.on('close', () => controller.abort());
+
+  const send = (event) => { res.write(`data: ${JSON.stringify(event)}\n\n`); };
+
+  try {
+    const historyBlock = Array.isArray(history) && history.length
+      ? `\n\nRECENT CONVERSATION:\n${history.slice(-8).map(m => `${m.role === 'user' ? 'Recruiter' : 'Copilot'}: ${m.content}`).join('\n')}`
+      : '';
+    const contextBlock = context ? `\n\nWORKSPACE CONTEXT:\n${context}` : '';
+    const prompt = `${String(message).trim()}${historyBlock}${contextBlock}`;
+
+    const result = await aiService.generateStream({
+      prompt,
+      toolId: 'copilot_chat',
+      signal: controller.signal,
+      onDelta: (text) => send({ delta: text }),
+    });
+
+    send({ done: true, provider: result.provider, model: result.model });
+    res.end();
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      res.end();
+      return;
+    }
+    send({ error: err.message || 'AI response failed. Please try again.', code: err.code || 'STREAM_ERROR' });
+    res.end();
+  }
+});
+
+// AI Action Framework — one endpoint for every reusable content action
+// (Summarize/Rewrite/Improve/Compare/Explain/Score/Analyze/Recommend/
+// Draft/Translate/Extract), so no page has to hand-build its own prompt.
+router.post('/action', async (req, res) => {
+  try {
+    const { action, content, context } = req.body || {};
+    if (!content || !String(content).trim()) {
+      return res.status(400).json({ success: false, error: 'Content is required.' });
+    }
+    const prompt = buildActionPrompt(action, content, context);
+    const result = await aiService.generate({ prompt, toolId: toolIdForAction(action) });
+    return res.json(result);
+  } catch (err) {
+    const status = err.status || 500;
+    return res.status(status).json({
+      success: false,
+      error: err.message || 'AI action failed. Please try again.',
       code: err.code || `HTTP_${status}`
     });
   }

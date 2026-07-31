@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiRequest, db, organizationApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
+import { PageContainer } from '../components/layout/PageContainer'
 
 const TABS = ['Overview', 'Org Chart', 'Members', 'Access', 'Company']
 const ROLES = ['employee', 'recruiter', 'account_manager', 'recruitment_manager', 'operations_manager', 'manager', 'admin', 'superadmin']
@@ -535,7 +536,7 @@ export default function Admin() {
   }
 
   return (
-    <div className="admin-page admin-v2">
+    <PageContainer>
       {/* TalentDesk Enterprise Branded Header Toolbar */}
       <header className="admin-header-toolbar">
         <div className="admin-header-brand">
@@ -764,7 +765,7 @@ export default function Admin() {
           <span>{toast.msg}</span>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }
 
