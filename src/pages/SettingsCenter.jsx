@@ -4,7 +4,7 @@ import { organizationApi, db } from '../lib/api'
 import { PageContainer } from '../components/layout/PageContainer'
 import {
   Button, Card, CardHeader, KPICard, PageHeader, Tabs, EmptyState, Select, Input, Textarea,
-  Switch, FormField, Badge, Avatar, Modal, useToast, cn,
+  Switch, FormField, Badge, Avatar, Modal, useToast, cn, SearchBar,
 } from '../components/ui'
 import { SettingsCard, StatusBadge, InfoBanner, ProfileCard, PermissionMatrix } from '../components/admin'
 import { ROLES, MODULES, getRole } from '../lib/admin/permissions'
@@ -704,38 +704,73 @@ function TeamsTab({ members }) {
 }
 
 function UsersTab({ members, invitations, isOwnerOrAdmin, onRoleChange, onToggleActive, onRemove, onOpenInvite, onRevoke }) {
+  const [search, setSearch] = useState('')
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return members
+    return members.filter(m =>
+      `${m.full_name || ''} ${m.email || ''} ${m.role || ''} ${m.department || ''} ${m.team || ''}`.toLowerCase().includes(q)
+    )
+  }, [members, search])
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="text-sm text-text3">{members.length} member{members.length === 1 ? '' : 's'} · {invitations.length} pending invitation{invitations.length === 1 ? '' : 's'}</div>
-        {isOwnerOrAdmin && <Button size="sm" leftIcon="plus" onClick={onOpenInvite}>Invite User</Button>}
+      {/* Header row: stats + search + invite button */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="text-sm text-text3 shrink-0">
+          {members.length} member{members.length === 1 ? '' : 's'} · {invitations.length} pending invitation{invitations.length === 1 ? '' : 's'}
+        </div>
+        <div className="flex-1">
+          <SearchBar
+            value={search}
+            onChange={setSearch}
+            placeholder="Search by name, email, role..."
+          />
+        </div>
+        {isOwnerOrAdmin && <Button size="sm" leftIcon="plus" onClick={onOpenInvite} className="shrink-0">Invite User</Button>}
       </div>
 
       <Card>
-        <CardHeader title="Organization Members" />
+        <CardHeader
+          title="Organization Members"
+          subtitle={search ? `${filtered.length} of ${members.length} members` : `${members.length} member${members.length === 1 ? '' : 's'}`}
+        />
         {members.length === 0 ? (
           <EmptyState title="No members yet" />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon="search"
+            title="No members match your search"
+            description={`No results for "${search}". Try a different name, email, or role.`}
+          />
         ) : (
           <div className="flex flex-col divide-y divide-border">
-            {members.map(m => (
-              <div key={m.id} className="py-2.5 flex items-center gap-3 flex-wrap">
-                <Avatar name={m.full_name || m.email} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-text truncate">{m.full_name || 'Unnamed User'}</div>
-                  <div className="text-xs text-text3 truncate">{m.email}</div>
+            {filtered.map(m => (
+              <div key={m.id} className="py-3 flex flex-col gap-2">
+                {/* Top row: avatar + name/email (always full width) */}
+                <div className="flex items-center gap-3 min-w-0">
+                  <Avatar name={m.full_name || m.email} />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-text">{m.full_name || 'Unnamed User'}</div>
+                    <div className="text-xs text-text3 truncate">{m.email}</div>
+                  </div>
+                  <span className="text-xs text-text3 hidden sm:block shrink-0 truncate max-w-[8rem]">{m.department || m.team || 'General'}</span>
                 </div>
-                <span className="text-xs text-text3 hidden sm:block w-32 shrink-0 truncate">{m.department || m.team || 'General'}</span>
-                {isOwnerOrAdmin ? (
-                  <div className="w-44 shrink-0"><Select size="sm" value={m.role} onChange={v => onRoleChange(m.id, v)} options={ALL_ROLES} /></div>
-                ) : (
-                  <Badge tone="accent" size="sm">{m.role}</Badge>
-                )}
-                {isOwnerOrAdmin ? (
-                  <Switch checked={m.is_active !== false} onChange={v => onToggleActive(m.user_id, v)} label={m.is_active !== false ? 'Active' : 'Inactive'} />
-                ) : (
-                  <StatusBadge status={m.is_active !== false ? 'active' : 'inactive'} />
-                )}
-                {isOwnerOrAdmin && <Button size="sm" variant="ghost" onClick={() => onRemove(m.id, m.full_name)} className="text-red">Remove</Button>}
+                {/* Controls row: role select + toggle + remove */}
+                <div className="flex items-center gap-2 flex-wrap pl-0 sm:pl-11">
+                  {isOwnerOrAdmin ? (
+                    <div className="flex-1 min-w-[140px] max-w-[200px]"><Select size="sm" value={m.role} onChange={v => onRoleChange(m.id, v)} options={ALL_ROLES} /></div>
+                  ) : (
+                    <Badge tone="accent" size="sm">{m.role}</Badge>
+                  )}
+                  {isOwnerOrAdmin ? (
+                    <Switch checked={m.is_active !== false} onChange={v => onToggleActive(m.user_id, v)} label={m.is_active !== false ? 'Active' : 'Inactive'} />
+                  ) : (
+                    <StatusBadge status={m.is_active !== false ? 'active' : 'inactive'} />
+                  )}
+                  {isOwnerOrAdmin && <Button size="sm" variant="ghost" onClick={() => onRemove(m.id, m.full_name)} className="text-red ml-auto">Remove</Button>}
+                </div>
               </div>
             ))}
           </div>
