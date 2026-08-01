@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Drawer } from '../ui/Modal'
 import Avatar from '../ui/Avatar'
 import Tabs from '../ui/Tabs'
@@ -26,8 +27,10 @@ export default function EntityDrawer({
   size = 'md',
   children,
 }) {
+  const [isMaximized, setIsMaximized] = useState(false)
+
   return (
-    <Drawer open={open} onClose={onClose} size={size} hideHeader>
+    <Drawer open={open} onClose={onClose} size={isMaximized ? 'full' : size} hideHeader>
       <div className="flex flex-col h-full">
         <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-border shrink-0">
           <div className="flex items-center gap-3 min-w-0">
@@ -41,9 +44,25 @@ export default function EntityDrawer({
               {subtitle && <p className="text-xs text-text3 mt-0.5 truncate">{subtitle}</p>}
             </div>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-text3 hover:bg-surface2 hover:text-text">
-            <Icon name="x" size={14} />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsMaximized(!isMaximized)}
+              title={isMaximized ? "Restore side view" : "View in full screen"}
+              aria-label={isMaximized ? "Restore side view" : "View in full screen"}
+              className="focus-ring w-7 h-7 rounded-full flex items-center justify-center text-text3 hover:bg-surface2 hover:text-text transition-colors"
+            >
+              <Icon name={isMaximized ? "minimize" : "maximize"} size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="focus-ring w-7 h-7 rounded-full flex items-center justify-center text-text3 hover:bg-surface2 hover:text-text transition-colors"
+            >
+              <Icon name="x" size={14} />
+            </button>
+          </div>
         </div>
 
         {tabs && (

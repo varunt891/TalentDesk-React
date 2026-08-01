@@ -197,17 +197,17 @@ export default function Table({
       )}
 
       {/* Desktop / tablet: real table, sticky header, no horizontal scroll trap */}
-      <div className="hidden md:block border border-border rounded-[var(--radius-lg)] shadow-xs overflow-hidden mb-6">
+      <div className="hidden md:block border border-border rounded-[var(--radius-lg)] shadow-xs overflow-hidden mb-6" style={{ borderRadius: 'var(--radius-md)' }}>
         <div
           className="overflow-x-auto"
           tabIndex={keyboardNav ? 0 : undefined}
           onKeyDown={handleContainerKeyDown}
         >
           <table className="w-full border-collapse" style={resizable ? { tableLayout: 'fixed' } : undefined}>
-            <thead className="sticky top-0 bg-surface2/95 backdrop-blur" style={{ zIndex: 'var(--z-sticky)' }}>
-              <tr className="border-b border-border">
+            <thead className="sticky top-0 bg-surface2/98 backdrop-blur-sm border-b border-border" style={{ zIndex: 'var(--z-sticky)' }}>
+              <tr>
                 {selectable && (
-                  <th className="w-10 px-3.5 py-3">
+                  <th className="w-10 px-3 py-2.5">
                     <Checkbox checked={allSelected} ref={(el) => { if (el) el.indeterminate = someSelected }} onChange={toggleAll} />
                   </th>
                 )}
@@ -215,7 +215,7 @@ export default function Table({
                   <th
                     key={col.key}
                     className={cn(
-                      'relative px-3.5 py-3 text-[10.5px] font-bold text-text3 uppercase tracking-wider whitespace-nowrap',
+                      'relative px-3 py-2.5 text-[10px] font-bold text-text3 uppercase tracking-wider whitespace-nowrap',
                       ALIGN[col.align] || ALIGN.left,
                       col.sortable && 'cursor-pointer select-none hover:text-text transition-colors duration-[var(--duration-fast)]'
                     )}
@@ -241,18 +241,18 @@ export default function Table({
                     )}
                   </th>
                 ))}
-                {rowActions && <th className="w-10 px-3.5 py-3" />}
+                {rowActions && <th className="w-10 px-3 py-2" />}
               </tr>
             </thead>
             <tbody>
               {loading
-                ? Array.from({ length: 6 }).map((_, i) => (
+                  ? Array.from({ length: 6 }).map((_, i) => (
                     <tr key={i} className="border-b border-border last:border-0">
-                      {selectable && <td className="px-3.5 py-3.5"><Skeleton className="w-4 h-4 rounded" /></td>}
+                      {selectable && <td className="px-3 py-2.5"><Skeleton className="w-4 h-4 rounded" /></td>}
                       {visibleColumns.map(col => (
-                        <td key={col.key} className="px-3.5 py-3.5"><Skeleton className="h-4 w-4/5 rounded" /></td>
+                        <td key={col.key} className="px-3 py-2.5"><Skeleton className="h-3.5 w-4/5 rounded" /></td>
                       ))}
-                      {rowActions && <td className="px-3.5 py-3.5" />}
+                      {rowActions && <td className="px-3 py-2.5" />}
                     </tr>
                   ))
                 : sortedData.map((row, i) => {
@@ -263,13 +263,14 @@ export default function Table({
                         onClick={() => onRowClick?.(row)}
                         onContextMenu={(e) => openContextMenu(e, row)}
                         className={cn(
-                          'border-b border-border last:border-0 transition-colors duration-[var(--duration-fast)]',
-                          onRowClick && 'cursor-pointer hover:bg-surface2/70',
+                          'border-b border-border/60 last:border-0 transition-colors duration-[var(--duration-fast)] group',
+                          onRowClick && 'cursor-pointer hover:bg-accent/5',
+                          i % 2 === 0 ? '' : 'bg-surface2/30',
                           focusedIndex === i && 'bg-accent/8 ring-1 ring-inset ring-accent/30'
                         )}
                       >
                         {selectable && (
-                          <td className="px-3.5 py-3" onClick={(e) => e.stopPropagation()}>
+                          <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                             <Checkbox checked={selectedIds.includes(id)} onChange={() => toggleOne(id)} />
                           </td>
                         )}
@@ -278,7 +279,7 @@ export default function Table({
                           return (
                             <td
                               key={col.key}
-                              className={cn('px-3.5 py-3 text-[13px] text-text', ALIGN[col.align] || ALIGN.left, col.className)}
+                              className={cn('px-3 py-2 text-[12.5px] text-text', ALIGN[col.align] || ALIGN.left, col.className)}
                               onDoubleClick={(e) => {
                                 if (!col.editable) return
                                 e.stopPropagation()
@@ -317,7 +318,7 @@ export default function Table({
                           )
                         })}
                         {rowActions && (
-                          <td className="px-3.5 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                          <td className="px-3 py-2 text-right opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
                             {rowActions(row)}
                           </td>
                         )}

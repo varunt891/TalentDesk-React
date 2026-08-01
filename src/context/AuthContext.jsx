@@ -49,7 +49,10 @@ export function AuthProvider({ children }) {
         writeCache(session.user, session.profile, session.organization)
       } catch (err) {
         if (!mounted) return
-        const isAuthError = err?.status === 401 || err?.message?.toLowerCase().includes('unauthorized') || err?.message?.toLowerCase().includes('not authenticated')
+        // Any real HTTP error response (401 not authenticated, 400 org no longer exists, 403 inactive
+        // account, etc.) means the cached identity is stale and must be dropped. A missing status means
+        // the request never reached the server (offline/network failure), so we keep the cache in that case.
+        const isAuthError = typeof err?.status === 'number'
         if (isAuthError) {
           setUser(null)
           setProfile(null)
@@ -68,6 +71,18 @@ export function AuthProvider({ children }) {
     return () => {
       mounted = false
     }
+  }, [])
+
+  useEffect(() => {
+    const handleOrgLost = () => {
+      setUser(null)
+      setProfile(null)
+      setOrganization(null)
+      setMembership(null)
+      writeCache(null, null, null)
+    }
+    window.addEventListener('td:org-lost', handleOrgLost)
+    return () => window.removeEventListener('td:org-lost', handleOrgLost)
   }, [])
 
   const signUp = async (email, password, metadata = {}) => {

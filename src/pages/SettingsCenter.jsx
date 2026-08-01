@@ -193,6 +193,18 @@ export default function SettingsCenter({ initialTab = 'general', onNavigate }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Re-sync with the backend whenever this tab regains focus, so changes made elsewhere
+  // (e.g. a superadmin purging/deleting this org from the admin panel) show up without a manual reload.
+  useEffect(() => {
+    const handleFocus = () => {
+      loadOrgDetails()
+      loadMembers()
+      if (isSuperAdmin) loadAllOrgs()
+    }
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
+  }, [loadOrgDetails, loadMembers, loadAllOrgs, isSuperAdmin])
+
   const loadNotifications = useCallback(async () => {
     setNotifLoading(true)
     const data = await fetchNotifications(userId)

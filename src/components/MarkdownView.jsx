@@ -1,28 +1,40 @@
-import React from 'react'
-
+/**
+ * Lightweight line-based markdown renderer for AI output (headings, bold/
+ * italic/code, links, bullet lists, tables, code blocks, horizontal rules).
+ * Not a full CommonMark parser — matches exactly what the AI Action
+ * Framework's prompts actually produce, styled with the shared design
+ * tokens so AI output reads like a native part of the product rather than
+ * a generic markdown dump.
+ */
 export default function MarkdownView({ content }) {
   if (!content) return null
+  // A plain local counter (not state/a ref) — scoped to this single render
+  // pass and rebuilt fresh from `content` every time, so it stays a pure
+  // function of the input instead of persisting anything across renders.
+  let keySeq = 0
+  const nextKey = (prefix) => `${prefix}-${keySeq++}`
 
   const formatInline = (str) => {
     return str
-      .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer" class="md-link">$1 ↗</a>')
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer" class="text-accent font-semibold hover:underline underline-offset-2">$1 ↗</a>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-text">$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>')
+      .replace(/`([^`]+)`/g, '<code class="font-mono text-[0.92em] bg-surface3 text-accent rounded px-1.5 py-0.5">$1</code>')
   }
 
   const lines = content.split('\n')
   const elements = []
   let codeBlockLines = null
+  let codeBlockLang = ''
   let listItems = []
   let tableRows = []
 
   const flushList = () => {
     if (listItems.length > 0) {
       elements.push(
-        <ul key={`ul-${elements.length}-${Math.random()}`} className="md-list" style={{ paddingLeft: '20px', margin: '10px 0', listStyleType: 'disc' }}>
+        <ul key={nextKey('ul')} className="list-disc pl-5 my-2.5 space-y-1.5 marker:text-text3">
           {listItems.map((li, idx) => (
-            <li key={idx} style={{ marginBottom: '6px', color: 'var(--text, #fff)', fontSize: '13.5px', lineHeight: '1.6' }} dangerouslySetInnerHTML={{ __html: formatInline(li) }} />
+            <li key={idx} className="text-[13.5px] leading-relaxed text-text2" dangerouslySetInnerHTML={{ __html: formatInline(li) }} />
           ))}
         </ul>
       )
@@ -37,20 +49,20 @@ export default function MarkdownView({ content }) {
         const header = cleanRows[0]
         const body = cleanRows.slice(1)
         elements.push(
-          <div key={`table-${elements.length}-${Math.random()}`} style={{ overflowX: 'auto', margin: '16px 0', borderRadius: '8px', border: '1px solid var(--border, #2d303e)' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', color: 'var(--text, #fff)' }}>
+          <div key={nextKey('table')} className="my-4 overflow-x-auto rounded-[var(--radius-md)] border border-border shadow-xs">
+            <table className="w-full border-collapse text-[13px] text-text">
               <thead>
-                <tr style={{ background: 'var(--surface, #181920)', borderBottom: '1px solid var(--border, #2d303e)' }}>
+                <tr className="bg-surface3">
                   {header.map((cell, idx) => (
-                    <th key={idx} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: '700', color: 'var(--accent, #4f7cff)' }} dangerouslySetInnerHTML={{ __html: formatInline(cell) }} />
+                    <th key={idx} className="px-3.5 py-2.5 text-left font-bold text-accent whitespace-nowrap" dangerouslySetInnerHTML={{ __html: formatInline(cell) }} />
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {body.map((row, rIdx) => (
-                  <tr key={rIdx} style={{ borderBottom: rIdx === body.length - 1 ? 'none' : '1px solid var(--border, #2d303e)', background: rIdx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                  <tr key={rIdx} className={rIdx % 2 === 1 ? 'bg-surface2/50' : undefined}>
                     {row.map((cell, cIdx) => (
-                      <td key={cIdx} style={{ padding: '10px 14px' }} dangerouslySetInnerHTML={{ __html: formatInline(cell) }} />
+                      <td key={cIdx} className="px-3.5 py-2.5 border-t border-border align-top" dangerouslySetInnerHTML={{ __html: formatInline(cell) }} />
                     ))}
                   </tr>
                 ))}
@@ -63,47 +75,40 @@ export default function MarkdownView({ content }) {
     }
   }
 
-  lines.forEach((line, idx) => {
+  lines.forEach((line) => {
     const trimmed = line.trim()
 
     // Table row
     if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
       flushList()
-      const cells = trimmed
-        .slice(1, -1)
-        .split('|')
-        .map(c => c.trim())
+      const cells = trimmed.slice(1, -1).split('|').map(c => c.trim())
       tableRows.push(cells)
       return
     } else {
       flushTable()
     }
 
-    // Code Block
+    // Code block
     if (trimmed.startsWith('```')) {
       if (codeBlockLines !== null) {
         const codeText = codeBlockLines.join('\n')
         elements.push(
-          <div key={`code-${idx}`} style={{ margin: '14px 0', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border, #2d303e)', background: 'var(--surface, #181920)' }}>
-            <div style={{ padding: '6px 14px', background: 'var(--surface2, #212330)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border, #2d303e)' }}>
-              <span style={{ fontSize: '11px', color: 'var(--text3, #8f92a1)', textTransform: 'uppercase', fontFamily: "'Space Mono', monospace" }}>Output</span>
-              <button
-                type="button"
-                onClick={() => navigator.clipboard.writeText(codeText)}
-                style={{ background: 'transparent', border: 'none', color: 'var(--accent, #4f7cff)', fontSize: '12px', cursor: 'pointer', fontWeight: '600' }}
-              >
-                📋 Copy
-              </button>
+          <div key={nextKey('code')} className="my-3.5 rounded-[var(--radius-md)] overflow-hidden border border-border bg-surface shadow-xs">
+            <div className="flex items-center justify-between px-3.5 py-2 bg-surface3 border-b border-border">
+              <span className="text-[10px] font-bold text-text3 uppercase tracking-wider font-mono">{codeBlockLang || 'Output'}</span>
+              <CopyButton text={codeText} />
             </div>
-            <pre style={{ padding: '14px', margin: 0, overflowX: 'auto', fontFamily: "'Space Mono', monospace", fontSize: '12.5px', color: 'var(--text, #fff)' }}>
+            <pre className="p-3.5 m-0 overflow-x-auto font-mono text-[12.5px] leading-relaxed text-text">
               <code>{codeText}</code>
             </pre>
           </div>
         )
         codeBlockLines = null
+        codeBlockLang = ''
       } else {
         flushList()
         codeBlockLines = []
+        codeBlockLang = trimmed.slice(3).trim()
       }
       return
     }
@@ -113,48 +118,49 @@ export default function MarkdownView({ content }) {
       return
     }
 
-    // Horizontal Rule
+    // Horizontal rule
     if (trimmed === '---' || trimmed === '***') {
       flushList()
-      elements.push(<hr key={`hr-${idx}`} style={{ border: 'none', borderTop: '1px solid var(--border, #2d303e)', margin: '20px 0' }} />)
+      elements.push(<hr key={nextKey('hr')} className="border-0 border-t border-border my-5" />)
       return
     }
 
-    // Headers
-    if (trimmed.startsWith('### ')) {
-      flushList()
-      elements.push(
-        <h3 key={`h3-${idx}`} style={{ fontSize: '16px', fontWeight: '700', color: 'var(--accent, #4f7cff)', marginTop: '20px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {trimmed.replace('### ', '')}
-        </h3>
-      )
-      return
-    }
-
+    // Headings — order matters: check longest marker first so "## " isn't
+    // ever mistaken for "# " (a plain startsWith('# ') check would never
+    // match "## " anyway since index 1 is '#' not a space, but keeping the
+    // most-specific-first order makes that invariant obvious here).
     if (trimmed.startsWith('#### ')) {
       flushList()
-      elements.push(
-        <h4 key={`h4-${idx}`} style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text, #fff)', marginTop: '16px', marginBottom: '8px' }}>
-          {trimmed.replace('#### ', '')}
-        </h4>
-      )
+      elements.push(<h4 key={nextKey('h4')} className="text-[13.5px] font-bold text-text mt-4 mb-2">{trimmed.slice(5)}</h4>)
       return
     }
-
+    if (trimmed.startsWith('### ')) {
+      flushList()
+      elements.push(<h3 key={nextKey('h3')} className="text-[15px] font-bold text-text mt-5 mb-2.5 flex items-center gap-2">{trimmed.slice(4)}</h3>)
+      return
+    }
     if (trimmed.startsWith('## ')) {
       flushList()
       elements.push(
-        <h2 key={`h2-${idx}`} style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text, #fff)', marginTop: '24px', marginBottom: '12px', borderBottom: '1px solid var(--border, #2d303e)', paddingBottom: '6px' }}>
-          {trimmed.replace('## ', '')}
+        <h2 key={nextKey('h2')} className="text-[17px] font-extrabold text-text tracking-tight mt-6 mb-3 pb-2 border-b border-border">
+          {trimmed.slice(3)}
         </h2>
+      )
+      return
+    }
+    if (trimmed.startsWith('# ')) {
+      flushList()
+      elements.push(
+        <h1 key={nextKey('h1')} className="text-[19px] font-extrabold text-text tracking-tight mt-1 mb-3.5 pb-2.5 border-b border-border">
+          {trimmed.slice(2)}
+        </h1>
       )
       return
     }
 
     // Bullets
     if (trimmed.startsWith('• ') || trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-      const cleanLine = trimmed.replace(/^[•*-]\s*/, '')
-      listItems.push(cleanLine)
+      listItems.push(trimmed.replace(/^[•*-]\s*/, ''))
       return
     }
 
@@ -162,11 +168,7 @@ export default function MarkdownView({ content }) {
     if (trimmed.length > 0) {
       flushList()
       elements.push(
-        <p
-          key={`p-${idx}`}
-          style={{ margin: '8px 0', fontSize: '13.5px', lineHeight: '1.65', color: 'var(--text2, #b0b4c0)' }}
-          dangerouslySetInnerHTML={{ __html: formatInline(trimmed) }}
-        />
+        <p key={nextKey('p')} className="my-2 text-[13.5px] leading-relaxed text-text2" dangerouslySetInnerHTML={{ __html: formatInline(trimmed) }} />
       )
     } else {
       flushList()
@@ -176,5 +178,14 @@ export default function MarkdownView({ content }) {
   flushList()
   flushTable()
 
-  return <div className="markdown-rendered-view" style={{ wordBreak: 'break-word' }}>{elements}</div>
+  return <div className="markdown-rendered-view break-words">{elements}</div>
+}
+
+function CopyButton({ text }) {
+  const copy = () => navigator.clipboard.writeText(text)
+  return (
+    <button type="button" onClick={copy} className="text-[11px] font-semibold text-accent hover:text-accent/80 transition-colors duration-[var(--duration-fast)]">
+      Copy
+    </button>
+  )
 }

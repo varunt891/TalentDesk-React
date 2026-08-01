@@ -79,6 +79,12 @@ export default function Candidates() {
   const [aiMatchModal, setAiMatchModal] = useState({ isOpen: false, candidate: null, job: null })
   const [editingId, setEditingId] = useState(null)
 
+  const [toast, setToast] = useState(null)
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type })
+    setTimeout(() => setToast(null), 3000)
+  }
+
   const openPacketForCandidate = (cand) => {
     if ((organization?.subscription_plan || 'Growth') === 'Starter') {
       return showToast('⚡ 1-Click Client Submission Packets require Growth Plan. Please upgrade under Organization Settings.', 'error')
@@ -116,7 +122,6 @@ export default function Candidates() {
   const [skillInput, setSkillInput] = useState('')
   const [extractingSkills, setExtractingSkills] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
   const [selected, setSelected] = useState([])
   const pageRef = useRef(null)
@@ -149,11 +154,6 @@ export default function Candidates() {
   }, [showDetail, callbacksLog, followupsLog])
 
   const [previewTab, setPreviewTab] = useState('overview')
-
-  // Stat cards manual toggle state
-  const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000) }
-
-
 
   // Build filter options from live data
   const feOptions = [...new Set(candidates.map(c => c.fe_name).filter(Boolean))].sort()
@@ -210,6 +210,7 @@ export default function Candidates() {
   const [compareResult, setCompareResult] = useState(null)
   const [compareLoading, setCompareLoading] = useState(false)
   const [compareError, setCompareError] = useState(null)
+  const [expandedFieldModal, setExpandedFieldModal] = useState(null)
 
   const runComparison = async () => {
     const picked = candidates.filter(c => selected.includes(c.id))
@@ -475,14 +476,14 @@ export default function Candidates() {
     {
       key: 'name', header: 'Candidate', sortable: true, sortValue: (c) => `${c.last_name || ''} ${c.first_name || ''}`,
       render: (c) => (
-        <span className="flex items-center gap-2.5 min-w-0">
-          <Avatar name={`${c.first_name || ''} ${c.last_name || ''}`.trim() || '?'} size="sm" />
+        <span className="flex items-center gap-2 min-w-0">
+          <Avatar name={`${c.first_name || ''} ${c.last_name || ''}`.trim() || '?'} size="xs" />
           <span className="min-w-0">
-            <span className="flex items-center gap-1.5">
-              <strong className="text-text font-bold truncate">{c.first_name} {c.last_name}</strong>
-              {c.resume_text && <Icon name="edit" size={11} className="text-text3 shrink-0" aria-label="Resume on file" />}
+            <span className="flex items-center gap-1">
+              <strong className="text-[12.5px] text-text font-semibold truncate">{c.first_name} {c.last_name}</strong>
+              {c.resume_text && <Icon name="edit" size={10} className="text-text3/60 shrink-0" aria-label="Resume on file" />}
             </span>
-            <small className="block text-xs text-text3 truncate">{c.email || c.phone || c.work_auth || 'Contact n/a'}</small>
+            <small className="block text-[11px] text-text3 truncate leading-tight">{c.work_auth || c.email || 'n/a'}</small>
           </span>
         </span>
       ),
@@ -490,20 +491,20 @@ export default function Candidates() {
     {
       key: 'role', header: 'Role', sortable: true, sortValue: (c) => c.job_title || '',
       render: (c) => (
-        <span className="flex flex-col gap-0.5 min-w-0">
-          <strong className="text-text font-semibold truncate">{c.job_title || 'Role n/a'}</strong>
-          <span className="text-xs text-text3 truncate"><span className="font-mono text-accent">{c.job_id || 'No ID'}</span>{c.client ? ` · ${c.client}` : ''}</span>
+        <span className="flex flex-col gap-px min-w-0">
+          <strong className="text-[12.5px] text-text font-semibold truncate leading-tight">{c.job_title || 'Role n/a'}</strong>
+          <span className="text-[11px] text-text3 truncate leading-tight"><span className="font-mono text-accent text-[10.5px]">{c.job_id || 'No ID'}</span>{c.client ? ` · ${c.client}` : ''}</span>
         </span>
       ),
     },
-    { key: 'submission_date', header: 'Date', sortable: true, hideable: true, className: 'text-xs text-text2 font-medium' },
-    { key: 'location', header: 'Location', sortable: true, hideable: true },
+    { key: 'submission_date', header: 'Date', sortable: true, hideable: true, className: 'text-[11px] text-text3 font-medium tabular-nums' },
+    { key: 'location', header: 'Location', sortable: true, hideable: true, className: 'text-[12px] text-text2' },
     ...(isSuperAdmin && allOrgsView ? [{ key: 'org_name', header: 'Organization', sortable: true, hideable: true, render: (c) => <Badge tone="accent" size="sm">{c.org_name || organization?.name || 'TalentDesk'}</Badge> }] : []),
     { key: 'internal_status', header: 'Int. Status', sortable: true, render: (c) => <StatusPill status={c.internal_status} tone={STATUS_TONE[c.internal_status] || 'neutral'} size="sm" /> },
     { key: 'external_status', header: 'Ext. Status', sortable: true, render: (c) => <StatusPill status={c.external_status} tone={STATUS_TONE[c.external_status] || 'neutral'} size="sm" /> },
-    { key: 'health', header: 'Health', hideable: true, render: (c) => { const sc = computeScore(c); return <Badge tone={sc.total >= 80 ? 'green' : sc.total >= 60 ? 'accent' : sc.total >= 40 ? 'yellow' : 'red'} size="sm">{sc.gradeLabel}</Badge> } },
-    { key: 'fe_name', header: 'Front End', hideable: true },
-    ...(isAdmin ? [{ key: 'recruiter_name', header: 'Recruiter', sortable: true, hideable: true }] : []),
+    { key: 'health', header: 'Health', hideable: true, render: (c) => { const sc = computeScore(c); return <StatusPill status={sc.gradeLabel} tone={sc.total >= 80 ? 'green' : sc.total >= 60 ? 'accent' : sc.total >= 40 ? 'yellow' : 'red'} size="sm" /> } },
+    { key: 'fe_name', header: 'Front End', hideable: true, className: 'text-[12px] text-text2' },
+    ...(isAdmin ? [{ key: 'recruiter_name', header: 'Recruiter', sortable: true, hideable: true, className: 'text-[12px] text-text2' }] : []),
   ]
 
   const filterDefs = [
@@ -547,13 +548,22 @@ export default function Candidates() {
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 my-5">
-        {candidateStats.map(stat => (
-          <KPICard key={stat.label} label={stat.label} value={stat.value} helper={stat.helper} tone={stat.tone} icon={stat.icon} />
+      {/* Compact stats bar — like Indeed's header metrics */}
+      <div className="flex items-stretch gap-0 my-4 border border-border rounded-[var(--radius-md)] bg-surface overflow-hidden shadow-xs">
+        {candidateStats.map((stat, i) => (
+          <div
+            key={stat.label}
+            className="flex-1 min-w-0 flex flex-col gap-0.5 px-4 py-2.5 relative"
+            style={{ borderRight: i < candidateStats.length - 1 ? '1px solid var(--border)' : 'none' }}
+          >
+            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: `var(--${stat.tone})` }}>{stat.label}</span>
+            <span className="text-xl font-extrabold text-text font-mono leading-none tabular-nums">{stat.value}</span>
+            <span className="text-[10px] text-text3 truncate">{stat.helper}</span>
+          </div>
         ))}
       </div>
 
-      <div className="flex items-center justify-between mb-2.5">
+      <div className="flex items-center justify-between mb-2">
         <span className="text-xs text-text3">
           {filtered.length !== candidates.length ? `${filtered.length} / ${candidates.length} shown` : `${candidates.length} records`}
         </span>
@@ -720,13 +730,47 @@ export default function Candidates() {
             {previewTab === 'notes' && (
               <div className="flex flex-col gap-4">
                 <Card>
-                  <CardHeader title="Notes" />
+                  <CardHeader
+                    title="Notes"
+                    action={
+                      showDetail.notes && (
+                        <Button
+                          size="xs"
+                          variant="secondary"
+                          leftIcon="expand"
+                          onClick={() => setExpandedFieldModal({
+                            title: `Candidate Notes — ${showDetail.first_name} ${showDetail.last_name}`,
+                            subtitle: `${showDetail.job_title || ''} · ${showDetail.job_id || ''}`,
+                            content: showDetail.notes
+                          })}
+                        >
+                          View in full
+                        </Button>
+                      )
+                    }
+                  />
                   <p className="text-sm text-text2 leading-relaxed">{showDetail.notes || 'No notes yet.'}</p>
                   {showDetail.followup_date && <p className="text-xs text-text3 mt-2">Follow-up date: <b className="text-text2">{showDetail.followup_date}</b></p>}
                 </Card>
                 {showDetail.resume_text && (
                   <Card>
-                    <CardHeader title="Resume Text" />
+                    <CardHeader
+                      title="Resume Text"
+                      action={
+                        <Button
+                          size="xs"
+                          variant="secondary"
+                          leftIcon="expand"
+                          onClick={() => setExpandedFieldModal({
+                            title: `Resume Text — ${showDetail.first_name} ${showDetail.last_name}`,
+                            subtitle: `${showDetail.email || ''} · ${showDetail.phone || ''}`,
+                            content: showDetail.resume_text
+                          })}
+                        >
+                          View in full
+                        </Button>
+                      }
+                    />
                     <pre className="text-xs text-text2 leading-relaxed whitespace-pre-wrap font-sans max-h-60 overflow-y-auto">{showDetail.resume_text}</pre>
                   </Card>
                 )}
@@ -934,6 +978,41 @@ export default function Candidates() {
         job={aiMatchModal.job}
         onOpenSubmissionPacket={(cand, job) => openPacketForCandidate(cand, job)}
       />
+
+      {/* Field Full View Overlay Modal */}
+      <Modal
+        open={!!expandedFieldModal}
+        onClose={() => setExpandedFieldModal(null)}
+        title={expandedFieldModal?.title || 'Full Field View'}
+        subtitle={expandedFieldModal?.subtitle}
+        size="xl"
+        footer={
+          <div className="flex items-center justify-between w-full">
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon="copy"
+              onClick={() => {
+                if (expandedFieldModal?.content) {
+                  navigator.clipboard.writeText(expandedFieldModal.content)
+                  showToast('Copied to clipboard!')
+                }
+              }}
+            >
+              Copy Text
+            </Button>
+            <Button size="sm" onClick={() => setExpandedFieldModal(null)}>Close</Button>
+          </div>
+        }
+      >
+        {expandedFieldModal && (
+          <div className="p-4 rounded-xl bg-surface2 border border-border">
+            <pre className="text-sm text-text font-sans leading-relaxed whitespace-pre-wrap select-text">
+              {expandedFieldModal.content}
+            </pre>
+          </div>
+        )}
+      </Modal>
 
       {/* Toast */}
       {toast && <div style={{ position: 'fixed', bottom: '24px', right: '24px', background: toast.type === 'error' ? 'var(--red)' : 'var(--green)', color: '#fff', padding: '12px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', zIndex: 9999, boxShadow: '0 4px 20px rgba(0,0,0,0.4)', fontFamily: 'DM Sans, sans-serif' }}>{toast.msg}</div>}

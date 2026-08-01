@@ -5,7 +5,7 @@ import { prisma } from '../prisma.js'
 const router = Router()
 
 const tables = {
-  organizations: { model: 'organization', orgScoped: false, adminWrite: true },
+  organizations: { model: 'organization', orgScoped: false, adminWrite: true, adminRead: true },
   profiles: { model: 'profile', orgScoped: true, adminWrite: true },
   candidates: { model: 'candidate', orgScoped: true },
   jobs: { model: 'job', orgScoped: true },
@@ -15,8 +15,8 @@ const tables = {
   tasks: { model: 'task', orgScoped: true },
   task_comments: { model: 'taskComment', orgScoped: false },
   notifications: { model: 'notification', orgScoped: true },
-  user_invitations: { model: 'userInvitation', orgScoped: true, adminWrite: true },
-  admin_audit_log: { model: 'adminAuditLog', orgScoped: true, adminWrite: true },
+  user_invitations: { model: 'userInvitation', orgScoped: true, adminWrite: true, adminRead: true },
+  admin_audit_log: { model: 'adminAuditLog', orgScoped: true, adminWrite: true, adminRead: true },
   activity_logs: { model: 'activityLog', orgScoped: true, readOnly: true },
 }
 
@@ -126,9 +126,12 @@ async function buildWhere(req, table, config) {
 
   const isSuper = isSuperAdminUser(req)
   const wantsAllOrgs = isSuper && (req.query.all_orgs === 'true' || req.query.all_orgs === '1')
+  // A superadmin inspecting another org from the admin panel explicitly filters by org_id;
+  // honor that instead of forcing their own org, while non-superadmins can never override it.
+  const requestedOrgId = isSuper ? filters.find(f => f.op === 'eq' && f.column === 'org_id')?.value : undefined
 
   if (config.orgScoped && !wantsAllOrgs) {
-    where.org_id = req.organizationId || req.tenantOrg?.id || req.profile.org_id
+    where.org_id = requestedOrgId !== undefined ? coerce(requestedOrgId) : (req.organizationId || req.tenantOrg?.id || req.profile.org_id)
   }
 
   if (ownedTables.includes(table)) {
@@ -160,7 +163,7 @@ async function buildWhere(req, table, config) {
   }
 
   if (table === 'profiles') {
-    where.org_id = req.organizationId || req.profile.org_id
+    where.org_id = requestedOrgId !== undefined ? coerce(requestedOrgId) : (req.organizationId || req.profile.org_id)
   }
 
   return where
@@ -169,7 +172,7 @@ async function buildWhere(req, table, config) {
 async function scopedRowWhere(req, table, config, id) {
   const where = { id }
 
-  if (config.orgScoped) {
+  if (config.orgScoped && !isSuperAdminUser(req)) {
     where.org_id = req.organizationId || req.profile.org_id
   }
 
@@ -194,7 +197,12 @@ function withOwnership(req, table, body) {
   delete data.updated_at
 
   if (tables[table]?.orgScoped) {
-    data.org_id = req.organizationId || req.profile.org_id
+    if (isSuperAdminUser(req)) {
+      // Don't clobber another org's row with the superadmin's own org when they didn't ask to change it.
+      if (data.org_id === undefined) delete data.org_id
+    } else {
+      data.org_id = req.organizationId || req.profile.org_id
+    }
   } else {
     delete data.org_id
   }
@@ -239,6 +247,9 @@ router.get('/:table', async (req, res, next) => {
   try {
     const table = req.params.table
     const config = configFor(table)
+    if (config.adminRead && !['ADMIN', 'SUPERADMIN', 'OWNER'].includes((req.memberRole || req.profile.role || '').toUpperCase())) {
+      return res.status(403).json({ error: 'Admin or Owner access required' })
+    }
     const model = prisma[config.model]
 
     const queryOptions = {

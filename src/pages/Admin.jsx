@@ -137,7 +137,7 @@ const Icons = {
 }
 
 export default function Admin() {
-  const { profile } = useAuth()
+  const { profile, switchOrganization } = useAuth()
   const [activeTab, setActiveTab] = useState('Overview')
   const [users, setUsers] = useState([])
   const [candidates, setCandidates] = useState([])
@@ -227,6 +227,15 @@ export default function Admin() {
     if (!orgId || !isAdmin) return
     fetchAdminData()
   }, [fetchAdminData, isAdmin, orgId, selectedOrgId])
+
+  // Re-sync whenever this tab regains focus, so member/org changes made from another tab or
+  // session (e.g. Team Settings) show up here without a manual reload.
+  useEffect(() => {
+    if (!orgId || !isAdmin) return
+    const handleFocus = () => fetchAdminData()
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
+  }, [fetchAdminData, isAdmin, orgId])
 
   const teams = useMemo(() => [...new Set(users.map(user => user.team).filter(Boolean))].sort(), [users])
   const departments = useMemo(() => [...new Set(users.map(user => user.department).filter(Boolean))].sort(), [users])
@@ -418,7 +427,8 @@ export default function Admin() {
   const seedDemoProfiles = async () => {
     setSaving(true)
     try {
-      const response = await apiRequest('/admin/seed-demo-profiles', { method: 'POST' })
+      const activeOrgId = selectedOrgId || orgId
+      const response = await apiRequest('/admin/seed-demo-profiles', { method: 'POST', body: { organization_id: activeOrgId } })
       showToast(response.data?.created ? `Created ${response.data.created} demo profiles` : 'Demo profiles already exist')
       await fetchAdminData()
     } catch (err) {
@@ -504,9 +514,8 @@ export default function Admin() {
     if (!profile?.id) return
     setSaving(true)
     try {
-      const { error } = await db.from('profiles').update({ org_id: targetOrg.id }).eq('id', profile.id)
+      const { error } = await switchOrganization(targetOrg.id)
       if (error) throw error
-      localStorage.removeItem('talentdesk_session')
       showToast(`Switched your profile organization to "${targetOrg.name}". Reloading workspace...`)
       setTimeout(() => {
         window.location.reload()

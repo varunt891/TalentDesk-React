@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from './icons'
 import { cn } from './utils'
@@ -17,7 +17,7 @@ function useOverlayBehavior(open, onClose) {
   }, [open, onClose])
 }
 
-function Header({ title, subtitle, onClose }) {
+function Header({ title, subtitle, onClose, isMaximized, onToggleMaximize }) {
   if (!title && !onClose) return null
   return (
     <div className="flex items-start justify-between gap-3 px-6 py-5 border-b border-border shrink-0">
@@ -25,11 +25,24 @@ function Header({ title, subtitle, onClose }) {
         {title && <h2 className="text-[17px] font-bold text-text tracking-tight truncate">{title}</h2>}
         {subtitle && <p className="text-[13px] text-text3 mt-1 leading-relaxed">{subtitle}</p>}
       </div>
-      {onClose && (
-        <button type="button" onClick={onClose} aria-label="Close" className="focus-ring shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-text3 hover:bg-surface2 hover:text-text transition-colors duration-[var(--duration-fast)]">
-          <Icon name="x" size={14} />
-        </button>
-      )}
+      <div className="flex items-center gap-1 shrink-0">
+        {onToggleMaximize && (
+          <button
+            type="button"
+            onClick={onToggleMaximize}
+            aria-label={isMaximized ? "Restore side view" : "View in full screen"}
+            title={isMaximized ? "Restore side view" : "View in full screen"}
+            className="focus-ring w-7 h-7 rounded-full flex items-center justify-center text-text3 hover:bg-surface2 hover:text-text transition-colors duration-[var(--duration-fast)]"
+          >
+            <Icon name={isMaximized ? "minimize" : "maximize"} size={14} />
+          </button>
+        )}
+        {onClose && (
+          <button type="button" onClick={onClose} aria-label="Close" className="focus-ring shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-text3 hover:bg-surface2 hover:text-text transition-colors duration-[var(--duration-fast)]">
+            <Icon name="x" size={14} />
+          </button>
+        )}
+      </div>
     </div>
   )
 }
@@ -67,29 +80,45 @@ export default function Modal({ open, onClose, title, subtitle, size = 'md', foo
   )
 }
 
-const DRAWER_SIZES = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-xl' }
+const DRAWER_SIZES = {
+  sm: 'max-w-sm',
+  md: 'max-w-md',
+  lg: 'max-w-xl',
+  xl: 'max-w-3xl',
+  '2xl': 'max-w-5xl',
+  full: 'max-w-[96vw] sm:max-w-[94vw] w-full',
+}
 
-export function Drawer({ open, onClose, title, subtitle, size = 'md', side = 'right', footer, hideHeader = false, children, className = '' }) {
+export function Drawer({ open, onClose, title, subtitle, size = 'md', side = 'right', footer, hideHeader = false, allowMaximize = true, children, className = '' }) {
+  const [localMaximized, setLocalMaximized] = useState(false)
   useOverlayBehavior(open, onClose)
   if (!open) return null
 
+  const effectiveSize = localMaximized ? 'full' : size
+
   return createPortal(
     <div
-      className="fixed inset-0 flex bg-[#0b0d14]/55 backdrop-blur-sm"
+      className="fixed inset-0 flex bg-[#0b0d14]/55 backdrop-blur-sm transition-all duration-300"
       style={{ zIndex: 'var(--z-modal)', justifyContent: side === 'right' ? 'flex-end' : 'flex-start' }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.() }}
     >
       <div
         className={cn(
-          'w-full h-full bg-surface border-border flex flex-col shadow-[var(--shadow-lg)]',
+          'w-full h-full bg-surface border-border flex flex-col shadow-[var(--shadow-lg)] transition-all duration-300',
           side === 'right' ? 'border-l animate-[drawer-in-right_var(--duration-base)_var(--ease-standard)]' : 'border-r animate-[drawer-in-left_var(--duration-base)_var(--ease-standard)]',
-          DRAWER_SIZES[size] || DRAWER_SIZES.md,
+          DRAWER_SIZES[effectiveSize] || DRAWER_SIZES.md,
           className
         )}
       >
         {hideHeader ? children : (
           <>
-            <Header title={title} subtitle={subtitle} onClose={onClose} />
+            <Header
+              title={title}
+              subtitle={subtitle}
+              onClose={onClose}
+              isMaximized={localMaximized}
+              onToggleMaximize={allowMaximize ? () => setLocalMaximized(!localMaximized) : null}
+            />
             <div className="px-6 py-5 overflow-y-auto flex-1">{children}</div>
             {footer && <div className="px-6 py-4 border-t border-border bg-surface2/50 flex items-center justify-end gap-2 shrink-0">{footer}</div>}
           </>

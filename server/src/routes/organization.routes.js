@@ -210,8 +210,38 @@ router.post('/platform/purge-members', requireAuth, requireAdmin, async (req, re
       return res.status(400).json({ error: 'Cannot purge members of active workspace. Use Team Management.' })
     }
 
+    const affectedProfileIds = (await prisma.profile.findMany({
+      where: { org_id: organization_id },
+      select: { id: true },
+    })).map(p => p.id)
+
     await prisma.organizationInvitation.deleteMany({ where: { organization_id } })
     await prisma.organizationMember.deleteMany({ where: { organization_id } })
+
+    // Unlink these members' home org, otherwise requireAuth silently recreates their membership
+    // on their next request (it auto-heals org_id -> membership) and the purge has no lasting effect.
+    if (affectedProfileIds.length) {
+      await prisma.profile.updateMany({
+        where: { id: { in: affectedProfileIds } },
+        data: { org_id: null },
+      })
+
+      // Deactivate anyone left with no organization anywhere, matching the "permanently delete
+      // member accounts" warning shown for this action. Profiles that still belong to another org
+      // (multi-org membership) keep their account active for that org.
+      const remainingMemberships = await prisma.organizationMember.findMany({
+        where: { user_id: { in: affectedProfileIds } },
+        select: { user_id: true },
+      })
+      const stillMemberOf = new Set(remainingMemberships.map(m => m.user_id))
+      const orphanedIds = affectedProfileIds.filter(id => !stillMemberOf.has(id))
+      if (orphanedIds.length) {
+        await prisma.profile.updateMany({
+          where: { id: { in: orphanedIds } },
+          data: { is_active: false },
+        })
+      }
+    }
 
     res.json({ message: 'All member memberships and invitations purged for organization.' })
   } catch (err) {

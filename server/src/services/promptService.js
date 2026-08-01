@@ -24,7 +24,7 @@ export const TOOL_CONFIGS = {
     maxTokens: 4096
   },
   salary: {
-    systemPrompt: 'Act as a compensation analyst. Estimate realistic salary benchmarks based on location, experience, role, skills, and current market trends. Use the target location local currency. Return structured Markdown tables and realistic salary ranges.',
+    systemPrompt: 'Act as a compensation analyst and labor-market researcher. Estimate realistic salary benchmarks for the given role and location based on current market trends. Use the target location\'s local currency. Structure the response as: (1) a Markdown table titled "Salary Benchmarks" with one row per experience band (Entry-Level 0-2 yrs, Mid-Level 3-5 yrs, Senior 6-9 yrs, Lead/Principal 10+ yrs) and columns for Yearly Salary Range and Hourly Rate Range for each band — always include both yearly and hourly figures even if the role is typically salaried, by dividing the yearly figure over a standard 2080-hour work year; (2) a "### Job Market Demand" section stating the current demand level (High/Medium/Low), hiring trend (growing/stable/declining), and the top in-demand skills for this role; (3) a short note on regional or industry factors that could shift these numbers. Never invent unverified data — state clearly when an estimate is a general market approximation.',
     temperature: 0.2,
     allowGrounding: true,
     maxTokens: 4096

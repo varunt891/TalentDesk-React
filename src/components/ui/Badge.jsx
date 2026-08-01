@@ -11,7 +11,7 @@ const TONES = {
 }
 
 export default function Badge({ tone = 'neutral', size = 'md', dot = false, className = '', children }) {
-  const sizeCls = size === 'sm' ? 'text-[10px] px-1.5 py-0.5 gap-1' : 'text-xs px-2 py-1 gap-1.5'
+  const sizeCls = size === 'sm' ? 'text-[10px] px-1.5 py-px gap-1' : size === 'xs' ? 'text-[9px] px-1 py-px gap-0.5' : 'text-[11px] px-1.5 py-0.5 gap-1'
   return (
     <span
       className={cn(
@@ -46,11 +46,39 @@ export function statusTone(status) {
   return STATUS_TONE_MAP[key] || 'neutral'
 }
 
-export function StatusPill({ status, label, tone, size = 'md', className = '' }) {
+const DOT_COLOR = {
+  green:   '#16a34a',
+  accent:  '#3b82f6',
+  yellow:  '#f59e0b',
+  orange:  '#f97316',
+  red:     '#ef4444',
+  ai:      '#8b5cf6',
+  neutral: '#94a3b8',
+}
+
+const TEXT_COLOR = {
+  green:   'var(--green)',
+  accent:  'var(--accent)',
+  yellow:  'var(--yellow)',
+  orange:  'var(--orange)',
+  red:     'var(--red)',
+  ai:      'var(--ai)',
+  neutral: 'var(--text2)',
+}
+
+export function StatusPill({ status, label, tone, size = 'sm', className = '' }) {
   const resolvedTone = tone || statusTone(status)
+  const dot = DOT_COLOR[resolvedTone] || DOT_COLOR.neutral
+  const textColor = TEXT_COLOR[resolvedTone] || TEXT_COLOR.neutral
+  const textSize = size === 'xs' ? 'text-[9px]' : size === 'sm' ? 'text-[11px]' : 'text-[12px]'
+
   return (
-    <Badge tone={resolvedTone} size={size} dot className={className}>
+    <span
+      className={cn('inline-flex items-center gap-1.5 font-medium whitespace-nowrap', textSize, className)}
+      style={{ color: textColor }}
+    >
+      <span className="rounded-full shrink-0" style={{ width: 7, height: 7, background: dot }} />
       {label || status}
-    </Badge>
+    </span>
   )
 }

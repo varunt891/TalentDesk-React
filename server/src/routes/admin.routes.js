@@ -87,15 +87,10 @@ function getUniqueName(index) {
   return `${f} ${l}`
 }
 
-function resolveEmail(name, domain) {
-  return `${name.toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '')}@${domain}`
+function resolveEmail(name, domain, tag) {
+  const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '')
+  return `${base}.${tag}@${domain}`
 }
-
-const orgDefinitions = [
-  { name: 'TalentDesk', slug: 'talentdesk', domain: 'talentdesk.com' },
-  { name: 'Outline', slug: 'outline', domain: 'outline.com' },
-  { name: 'TSCTI', slug: 'tscti', domain: 'tscti.com' }
-]
 
 const candidatesTemplates = [
   { first_name: 'Alex', last_name: 'Rivera', email: 'alex.rivera@gmail.com', job_title: 'Senior React Developer', location: 'Seattle, WA', skills: ['React', 'TypeScript', 'Redux', 'CSS'], experience: '6' },
@@ -130,286 +125,215 @@ const candidatesTemplates = [
   { first_name: 'Daniel', last_name: 'LaRusso', email: 'daniel.larusso@gmail.com', job_title: 'Embedded Systems Developer', location: 'Reseda, CA', skills: ['C', 'C++', 'Microcontrollers', 'RTOS'], experience: '6' }
 ]
 
+// Adds a fresh batch of demo profiles + candidates to whichever organization the admin panel
+// currently has selected. Purely additive (no deletes) so it's safe to click repeatedly and never
+// touches any other organization. Only a superadmin may target an org other than their own.
 router.post('/seed-demo-profiles', async (req, res, next) => {
   try {
-    let created = 0
-    const passwordHash = await bcrypt.hash('password123', 8)
+    const role = (req.memberRole || req.profile.role || '').toUpperCase()
+    const isSuperAdmin = role === 'SUPERADMIN'
+    const organizationId = (isSuperAdmin && req.body.organization_id) || req.organizationId
+    if (!organizationId) return res.status(400).json({ error: 'No organization selected' })
 
-    // Ensure organizations exist and map their IDs
-    const orgsMap = {}
-    for (const def of orgDefinitions) {
-      let org = await prisma.organization.findUnique({ where: { slug: def.slug } })
-      if (!org) {
-        org = await prisma.organization.create({
-          data: {
-            name: def.name,
-            slug: def.slug,
-            subdomain: def.slug,
-            email_domain: def.domain,
-            timezone: 'Asia/Calcutta',
-          }
-        })
+    const org = await prisma.organization.findUnique({ where: { id: organizationId } })
+    if (!org) return res.status(404).json({ error: 'Organization not found' })
+
+    const domain = org.email_domain || org.domain || `${org.slug || 'org'}.demo.talentdesk.io`
+    const runTag = Math.random().toString(36).slice(2, 8)
+    const passwordHash = await bcrypt.hash('password123', 8)
+    const randomExtension = () => String(1000 + Math.floor(Math.random() * 8999)).padStart(4, '0')
+
+    let created = 0
+    const newRecruiters = []
+
+    // 1. Recruitment Managers (2)
+    const hmName = getUniqueName(0)
+    const hcManager = await prisma.profile.create({
+      data: {
+        org_id: organizationId,
+        email: resolveEmail(hmName, domain, runTag),
+        full_name: hmName,
+        role: 'recruitment_manager',
+        team: 'Healthcare Management',
+        department: 'Healthcare',
+        phone: '8005550101',
+        extension: randomExtension(),
+        passwordHash,
+        is_active: true,
       }
-      orgsMap[def.slug] = org.id
+    })
+    created += 1
+
+    const imName = getUniqueName(1)
+    const itManager = await prisma.profile.create({
+      data: {
+        org_id: organizationId,
+        email: resolveEmail(imName, domain, runTag),
+        full_name: imName,
+        role: 'recruitment_manager',
+        team: 'IT Management',
+        department: 'IT',
+        phone: '8005550102',
+        extension: randomExtension(),
+        passwordHash,
+        is_active: true,
+      }
+    })
+    created += 1
+
+    // 2. Account Managers (6)
+    const accountManagers = []
+    for (let i = 0; i < 3; i++) {
+      const amName = getUniqueName(2 + i)
+      const am = await prisma.profile.create({
+        data: {
+          org_id: organizationId,
+          email: resolveEmail(amName, domain, runTag),
+          full_name: amName,
+          role: 'account_manager',
+          team: `Healthcare AM Team ${i + 1}`,
+          department: 'Healthcare',
+          manager_id: hcManager.id,
+          phone: '8005550110',
+          extension: randomExtension(),
+          passwordHash,
+          is_active: true,
+        }
+      })
+      accountManagers.push(am)
+      created += 1
+    }
+    for (let i = 0; i < 3; i++) {
+      const amName = getUniqueName(5 + i)
+      const am = await prisma.profile.create({
+        data: {
+          org_id: organizationId,
+          email: resolveEmail(amName, domain, runTag),
+          full_name: amName,
+          role: 'account_manager',
+          team: `IT AM Team ${i + 1}`,
+          department: 'IT',
+          manager_id: itManager.id,
+          phone: '8005550120',
+          extension: randomExtension(),
+          passwordHash,
+          is_active: true,
+        }
+      })
+      accountManagers.push(am)
+      created += 1
     }
 
-    // Delete all existing profiles except superadmin
-    await prisma.profile.deleteMany({
-      where: { role: { not: 'superadmin' } }
-    })
-
-    // Delete all candidates from the 3 orgs to prevent foreign key errors
-    const targetOrgIds = Object.values(orgsMap)
-    await prisma.candidate.deleteMany({
-      where: { org_id: { in: targetOrgIds } }
-    })
-
-    // For each organization
-    let orgIdx = 0
-    const allNewRecruiters = []
-
-    for (const def of orgDefinitions) {
-      const orgId = orgsMap[def.slug]
-      const baseIdx = orgIdx * 80
-
-      // Create Admin Profile
-      const adminEmail = `admin@${def.domain}`
-      const adminName = `${def.name} Admin`
-      await prisma.profile.create({
+    // 3. Recruiters (60)
+    for (let r = 0; r < 60; r++) {
+      const amIdx = Math.floor(r / 10)
+      const parentAM = accountManagers[amIdx]
+      const recName = getUniqueName(8 + r)
+      const recruiterProfile = await prisma.profile.create({
         data: {
-          org_id: orgId,
-          email: adminEmail,
-          full_name: adminName,
-          role: 'admin',
-          team: 'Operations',
-          department: 'Operations',
-          phone: '8005550188',
-          extension: '8888',
+          org_id: organizationId,
+          email: resolveEmail(recName, domain, runTag),
+          full_name: recName,
+          role: 'recruiter',
+          team: parentAM.team,
+          department: parentAM.department,
+          manager_id: parentAM.id,
+          phone: '8005550200',
+          extension: randomExtension(),
+          passwordHash,
+          is_active: true,
+        }
+      })
+      newRecruiters.push({ recruiterId: recruiterProfile.id, recruiterName: recruiterProfile.full_name })
+      created += 1
+    }
+
+    // 4. Supporting Departments (PMO, E-care, Onboarding, Helpdesk) - 3 profiles each
+    const otherDepts = [
+      { name: 'PMO', team: 'PMO Team', phone: '8005550300' },
+      { name: 'E-care', team: 'Ecare Team', phone: '8005550400' },
+      { name: 'Onboarding', team: 'HR Onboarding', phone: '8005550500' },
+      { name: 'Helpdesk', team: 'Helpdesk Team', phone: '8005550600' }
+    ]
+
+    let deptOffset = 68
+    for (const d of otherDepts) {
+      const mgrName = getUniqueName(deptOffset)
+      const manager = await prisma.profile.create({
+        data: {
+          org_id: organizationId,
+          email: resolveEmail(mgrName, domain, runTag),
+          full_name: mgrName,
+          role: 'manager',
+          team: d.team,
+          department: d.name,
+          phone: d.phone,
+          extension: randomExtension(),
           passwordHash,
           is_active: true,
         }
       })
       created += 1
 
-      // 1. Create Recruitment Managers (2)
-      // Recruitment Manager (Healthcare)
-      const hmName = getUniqueName(baseIdx)
-      const hmEmail = resolveEmail(hmName, def.domain)
-      const hcManager = await prisma.profile.create({
-        data: {
-          org_id: orgId,
-          email: hmEmail,
-          full_name: hmName,
-          role: 'recruitment_manager',
-          team: 'Healthcare Management',
-          department: 'Healthcare',
-          phone: '8005550101',
-          extension: String(1000 + baseIdx).padStart(4, '0'),
-          passwordHash,
-          is_active: true,
-        }
-      })
-      created += 1
-
-      // Recruitment Manager (IT)
-      const imName = getUniqueName(baseIdx + 1)
-      const imEmail = resolveEmail(imName, def.domain)
-      const itManager = await prisma.profile.create({
-        data: {
-          org_id: orgId,
-          email: imEmail,
-          full_name: imName,
-          role: 'recruitment_manager',
-          team: 'IT Management',
-          department: 'IT',
-          phone: '8005550102',
-          extension: String(1000 + baseIdx + 1).padStart(4, '0'),
-          passwordHash,
-          is_active: true,
-        }
-      })
-      created += 1
-
-      // 2. Create Account Managers (6)
-      const accountManagers = []
-      // 3 under Healthcare Recruitment Manager
-      for (let i = 0; i < 3; i++) {
-        const amName = getUniqueName(baseIdx + 2 + i)
-        const amEmail = resolveEmail(amName, def.domain)
-        const am = await prisma.profile.create({
+      for (let e = 0; e < 2; e++) {
+        const empName = getUniqueName(deptOffset + 1 + e)
+        await prisma.profile.create({
           data: {
-            org_id: orgId,
-            email: amEmail,
-            full_name: amName,
-            role: 'account_manager',
-            team: `Healthcare AM Team ${i + 1}`,
-            department: 'Healthcare',
-            manager_id: hcManager.id,
-            phone: '8005550110',
-            extension: String(1000 + baseIdx + 2 + i).padStart(4, '0'),
-            passwordHash,
-            is_active: true,
-          }
-        })
-        accountManagers.push(am)
-        created += 1
-      }
-
-      // 3 under IT Recruitment Manager
-      for (let i = 0; i < 3; i++) {
-        const amName = getUniqueName(baseIdx + 5 + i)
-        const amEmail = resolveEmail(amName, def.domain)
-        const am = await prisma.profile.create({
-          data: {
-            org_id: orgId,
-            email: amEmail,
-            full_name: amName,
-            role: 'account_manager',
-            team: `IT AM Team ${i + 1}`,
-            department: 'IT',
-            manager_id: itManager.id,
-            phone: '8005550120',
-            extension: String(1000 + baseIdx + 5 + i).padStart(4, '0'),
-            passwordHash,
-            is_active: true,
-          }
-        })
-        accountManagers.push(am)
-        created += 1
-      }
-
-      // 3. Create Recruiters (60)
-      for (let r = 0; r < 60; r++) {
-        const amIdx = Math.floor(r / 10)
-        const parentAM = accountManagers[amIdx]
-        const recName = getUniqueName(baseIdx + 8 + r)
-        const recEmail = r === 0 ? `recruiter@${def.domain}` : resolveEmail(recName, def.domain)
-
-        const recruiterProfile = await prisma.profile.create({
-          data: {
-            org_id: orgId,
-            email: recEmail,
-            full_name: recName,
-            role: 'recruiter',
-            team: parentAM.team,
-            department: parentAM.department,
-            manager_id: parentAM.id,
-            phone: '8005550200',
-            extension: String(1000 + baseIdx + 8 + r).padStart(4, '0'),
-            passwordHash,
-            is_active: true,
-          }
-        })
-        allNewRecruiters.push({
-          orgKey: def.slug,
-          orgId,
-          recruiterId: recruiterProfile.id,
-          recruiterName: recruiterProfile.full_name,
-        })
-        created += 1
-      }
-
-      // 4. Create Supporting Departments (PMO, E-care, Onboarding, Helpdesk) - 3 profiles each
-      const otherDepts = [
-        { name: 'PMO', team: 'PMO Team', phone: '8005550300' },
-        { name: 'E-care', team: 'Ecare Team', phone: '8005550400' },
-        { name: 'Onboarding', team: 'HR Onboarding', phone: '8005550500' },
-        { name: 'Helpdesk', team: 'Helpdesk Team', phone: '8005550600' }
-      ]
-
-      let deptOffset = 68
-      for (const d of otherDepts) {
-        const mgrName = getUniqueName(baseIdx + deptOffset)
-        const manager = await prisma.profile.create({
-          data: {
-            org_id: orgId,
-            email: resolveEmail(mgrName, def.domain),
-            full_name: mgrName,
-            role: 'manager',
+            org_id: organizationId,
+            email: resolveEmail(empName, domain, runTag),
+            full_name: empName,
+            role: 'employee',
             team: d.team,
             department: d.name,
+            manager_id: manager.id,
             phone: d.phone,
-            extension: String(1000 + baseIdx + deptOffset).padStart(4, '0'),
+            extension: randomExtension(),
             passwordHash,
             is_active: true,
           }
         })
         created += 1
-
-        for (let e = 0; e < 2; e++) {
-          const empName = getUniqueName(baseIdx + deptOffset + 1 + e)
-          await prisma.profile.create({
-            data: {
-              org_id: orgId,
-              email: resolveEmail(empName, def.domain),
-              full_name: empName,
-              role: 'employee',
-              team: d.team,
-              department: d.name,
-              manager_id: manager.id,
-              phone: d.phone,
-              extension: String(1000 + baseIdx + deptOffset + 1 + e).padStart(4, '0'),
-              passwordHash,
-              is_active: true,
-            }
-          })
-          created += 1
-        }
-        deptOffset += 3
       }
-
-      orgIdx++
+      deptOffset += 3
     }
 
-    // Seed 10 candidates per organization (30 total) linked to new recruiters
+    // Seed 10 demo candidates linked to the new recruiters (existing candidates are left untouched)
     let seededCandidatesCount = 0
-    let oIdx = 0
-    for (const orgDef of orgDefinitions) {
-      const orgId = orgsMap[orgDef.slug]
-      const orgRecruiters = allNewRecruiters.filter(r => r.orgKey === orgDef.slug).slice(0, 10)
+    const candidateRecruiters = newRecruiters.slice(0, 10)
+    for (let i = 0; i < candidateRecruiters.length; i++) {
+      const template = candidatesTemplates[i % candidatesTemplates.length]
+      const rec = candidateRecruiters[i]
+      const candidateStatus = i < 2 ? 'Hired' : 'Submitted'
 
-      for (let i = 0; i < 10; i++) {
-        const templateIndex = (oIdx * 10) + i
-        const template = candidatesTemplates[templateIndex % candidatesTemplates.length]
-        const rec = orgRecruiters[i]
-
-        let candidateStatus = 'Submitted'
-        if (orgDef.slug === 'talentdesk' && i < 3) {
-          candidateStatus = 'Hired'
+      await prisma.candidate.create({
+        data: {
+          org_id: organizationId,
+          first_name: template.first_name,
+          last_name: template.last_name,
+          email: template.email,
+          location: template.location,
+          job_title: template.job_title,
+          experience: template.experience,
+          skills: template.skills,
+          submission_date: new Date().toISOString().slice(0, 10),
+          internal_status: candidateStatus,
+          external_status: candidateStatus,
+          recruiter_id: rec.recruiterId,
+          recruiter_name: rec.recruiterName,
+          user_id: rec.recruiterId,
         }
-
-        await prisma.candidate.create({
-          data: {
-            org_id: orgId,
-            first_name: template.first_name,
-            last_name: template.last_name,
-            email: template.email,
-            location: template.location,
-            job_title: template.job_title,
-            experience: template.experience,
-            skills: template.skills,
-            submission_date: new Date().toISOString().slice(0, 10),
-            internal_status: candidateStatus,
-            external_status: candidateStatus,
-            recruiter_id: rec.recruiterId,
-            recruiter_name: rec.recruiterName,
-            user_id: rec.recruiterId,
-          }
-        })
-        seededCandidatesCount += 1
-      }
-      oIdx++
+      })
+      seededCandidatesCount += 1
     }
 
-    const logOrgId = req.profile.org_id || orgsMap['talentdesk']
     await prisma.activityLog.create({
       data: {
-        org_id: logOrgId,
+        org_id: organizationId,
         actor_id: req.user.id,
         actor_name: req.profile.full_name || req.user.email,
         action: 'seeded',
         entity: 'profiles',
-        summary: `Restructured and seeded ${created} profiles and ${seededCandidatesCount} fresh candidates`,
+        summary: `Seeded ${created} demo profiles and ${seededCandidatesCount} demo candidates for "${org.name}"`,
         details: { created, seededCandidatesCount },
       },
     })

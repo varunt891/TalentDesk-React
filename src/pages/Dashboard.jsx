@@ -2203,7 +2203,7 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
                   <Button type="submit" size="md">Add</Button>
                 </form>
 
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-col gap-1.5 max-h-[320px] overflow-y-auto pr-1">
                   {pendingTasks.length === 0 ? (
                     <EmptyState icon="checkCircle" title="All pending tasks completed" description="Add a new task above or generate your EOD AI briefing." />
                   ) : (
@@ -2248,25 +2248,25 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
                       </div>
                     ))
                   )}
-                </div>
 
-                {completedTasks.length > 0 && (
-                  <details className="group">
-                    <summary className="flex items-center justify-between cursor-pointer text-xs font-bold text-text2 py-1.5 list-none">
-                      <span>Completed Today ({completedTasks.length})</span>
-                      <Icon name="chevronDown" size={12} className="text-text3 group-open:rotate-180 transition-transform" />
-                    </summary>
-                    <div className="flex flex-col gap-1.5 mt-1.5">
-                      {completedTasks.map(item => (
-                        <div key={item.id} className="flex items-center gap-2.5 rounded-[var(--radius-md)] bg-surface2/60 px-3 py-2">
-                          <input type="checkbox" checked={item.done} onChange={() => handleToggleNote(item.id)} className="w-4 h-4 rounded accent-accent shrink-0" />
-                          <span className="text-xs text-text3 line-through flex-1 truncate">{item.text}</span>
-                          <button type="button" onClick={() => handleDeleteNote(item.id)} title="Delete" className="text-text3 hover:text-red shrink-0"><Icon name="x" size={12} /></button>
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
+                  {completedTasks.length > 0 && (
+                    <details className="group mt-1">
+                      <summary className="flex items-center justify-between cursor-pointer text-xs font-bold text-text2 py-1.5 list-none">
+                        <span>Completed Today ({completedTasks.length})</span>
+                        <Icon name="chevronDown" size={12} className="text-text3 group-open:rotate-180 transition-transform" />
+                      </summary>
+                      <div className="flex flex-col gap-1.5 mt-1.5">
+                        {completedTasks.map(item => (
+                          <div key={item.id} className="flex items-center gap-2.5 rounded-[var(--radius-md)] bg-surface2/60 px-3 py-2">
+                            <input type="checkbox" checked={item.done} onChange={() => handleToggleNote(item.id)} className="w-4 h-4 rounded accent-accent shrink-0" />
+                            <span className="text-xs text-text3 line-through flex-1 truncate">{item.text}</span>
+                            <button type="button" onClick={() => handleDeleteNote(item.id)} title="Delete" className="text-text3 hover:text-red shrink-0"><Icon name="x" size={12} /></button>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                </div>
               </div>
             )}
 

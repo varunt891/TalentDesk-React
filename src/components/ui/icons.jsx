@@ -286,6 +286,30 @@ const PATHS = {
       <path d="M9 22v-4h6v4" />
     </>
   ),
+  maximize: (
+    <>
+      <path d="M15 3h6v6" />
+      <path d="M9 21H3v-6" />
+      <path d="M21 3l-7 7" />
+      <path d="M3 21l7-7" />
+    </>
+  ),
+  minimize: (
+    <>
+      <path d="M4 14h6v6" />
+      <path d="M20 10h-6V4" />
+      <path d="M14 10l7-7" />
+      <path d="M10 14l-7 7" />
+    </>
+  ),
+  expand: (
+    <>
+      <polyline points="15 3 21 3 21 9" />
+      <polyline points="9 21 3 21 3 15" />
+      <line x1="21" y1="3" x2="14" y2="10" />
+      <line x1="3" y1="21" x2="10" y2="14" />
+    </>
+  ),
 }
 
 export function Icon({ name, size = 16, strokeWidth = 2.2, className = '', ...rest }) {

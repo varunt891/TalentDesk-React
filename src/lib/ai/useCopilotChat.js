@@ -161,7 +161,7 @@ export function useCopilotChat({ orgId, userId, orgName, userName, role, current
 
   return {
     conversations, sortedConversations, activeConversation, activeId, messages,
-    streaming, streamingText, errorMsg, recentPromptsList,
+    streaming, streamingText, errorMsg, recentPromptsList, setRecentPromptsList,
     sendMessage, regenerate, stopStreaming, newChat, switchConversation, togglePin, renameConversation, deleteConversation,
   }
 }

@@ -184,6 +184,11 @@ router.post('/login', async (req, res, next) => {
 
     const activeMembership = profile.memberships?.[0]
     const activeOrg = activeMembership?.organization || profile.organization
+
+    if (!activeOrg) {
+      return res.status(403).json({ error: 'Your organization is no longer available. Please contact support.' })
+    }
+
     const activeRole = activeMembership?.role || mapProfileRole(profile.role)
 
     const user = { id: profile.id, email: profile.email }

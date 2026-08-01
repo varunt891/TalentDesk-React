@@ -235,50 +235,6 @@ Output ONLY a valid raw JSON object with keys:
   }
 });
 
-// Recruiter Copilot — streams the answer back over SSE so the panel can
-// render tokens as they arrive instead of waiting for the full response.
-router.post('/copilot/stream', async (req, res) => {
-  const { message, history, context } = req.body || {};
-  if (!message || !String(message).trim()) {
-    return res.status(400).json({ success: false, error: 'A message is required.' });
-  }
-
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders?.();
-
-  const controller = new AbortController();
-  req.on('close', () => controller.abort());
-
-  const send = (event) => { res.write(`data: ${JSON.stringify(event)}\n\n`); };
-
-  try {
-    const historyBlock = Array.isArray(history) && history.length
-      ? `\n\nRECENT CONVERSATION:\n${history.slice(-8).map(m => `${m.role === 'user' ? 'Recruiter' : 'Copilot'}: ${m.content}`).join('\n')}`
-      : '';
-    const contextBlock = context ? `\n\nWORKSPACE CONTEXT:\n${context}` : '';
-    const prompt = `${String(message).trim()}${historyBlock}${contextBlock}`;
-
-    const result = await aiService.generateStream({
-      prompt,
-      toolId: 'copilot_chat',
-      signal: controller.signal,
-      onDelta: (text) => send({ delta: text }),
-    });
-
-    send({ done: true, provider: result.provider, model: result.model });
-    res.end();
-  } catch (err) {
-    if (err.name === 'AbortError') {
-      res.end();
-      return;
-    }
-    send({ error: err.message || 'AI response failed. Please try again.', code: err.code || 'STREAM_ERROR' });
-    res.end();
-  }
-});
-
 // AI Action Framework — one endpoint for every reusable content action
 // (Summarize/Rewrite/Improve/Compare/Explain/Score/Analyze/Recommend/
 // Draft/Translate/Extract), so no page has to hand-build its own prompt.
@@ -300,5 +256,87 @@ router.post('/action', async (req, res) => {
     });
   }
 });
+
+// Shared SSE scaffold for every streaming AI surface (Recruiter Copilot,
+// the Action Framework, purpose-built tools like Market Salary & Demand) —
+// tokens render as they arrive instead of the UI going silent until the
+// whole response is done. `buildRequest(req)` validates the body and
+// returns { prompt, toolId }; it may throw an Error with a `.status` to
+// short-circuit with a normal JSON error response before SSE headers go out.
+function streamingRoute(buildRequest) {
+  return async (req, res) => {
+    let prompt, toolId;
+    try {
+      ({ prompt, toolId } = buildRequest(req));
+    } catch (err) {
+      return res.status(err.status || 400).json({ success: false, error: err.message });
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    const controller = new AbortController();
+    req.on('close', () => controller.abort());
+    const send = (event) => { res.write(`data: ${JSON.stringify(event)}\n\n`); };
+
+    try {
+      const result = await aiService.generateStream({
+        prompt,
+        toolId,
+        signal: controller.signal,
+        onDelta: (text) => send({ delta: text }),
+      });
+      send({ done: true, provider: result.provider, model: result.model });
+      res.end();
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        res.end();
+        return;
+      }
+      send({ error: err.message || 'AI request failed. Please try again.', code: err.code || 'STREAM_ERROR' });
+      res.end();
+    }
+  };
+}
+
+// Recruiter Copilot — conversational chat.
+router.post('/copilot/stream', streamingRoute((req) => {
+  const { message, history, context } = req.body || {};
+  if (!message || !String(message).trim()) {
+    const err = new Error('A message is required.');
+    err.status = 400;
+    throw err;
+  }
+  const historyBlock = Array.isArray(history) && history.length
+    ? `\n\nRECENT CONVERSATION:\n${history.slice(-8).map(m => `${m.role === 'user' ? 'Recruiter' : 'Copilot'}: ${m.content}`).join('\n')}`
+    : '';
+  const contextBlock = context ? `\n\nWORKSPACE CONTEXT:\n${context}` : '';
+  return { prompt: `${String(message).trim()}${historyBlock}${contextBlock}`, toolId: 'copilot_chat' };
+}));
+
+// Streaming twin of POST /action — same prompt building, incremental output.
+router.post('/action/stream', streamingRoute((req) => {
+  const { action, content, context } = req.body || {};
+  if (!content || !String(content).trim()) {
+    const err = new Error('Content is required.');
+    err.status = 400;
+    throw err;
+  }
+  return { prompt: buildActionPrompt(action, content, context), toolId: toolIdForAction(action) };
+}));
+
+// Streaming twin of POST /generate — for purpose-built tools (e.g. Market
+// Salary & Demand) that call a specific toolId with a client-built prompt.
+router.post('/generate/stream', streamingRoute((req) => {
+  const { prompt, toolId } = req.body || {};
+  if (!prompt || !String(prompt).trim()) {
+    const err = new Error('Prompt is required.');
+    err.status = 400;
+    throw err;
+  }
+  return { prompt, toolId };
+}));
 
 export default router;

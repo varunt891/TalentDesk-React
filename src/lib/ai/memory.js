@@ -32,10 +32,15 @@ export function recentPrompts(orgId, userId) {
 
 export function addRecentPrompt(orgId, userId, prompt) {
   const trimmed = (prompt || '').trim()
-  if (!trimmed) return
+  // Skip saving long pastes (JDs, resumes, etc.) — only short natural-language prompts belong here.
+  if (!trimmed || trimmed.length > 200) return
   const current = recentPrompts(orgId, userId)
   const next = [trimmed, ...current.filter(p => p.toLowerCase() !== trimmed.toLowerCase())].slice(0, 8)
   try { localStorage.setItem(promptsKey(orgId, userId), JSON.stringify(next)) } catch { /* quota exceeded */ }
+}
+
+export function clearRecentPrompts(orgId, userId) {
+  try { localStorage.removeItem(promptsKey(orgId, userId)) } catch { /* ignore */ }
 }
 
 export const SUGGESTED_PROMPTS = [

@@ -176,6 +176,7 @@ export default function Jobs() {
   const [explainResult, setExplainResult] = useState(null)
   const [explainLoading, setExplainLoading] = useState(false)
   const [explainError, setExplainError] = useState(null)
+  const [expandedFieldModal, setExpandedFieldModal] = useState(null)
 
   const explainMatch = async (candidate, job, matchInfo) => {
     setExplainOpen(true)
@@ -441,30 +442,24 @@ export default function Jobs() {
 
   const jobColumns = [
     {
-      key: 'role', header: 'Role & Client', width: 220, sortable: true, sortValue: (j) => j.title || '',
+      key: 'role', header: 'Job Title', width: 220, sortable: true, sortValue: (j) => j.title || '',
       render: (j) => (
-        <span className="flex flex-col gap-0.5 min-w-0">
-          <strong className="text-text font-bold truncate">{j.title || 'Untitled role'}</strong>
-          <span className="text-xs text-text3 truncate"><span className="font-mono text-accent">{j.job_id || 'No ID'}</span> · {j.client || 'Client n/a'}</span>
-          {j.updated_at && (
-            <span className="inline-flex items-center gap-1 text-[10px] text-accent font-medium mt-0.5">
-              <Icon name="clock" size={10} />
-              updated {formatRelativeTimeAgo(j.updated_at)}
-            </span>
-          )}
+        <span className="flex flex-col gap-px min-w-0">
+          <strong className="text-[12.5px] text-text font-semibold truncate leading-tight">{j.title || 'Untitled role'}</strong>
+          <span className="text-[11px] text-text3 truncate leading-tight"><span className="font-mono text-accent text-[10.5px]">{j.job_id || 'No ID'}</span> · {j.client || 'Client n/a'}</span>
         </span>
       ),
     },
     ...(isSuperAdmin && allOrgsView ? [{ key: 'org_name', header: 'Organization', width: 140, sortable: true, hideable: true, render: (j) => <Badge tone="accent" size="sm">{j.org_name || organization?.name || 'TalentDesk'}</Badge> }] : []),
     { key: 'status', header: 'Status', width: 100, sortable: true, render: (j) => <StatusPill status={j.status || 'Open'} tone={STATUS_TONE[j.status] || 'neutral'} size="sm" /> },
-    { key: 'type', header: 'Type', width: 110, hideable: true },
-    { key: 'location', header: 'Location', width: 130, hideable: true },
-    { key: 'rate', header: 'Rate', width: 110, hideable: true, className: 'text-xs font-semibold text-green' },
-    { key: 'fe', header: 'Recruiter', width: 150, render: (j) => <span className="flex items-center gap-2"><Avatar name={j.fe || '?'} size="xs" />{j.fe || 'Unassigned'}</span> },
+    { key: 'type', header: 'Type', width: 110, hideable: true, className: 'text-[11.5px] text-text2' },
+    { key: 'location', header: 'Location', width: 130, hideable: true, className: 'text-[11.5px] text-text2' },
+    { key: 'rate', header: 'Rate', width: 100, hideable: true, className: 'text-[11.5px] font-semibold text-green tabular-nums' },
+    { key: 'fe', header: 'Recruiter', width: 130, className: 'text-[12px] text-text2', render: (j) => j.fe || <span className="text-text3 italic text-[11px]">Unassigned</span> },
     {
       key: 'submittals',
-      header: 'Submitted',
-      width: 110,
+      header: 'Candidates',
+      width: 100,
       sortable: true,
       sortValue: (j) => j.health.submittals,
       render: (j) => (
@@ -476,16 +471,16 @@ export default function Jobs() {
             setPreviewTab('pipeline')
           }}
           title={`Click to view ${j.health.submittals} candidate submissions for ${j.title || 'this job'}`}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-mono text-xs font-bold transition-all duration-150 cursor-pointer bg-accent/12 text-accent hover:bg-accent hover:text-white hover:shadow-sm"
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[11px] font-bold transition-all duration-150 cursor-pointer bg-accent/10 text-accent hover:bg-accent hover:text-white"
         >
-          <Icon name="users" size={12} />
+          <Icon name="users" size={11} />
           <span>{j.health.submittals}</span>
         </button>
       ),
     },
-    { key: 'interviews', header: 'Int', width: 70, hideable: true, align: 'right', sortable: true, sortValue: (j) => j.health.interviews, render: (j) => j.health.interviews },
-    { key: 'hires', header: 'Placed', width: 70, hideable: true, align: 'right', sortable: true, sortValue: (j) => j.health.hires, render: (j) => j.health.hires },
-    { key: 'age', header: 'Age', width: 75, hideable: true, align: 'right', sortable: true, sortValue: (j) => j.health.openDays, render: (j) => `${j.health.openDays}d` },
+    { key: 'interviews', header: 'Int', width: 60, hideable: true, align: 'right', sortable: true, sortValue: (j) => j.health.interviews, render: (j) => <span className="text-[12px] font-mono tabular-nums text-text2">{j.health.interviews}</span> },
+    { key: 'hires', header: 'Placed', width: 65, hideable: true, align: 'right', sortable: true, sortValue: (j) => j.health.hires, render: (j) => <span className="text-[12px] font-mono tabular-nums text-text2">{j.health.hires}</span> },
+    { key: 'age', header: 'Age', width: 65, hideable: true, align: 'right', sortable: true, sortValue: (j) => j.health.openDays, render: (j) => <span className="text-[11.5px] font-mono tabular-nums text-text3">{j.health.openDays}d</span> },
   ]
 
   return (
@@ -536,13 +531,22 @@ export default function Jobs() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 my-5">
-        {jobKpis.map(stat => (
-          <KPICard key={stat.label} label={stat.label} value={stat.value} helper={stat.helper} tone={stat.tone} icon={stat.icon} />
+      {/* Compact stats bar — like Indeed's header metrics */}
+      <div className="flex items-stretch gap-0 my-4 border border-border rounded-[var(--radius-md)] bg-surface overflow-hidden shadow-xs">
+        {jobKpis.map((stat, i) => (
+          <div
+            key={stat.label}
+            className="flex-1 min-w-0 flex flex-col gap-0.5 px-4 py-2.5 relative"
+            style={{ borderRight: i < jobKpis.length - 1 ? '1px solid var(--border)' : 'none' }}
+          >
+            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: `var(--${stat.tone})` }}>{stat.label}</span>
+            <span className="text-xl font-extrabold text-text font-mono leading-none tabular-nums">{stat.value}</span>
+            <span className="text-[10px] text-text3 truncate">{stat.helper}</span>
+          </div>
         ))}
       </div>
 
-      <div className="flex items-center justify-between mb-2.5">
+      <div className="flex items-center justify-between mb-2">
         <span className="text-xs text-text3">
           {filtered.length !== jobs.length ? `${filtered.length} / ${jobs.length} shown` : `${jobs.length} roles`}
         </span>
@@ -757,8 +761,24 @@ export default function Jobs() {
 
                 {showDetail.description && (
                   <Card>
-                    <CardHeader title="Description" />
-                    <p className="text-sm text-text2 leading-relaxed whitespace-pre-wrap">{showDetail.description}</p>
+                    <CardHeader
+                      title="Description & Position Requirements"
+                      action={
+                        <Button
+                          size="xs"
+                          variant="secondary"
+                          leftIcon="expand"
+                          onClick={() => setExpandedFieldModal({
+                            title: `Job Description — ${showDetail.title || 'Requisition'}`,
+                            subtitle: `Job ID: ${showDetail.job_id || 'n/a'} · ${showDetail.client || 'Client n/a'}`,
+                            content: showDetail.description
+                          })}
+                        >
+                          View in full
+                        </Button>
+                      }
+                    />
+                    <p className="text-sm text-text2 leading-relaxed whitespace-pre-wrap line-clamp-6">{showDetail.description}</p>
                   </Card>
                 )}
               </div>
@@ -974,6 +994,41 @@ export default function Jobs() {
         onOpenSubmissionPacket={(cand, j) => openPacketModal(cand, j)}
         onMatchEvaluated={handleMatchEvaluated}
       />
+
+      {/* Field Full View Overlay Modal */}
+      <Modal
+        open={!!expandedFieldModal}
+        onClose={() => setExpandedFieldModal(null)}
+        title={expandedFieldModal?.title || 'Full Field View'}
+        subtitle={expandedFieldModal?.subtitle}
+        size="xl"
+        footer={
+          <div className="flex items-center justify-between w-full">
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon="copy"
+              onClick={() => {
+                if (expandedFieldModal?.content) {
+                  navigator.clipboard.writeText(expandedFieldModal.content)
+                  showToast('Copied to clipboard!')
+                }
+              }}
+            >
+              Copy Text
+            </Button>
+            <Button size="sm" onClick={() => setExpandedFieldModal(null)}>Close</Button>
+          </div>
+        }
+      >
+        {expandedFieldModal && (
+          <div className="p-4 rounded-xl bg-surface2 border border-border">
+            <pre className="text-sm text-text font-sans leading-relaxed whitespace-pre-wrap select-text">
+              {expandedFieldModal.content}
+            </pre>
+          </div>
+        )}
+      </Modal>
 
       {toast && <div style={toastStyle(toast.type)}>{toast.msg}</div>}
     </PageContainer>

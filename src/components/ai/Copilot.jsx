@@ -4,6 +4,7 @@ import { Button, Textarea, Tabs, Icon, cn } from '../ui'
 import { useAIWorkspaceContext } from '../../lib/ai/context'
 import { useCopilotChat } from '../../lib/ai/useCopilotChat'
 import { SUGGESTED_PROMPTS } from '../../lib/ai/memory'
+import { clearRecentPrompts } from '../../lib/ai/memory'
 import { useAIGovernance, RESPONSE_STYLE_INSTRUCTIONS, isOverDailyLimit } from '../../lib/ai/governance'
 import { getUsageSummary } from '../../lib/ai/usage'
 import MessageBubble from './MessageBubble'
@@ -50,7 +51,7 @@ export default function Copilot() {
     source: currentPage || 'copilot_widget',
   })
   const {
-    sortedConversations, activeId, messages, streaming, streamingText, errorMsg, recentPromptsList,
+    sortedConversations, activeId, messages, streaming, streamingText, errorMsg, recentPromptsList, setRecentPromptsList,
     sendMessage, regenerate, stopStreaming, newChat, switchConversation, togglePin, deleteConversation,
   } = chat
 
@@ -204,9 +205,16 @@ export default function Copilot() {
                     </div>
                     {recentPromptsList.length > 0 && (
                       <>
-                        <p className="text-xs text-text3 mt-1">Recent</p>
+                        <div className="flex items-center justify-between mt-1">
+                          <p className="text-xs text-text3">Recent</p>
+                          <button
+                            type="button"
+                            onClick={() => { clearRecentPrompts(orgId, userId); setRecentPromptsList([]) }}
+                            className="text-[10px] text-text3 hover:text-red transition-colors"
+                          >Clear</button>
+                        </div>
                         <div className="flex flex-wrap gap-1.5">
-                          {recentPromptsList.map(p => (
+                          {recentPromptsList.filter(p => p.length <= 200).map(p => (
                             <button key={p} type="button" onClick={() => handleSend(p)} className="text-[11px] font-medium text-text2 bg-surface2 border border-border hover:text-text rounded-full px-2.5 py-1.5">{p}</button>
                           ))}
                         </div>
@@ -252,7 +260,7 @@ export default function Copilot() {
             </>
           ) : (
             <div className="flex-1 overflow-y-auto p-3.5">
-              <ActionsPanel orgId={orgId} userId={userId} source="copilot_widget" />
+              <ActionsPanel orgId={orgId} userId={userId} source="copilot_widget" streamingEnabled={aiSettings.streamingEnabled} />
             </div>
           )}
         </div>

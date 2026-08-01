@@ -44,7 +44,12 @@ export async function apiRequest(path, options = {}) {
     if (!response.ok) {
       console.error('[apiRequest] Error response:', response.status, payload)
       if (response.status === 401) setAuthToken(null)
-      throw new Error(payload.error || `Request failed with status ${response.status}`)
+      if (response.status === 400 && payload.error === 'User does not belong to any organization') {
+        window.dispatchEvent(new Event('td:org-lost'))
+      }
+      const error = new Error(payload.error || `Request failed with status ${response.status}`)
+      error.status = response.status
+      throw error
     }
 
     return payload
