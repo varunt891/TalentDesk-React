@@ -48,7 +48,7 @@ export default function Select({ value, onChange, options, disabled, placeholder
       {open && (
         <div
           role="listbox"
-          className="absolute left-0 top-[calc(100%+6px)] w-full max-h-64 overflow-y-auto bg-surface border border-border rounded-[var(--radius-md)] shadow-[var(--shadow-lg)] p-1.5"
+          className="absolute left-0 top-[calc(100%+6px)] w-full max-h-64 overflow-y-auto bg-surface border border-border rounded-[var(--radius-md)] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-lg)] p-1.5 animate-in fade-in zoom-in-95 duration-100"
           style={{ zIndex: 'var(--z-dropdown)' }}
         >
           {options.map(o => {

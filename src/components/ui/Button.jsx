@@ -3,11 +3,11 @@ import { Icon } from './icons'
 import { cn } from './utils'
 
 const VARIANTS = {
-  primary: 'bg-accent text-white shadow-sm hover:brightness-110 hover:shadow-md active:brightness-95 active:scale-[0.98]',
+  primary: 'bg-accent text-white shadow-[0_1px_0_0_rgba(255,255,255,0.16)_inset,0_3px_10px_-2px_color-mix(in_srgb,var(--accent)_45%,transparent)] hover:shadow-[0_1px_0_0_rgba(255,255,255,0.16)_inset,0_6px_18px_-2px_color-mix(in_srgb,var(--accent)_55%,transparent)] hover:brightness-110 active:brightness-95 active:scale-[0.98]',
   secondary: 'bg-surface2 text-text border border-border shadow-xs hover:bg-surface3 hover:border-border-strong active:scale-[0.98]',
   ghost: 'bg-transparent text-text2 hover:bg-surface2 hover:text-text active:scale-[0.98]',
-  danger: 'bg-red text-white shadow-sm hover:brightness-110 hover:shadow-md active:brightness-95 active:scale-[0.98]',
-  ai: 'bg-ai text-white shadow-sm hover:brightness-110 hover:shadow-md active:brightness-95 active:scale-[0.98]',
+  danger: 'bg-red text-white shadow-[0_1px_0_0_rgba(255,255,255,0.16)_inset,0_3px_10px_-2px_rgba(239,68,68,0.45)] hover:shadow-[0_1px_0_0_rgba(255,255,255,0.16)_inset,0_6px_18px_-2px_rgba(239,68,68,0.55)] hover:brightness-110 active:brightness-95 active:scale-[0.98]',
+  ai: 'bg-ai text-white shadow-[0_1px_0_0_rgba(255,255,255,0.16)_inset,0_3px_10px_-2px_rgba(139,92,246,0.45)] hover:shadow-[0_1px_0_0_rgba(255,255,255,0.16)_inset,0_6px_18px_-2px_rgba(139,92,246,0.55)] hover:brightness-110 active:brightness-95 active:scale-[0.98]',
   outline: 'bg-transparent text-text border border-border hover:border-accent hover:text-accent active:scale-[0.98]',
 }
 

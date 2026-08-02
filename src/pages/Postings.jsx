@@ -3,7 +3,7 @@ import { db } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import * as XLSX from 'xlsx'
 import { PageContainer } from '../components/layout/PageContainer'
-import { Button, Card, CardHeader, PageHeader, EmptyState, SearchBar, Badge, Select, Input, Textarea, FormField, Table, Modal, useToast } from '../components/ui'
+import { Button, Card, CardHeader, KPICard, PageHeader, EmptyState, SearchBar, Badge, Select, Input, Textarea, FormField, Table, Modal, useToast } from '../components/ui'
 import { Icon } from '../components/ui/icons'
 
 const PORTALS = ['Indeed', 'Dice', 'LinkedIn', 'ZipRecruiter', 'Monster', 'CareerBuilder', 'Glassdoor', 'SimplyHired', 'Ladders', 'Recruit.net', 'JobsInTheUS', 'USAJobs', 'Handshake', 'AngelList', 'Stack Overflow']
@@ -56,6 +56,24 @@ export default function Postings() {
     const matchPortal = !portalFilter || p.portal === portalFilter
     return matchSearch && matchPortal
   }), [postings, search, portalFilter])
+
+  const postingStats = useMemo(() => {
+    const weekAgo = new Date()
+    weekAgo.setDate(weekAgo.getDate() - 7)
+    const thisWeek = postings.filter(p => p.date && new Date(p.date) >= weekAgo).length
+    const portalCounts = postings.reduce((acc, p) => {
+      if (p.portal) acc[p.portal] = (acc[p.portal] || 0) + 1
+      return acc
+    }, {})
+    const distinctPortals = Object.keys(portalCounts).length
+    const topPortal = Object.entries(portalCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '—'
+    return [
+      { label: 'Total Postings', value: postings.length, helper: `${filtered.length} shown`, tone: 'accent', icon: 'postings' },
+      { label: 'This Week', value: thisWeek, helper: 'last 7 days', tone: 'green', icon: 'calendar' },
+      { label: 'Portals Used', value: distinctPortals, helper: 'distinct channels', tone: 'ai', icon: 'layers' },
+      { label: 'Top Channel', value: topPortal, helper: 'most-used portal', tone: 'orange', icon: 'trendUp' },
+    ]
+  }, [postings, filtered])
 
   const grouped = useMemo(() => {
     const map = filtered.reduce((acc, p) => {
@@ -127,6 +145,14 @@ export default function Postings() {
         }
       />
 
+      {!loading && postings.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 my-4">
+          {postingStats.map((stat) => (
+            <KPICard key={stat.label} compact {...stat} />
+          ))}
+        </div>
+      )}
+
       <div className="pt-6 flex flex-col gap-6">
         {loading ? (
           <div className="text-sm text-text3 py-16 text-center">Loading postings...</div>
@@ -134,7 +160,7 @@ export default function Postings() {
           <EmptyState icon="postings" title="No postings yet" description="Log where a job was posted to start tracking distribution." actionLabel="Log Posting" onAction={() => setShowModal(true)} />
         ) : (
           grouped.map(({ date, items }) => (
-            <Card key={date} padding="none" className="p-4">
+            <Card key={date} padding="none" hoverable className="p-4">
               <CardHeader title={date} subtitle={`${items.length} posting${items.length === 1 ? '' : 's'}`} />
               <Table
                 columns={COLUMNS}

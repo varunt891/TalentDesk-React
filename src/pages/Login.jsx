@@ -63,7 +63,7 @@ export default function Login() {
             <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-accent bg-accent/10 rounded-full px-2.5 py-1 w-fit">
               Secure recruiting workspace
             </span>
-            <h1 className="text-[32px] leading-[1.15] font-extrabold text-text tracking-[-0.02em]">
+            <h1 className="font-serif text-[36px] leading-[1.15] font-medium text-text tracking-[-0.01em]">
               Sign in and get back to your hiring pipeline.
             </h1>
             <p className="text-[14px] text-text2 leading-relaxed">

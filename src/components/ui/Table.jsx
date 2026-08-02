@@ -39,6 +39,10 @@ export default function Table({
   resizable = false,
   keyboardNav = true,
   mobileCard,
+  pagination = true,
+  pageSizeOptions = [20, 50, 100, 'All'],
+  defaultPageSize = 20,
+  compact = false,
   className = '',
 }) {
   const [internalSort, setInternalSort] = useState({ key: sortKey, dir: sortDir })
@@ -111,6 +115,26 @@ export default function Table({
     })
     return activeSort.dir === 'desc' ? sorted.reverse() : sorted
   }, [data, columns, activeSort, onSortChange])
+
+  // Pagination & Rows-Per-Page state
+  const [pageSize, setPageSize] = useState(defaultPageSize)
+  const [currentPage, setCurrentPage] = useState(1)
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [data.length, activeSort.key, activeSort.dir])
+
+  const totalItems = sortedData.length
+  const isAll = pageSize === 'All' || pageSize >= totalItems
+  const numPageSize = isAll ? Math.max(1, totalItems) : Number(pageSize)
+  const totalPages = isAll ? 1 : Math.max(1, Math.ceil(totalItems / numPageSize))
+  const safeCurrentPage = Math.min(currentPage, totalPages)
+
+  const paginatedData = useMemo(() => {
+    if (!pagination || isAll || totalItems === 0) return sortedData
+    const start = (safeCurrentPage - 1) * numPageSize
+    return sortedData.slice(start, start + numPageSize)
+  }, [sortedData, pagination, isAll, safeCurrentPage, numPageSize, totalItems])
 
   const allSelected = selectable && data.length > 0 && selectedIds.length === data.length
   const someSelected = selectable && selectedIds.length > 0 && !allSelected
@@ -203,11 +227,11 @@ export default function Table({
           tabIndex={keyboardNav ? 0 : undefined}
           onKeyDown={handleContainerKeyDown}
         >
-          <table className="w-full border-collapse" style={resizable ? { tableLayout: 'fixed' } : undefined}>
+          <table className="w-full border-collapse" style={(resizable || compact) ? { tableLayout: 'fixed' } : undefined}>
             <thead className="sticky top-0 bg-surface2/98 backdrop-blur-sm border-b border-border" style={{ zIndex: 'var(--z-sticky)' }}>
               <tr>
                 {selectable && (
-                  <th className="w-10 px-3 py-2.5">
+                  <th className={cn('w-10 px-3', compact ? 'py-1.5' : 'py-2.5')}>
                     <Checkbox checked={allSelected} ref={(el) => { if (el) el.indeterminate = someSelected }} onChange={toggleAll} />
                   </th>
                 )}
@@ -215,7 +239,8 @@ export default function Table({
                   <th
                     key={col.key}
                     className={cn(
-                      'relative px-3 py-2.5 text-[10px] font-bold text-text3 uppercase tracking-wider whitespace-nowrap',
+                      'relative px-3 text-[10px] font-bold text-text3 uppercase tracking-wider whitespace-nowrap',
+                      compact ? 'py-1.5' : 'py-2.5',
                       ALIGN[col.align] || ALIGN.left,
                       col.sortable && 'cursor-pointer select-none hover:text-text transition-colors duration-[var(--duration-fast)]'
                     )}
@@ -241,21 +266,21 @@ export default function Table({
                     )}
                   </th>
                 ))}
-                {rowActions && <th className="w-10 px-3 py-2" />}
+                {rowActions && <th className={cn('w-10 px-3', compact ? 'py-1' : 'py-2')} />}
               </tr>
             </thead>
             <tbody>
               {loading
                   ? Array.from({ length: 6 }).map((_, i) => (
                     <tr key={i} className="border-b border-border last:border-0">
-                      {selectable && <td className="px-3 py-2.5"><Skeleton className="w-4 h-4 rounded" /></td>}
+                      {selectable && <td className={cn('px-3', compact ? 'py-1.5' : 'py-2.5')}><Skeleton className="w-4 h-4 rounded" /></td>}
                       {visibleColumns.map(col => (
-                        <td key={col.key} className="px-3 py-2.5"><Skeleton className="h-3.5 w-4/5 rounded" /></td>
+                        <td key={col.key} className={cn('px-3', compact ? 'py-1.5' : 'py-2.5')}><Skeleton className="h-3.5 w-4/5 rounded" /></td>
                       ))}
-                      {rowActions && <td className="px-3 py-2.5" />}
+                      {rowActions && <td className={cn('px-3', compact ? 'py-1.5' : 'py-2.5')} />}
                     </tr>
                   ))
-                : sortedData.map((row, i) => {
+                : paginatedData.map((row, i) => {
                     const id = getRowId(row)
                     return (
                       <tr
@@ -270,7 +295,7 @@ export default function Table({
                         )}
                       >
                         {selectable && (
-                          <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                          <td className={cn('px-3', compact ? 'py-1' : 'py-2')} onClick={(e) => e.stopPropagation()}>
                             <Checkbox checked={selectedIds.includes(id)} onChange={() => toggleOne(id)} />
                           </td>
                         )}
@@ -279,7 +304,7 @@ export default function Table({
                           return (
                             <td
                               key={col.key}
-                              className={cn('px-3 py-2 text-[12.5px] text-text', ALIGN[col.align] || ALIGN.left, col.className)}
+                              className={cn('px-3 text-[12.5px] text-text', compact ? 'py-1' : 'py-2', ALIGN[col.align] || ALIGN.left, col.className)}
                               onDoubleClick={(e) => {
                                 if (!col.editable) return
                                 e.stopPropagation()
@@ -318,7 +343,7 @@ export default function Table({
                           )
                         })}
                         {rowActions && (
-                          <td className="px-3 py-2 text-right opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                          <td className={cn('px-3 text-right opacity-0 group-hover:opacity-100 transition-opacity', compact ? 'py-1' : 'py-2')} onClick={(e) => e.stopPropagation()}>
                             {rowActions(row)}
                           </td>
                         )}
@@ -335,7 +360,7 @@ export default function Table({
         const left = contextMenu.x + 180 > window.innerWidth ? Math.max(8, contextMenu.x - 180) : contextMenu.x
         return (
           <div
-            className="fixed min-w-[180px] bg-surface border border-border rounded-[var(--radius-md)] shadow-[var(--shadow-lg)] p-1.5 flex flex-col gap-0.5"
+            className="fixed min-w-[180px] bg-surface border border-border rounded-[var(--radius-md)] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-lg)] p-1.5 flex flex-col gap-0.5"
             style={{ top, left, zIndex: 'var(--z-dropdown)' }}
             onMouseDown={(e) => e.stopPropagation()}
           >
@@ -365,7 +390,7 @@ export default function Table({
       <div className="md:hidden flex flex-col gap-2">
         {loading
           ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-[var(--radius-lg)]" />)
-          : sortedData.map(row => {
+          : paginatedData.map(row => {
               const id = getRowId(row)
               if (mobileCard) return <div key={id} onClick={() => onRowClick?.(row)}>{mobileCard(row)}</div>
               return (
@@ -391,6 +416,73 @@ export default function Table({
               )
             })}
       </div>
+
+      {/* Pagination & Rows-Per-Page Controls */}
+      {pagination && totalItems > 0 && (
+        <div className="flex items-center justify-between gap-3 mt-4 pt-3 border-t border-border/80 text-xs flex-wrap">
+          <span className="text-text3 text-[12px] font-medium">
+            {isAll ? (
+              `Showing all ${totalItems} records`
+            ) : (
+              `Showing ${Math.min((safeCurrentPage - 1) * numPageSize + 1, totalItems)}–${Math.min(safeCurrentPage * numPageSize, totalItems)} of ${totalItems} records`
+            )}
+          </span>
+
+          <div className="flex items-center gap-4 ml-auto flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <span className="text-text3 text-[11.5px] font-semibold">Rows per page:</span>
+              <div className="flex items-center gap-1 bg-surface2 p-0.5 rounded-md border border-border">
+                {pageSizeOptions.map((opt) => (
+                  <button
+                    key={String(opt)}
+                    type="button"
+                    onClick={() => {
+                      setPageSize(opt)
+                      setCurrentPage(1)
+                    }}
+                    className={cn(
+                      "px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer",
+                      pageSize === opt
+                        ? "bg-surface text-accent shadow-2xs border border-border/80"
+                        : "text-text3 hover:text-text hover:bg-surface3/50"
+                    )}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {!isAll && totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={safeCurrentPage <= 1}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  className="focus-ring h-7 px-2.5 rounded-md border border-border bg-surface2 text-text2 hover:text-text hover:bg-surface3 disabled:opacity-40 disabled:pointer-events-none transition-colors flex items-center gap-1 cursor-pointer font-medium"
+                >
+                  <Icon name="chevronLeft" size={12} />
+                  <span>Prev</span>
+                </button>
+
+                <span className="px-2 text-[11px] font-semibold text-text2 tabular-nums">
+                  {safeCurrentPage} / {totalPages}
+                </span>
+
+                <button
+                  type="button"
+                  disabled={safeCurrentPage >= totalPages}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  className="focus-ring h-7 px-2.5 rounded-md border border-border bg-surface2 text-text2 hover:text-text hover:bg-surface3 disabled:opacity-40 disabled:pointer-events-none transition-colors flex items-center gap-1 cursor-pointer font-medium"
+                >
+                  <span>Next</span>
+                  <Icon name="chevronRight" size={12} />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

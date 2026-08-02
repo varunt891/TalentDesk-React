@@ -107,7 +107,7 @@ export default function Copilot() {
 
   if (!orgId && !userId) return null
   if (!chatEnabled && !actionsEnabled) return null
-  if ((currentPage || '').toLowerCase() === 'dashboard') return null
+  if (['dashboard', 'ai_center'].includes((currentPage || '').toLowerCase())) return null
   const effectiveMode = mode === 'chat' && !chatEnabled ? 'actions' : mode === 'actions' && !actionsEnabled ? 'chat' : mode
 
   return (

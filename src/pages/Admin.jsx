@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiRequest, db, organizationApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { PageContainer } from '../components/layout/PageContainer'
+import {
+  Button, Card, CardHeader, KPICard, PageHeader, Tabs, EmptyState, Select, Input, FormField,
+  Badge, Avatar, Table, cn, SearchBar, Icon, Switch,
+} from '../components/ui'
+import { StatusBadge, InfoBanner, ProfileCard } from '../components/admin'
 
 const TABS = ['Overview', 'Org Chart', 'Members', 'Access', 'Company']
 const ROLES = ['employee', 'recruiter', 'account_manager', 'recruitment_manager', 'operations_manager', 'manager', 'admin', 'superadmin']
@@ -18,124 +23,6 @@ const getAllDescendants = (userId, allUsers) => {
   return result
 }
 
-// Inline SVG Icons for visual consistency & branding
-const Icons = {
-  TalentDeskLogo: () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2L2 7l10 5 10-5-10-5z" />
-      <path d="M2 17l10 5 10-5" />
-      <path d="M2 12l10 5 10-5" />
-    </svg>
-  ),
-  Overview: () => (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" />
-      <rect x="14" y="14" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" />
-    </svg>
-  ),
-  OrgChart: () => (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 3v6m0 0l-6 6m6-6l6 6" /><circle cx="12" cy="3" r="2" /><circle cx="6" cy="18" r="2" /><circle cx="18" cy="18" r="2" />
-    </svg>
-  ),
-  Members: () => (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  ),
-  Access: () => (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
-    </svg>
-  ),
-  Company: () => (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 21h18" /><path d="M9 8h1" /><path d="M9 12h1" /><path d="M9 16h1" /><path d="M14 8h1" /><path d="M14 12h1" /><path d="M14 16h1" />
-      <path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" />
-    </svg>
-  ),
-  Refresh: ({ className }) => (
-    <svg width="14" height="14" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
-    </svg>
-  ),
-  Plus: () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-    </svg>
-  ),
-  UsersStat: () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  ),
-  GroupStat: () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
-    </svg>
-  ),
-  RecruiterStat: () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
-    </svg>
-  ),
-  JobStat: () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
-    </svg>
-  ),
-  HireStat: () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" /><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-      <path d="M4 22h16" /><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
-      <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
-      <path d="M18 2H6v7a6 6 0 0 0 12 0V2z" />
-    </svg>
-  ),
-  Search: () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-    </svg>
-  ),
-  Building: () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="4" y="2" width="16" height="20" rx="2" ry="2" /><path d="M9 22v-4h6v4" /><path d="M8 6h.01" />
-      <path d="M16 6h.01" /><path d="M12 6h.01" /><path d="M12 10h.01" /><path d="M12 14h.01" /><path d="M16 10h.01" />
-      <path d="M16 14h.01" /><path d="M8 10h.01" /><path d="M8 14h.01" />
-    </svg>
-  ),
-  Check: () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="20 6 9 17 4 12" />
-    </svg>
-  ),
-  Shield: () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-    </svg>
-  ),
-  Trash: () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-      <path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-    </svg>
-  ),
-  Globe: () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" />
-      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-    </svg>
-  ),
-  Warning: () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-      <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-    </svg>
-  ),
-}
-
 export default function Admin() {
   const { profile, switchOrganization } = useAuth()
   const [activeTab, setActiveTab] = useState('Overview')
@@ -149,7 +36,7 @@ export default function Admin() {
   const [search, setSearch] = useState('')
   const [memberFilters, setMemberFilters] = useState({ department: 'All', role: 'All' })
   const [invite, setInvite] = useState({ email: '', role: 'recruiter', team: '', manager_id: '', department: 'Recruiting' })
-  const [orgForm, setOrgForm] = useState({ name: '', slug: '', subdomain: '', email_domain: '', primary_color: '#4f7cff', logo_url: '', timezone: 'America/New_York' })
+  const [orgForm, setOrgForm] = useState({ name: '', slug: '', subdomain: '', email_domain: '', primary_color: '#0d9488', logo_url: '', timezone: 'America/New_York' })
 
   const userRole = (profile?.role || '').toLowerCase()
   const isSuperAdmin = userRole === 'superadmin'
@@ -200,7 +87,7 @@ export default function Admin() {
           slug: orgRes.data.slug || '',
           subdomain: orgRes.data.subdomain || '',
           email_domain: orgRes.data.email_domain || '',
-          primary_color: orgRes.data.primary_color || '#4f7cff',
+          primary_color: orgRes.data.primary_color || '#0d9488',
           logo_url: orgRes.data.logo_url || '',
           timezone: orgRes.data.timezone || 'America/New_York',
         })
@@ -529,71 +416,43 @@ export default function Admin() {
 
   if (!isAdmin) {
     return (
-      <div className="admin-page">
-        <EmptyState title="Admin access required" body="Only authorized admins and superadmins can access this console." />
-      </div>
+      <PageContainer>
+        <EmptyState icon="lock" title="Admin access required" description="Only authorized admins and superadmins can access this console." />
+      </PageContainer>
     )
   }
 
-  const tabIconMap = {
-    'Overview': Icons.Overview,
-    'Org Chart': Icons.OrgChart,
-    'Members': Icons.Members,
-    'Access': Icons.Access,
-    'Company': Icons.Company,
-    'Platform': Icons.Globe,
-  }
+  const tabItems = [
+    ...TABS.map(tab => ({ id: tab, label: tab })),
+    ...(isSuperAdmin ? [{ id: 'Platform', label: 'Platform' }] : []),
+  ]
 
   return (
     <PageContainer>
-      {/* TalentDesk Enterprise Branded Header Toolbar */}
-      <header className="admin-header-toolbar">
-        <div className="admin-header-brand">
-          <div className="admin-brand-icon">
-            <Icons.TalentDeskLogo />
-          </div>
-          <div className="admin-header-titles">
-            <div className="admin-title-row">
-              <h1>TalentDesk Admin Console</h1>
-              <span className="admin-workspace-pill">
-                Workspace: <b>{org?.name || 'TalentDesk'}</b>
-              </span>
-            </div>
-            <p className="admin-header-subtitle">
-              Platform Governance & Access Management
-            </p>
-          </div>
-        </div>
-        <div className="admin-header-actions">
-          <button
-            className="admin-btn admin-btn-secondary"
-            onClick={fetchAdminData}
-            disabled={loading || saving}
-            type="button"
-          >
-            <Icons.Refresh className={loading ? 'admin-spin' : ''} />
-            <span>Refresh</span>
-          </button>
-          <button
-            className="admin-btn admin-btn-primary"
-            onClick={seedDemoProfiles}
-            disabled={saving}
-            type="button"
-          >
-            <Icons.Plus />
-            <span>Add Demo Profiles</span>
-          </button>
-        </div>
-      </header>
+      <PageHeader
+        eyebrow="Administration"
+        title="Admin Console"
+        subtitle={`Platform governance & access management — Workspace: ${org?.name || 'TalentDesk'}`}
+        actions={
+          <>
+            <Button variant="secondary" size="sm" leftIcon="refresh" loading={loading} disabled={saving} onClick={fetchAdminData}>
+              Refresh
+            </Button>
+            <Button size="sm" leftIcon="plus" onClick={seedDemoProfiles} disabled={saving}>
+              Add Demo Profiles
+            </Button>
+          </>
+        }
+      />
 
       {/* Superadmin Org Switcher Bar */}
       {isSuperAdmin && allOrgs.length > 1 && (
-        <div className="admin-org-switcher-bar">
-          <div className="admin-org-switcher-label">
-            <Icons.Building />
-            <span>PLATFORM ORGANIZATIONS</span>
+        <Card padding="sm" className="mt-5 flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-text3 shrink-0">
+            <Icon name="building" size={12} />
+            <span>Platform Organizations</span>
           </div>
-          <div className="admin-org-switcher-list">
+          <div className="flex items-center gap-2 flex-wrap">
             {allOrgs.map(o => {
               const isActive = (selectedOrgId || orgId) === o.id
               return (
@@ -601,97 +460,75 @@ export default function Admin() {
                   key={o.id}
                   onClick={() => setSelectedOrgId(o.id)}
                   type="button"
-                  className={`admin-org-btn ${isActive ? 'active' : ''}`}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 px-2.5 h-7 rounded-full text-xs font-semibold border transition-colors duration-[var(--duration-fast)]',
+                    isActive ? 'bg-accent/12 text-accent border-accent/30' : 'bg-surface2 text-text2 border-border hover:bg-surface3'
+                  )}
                 >
-                  <span className="admin-org-dot" />
-                  <span className="admin-org-name">{o.name}</span>
+                  <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', isActive ? 'bg-accent' : 'bg-text3')} />
+                  <span>{o.name}</span>
                 </button>
               )
             })}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Identical Uniform KPI Command Cards */}
-      <section className="admin-command-grid">
-        <Stat
-          label="ACTIVE MEMBERS"
+      <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-5">
+        <KPICard
+          label="Active Members"
           value={analytics.activeUsers}
           helper={`${analytics.totalUsers} total registered`}
-          icon={Icons.UsersStat}
-          accent="blue"
+          icon="users"
+          tone="accent"
         />
-        <Stat
-          label="MANAGER GROUPS"
+        <KPICard
+          label="Manager Groups"
           value={analytics.teams}
           helper={`${analytics.managers} active managers`}
-          icon={Icons.GroupStat}
-          accent="purple"
+          icon="layers"
+          tone="ai"
         />
-        <Stat
-          label="SUBMISSION RECRUITERS"
+        <KPICard
+          label="Submission Recruiters"
           value={analytics.recruiters}
           helper="Recruiting focus"
-          icon={Icons.RecruiterStat}
-          accent="teal"
+          icon="users"
+          tone="yellow"
         />
-        <Stat
-          label="OPEN JOBS"
+        <KPICard
+          label="Open Jobs"
           value={analytics.openJobs}
           helper={`${analytics.candidates} candidates in funnel`}
-          icon={Icons.JobStat}
-          accent="amber"
+          icon="jobs"
+          tone="orange"
         />
-        <Stat
-          label="TOTAL HIRES"
+        <KPICard
+          label="Total Hires"
           value={analytics.hires}
           helper="Organization wide"
-          icon={Icons.HireStat}
-          accent="emerald"
+          icon="checkCircle"
+          tone="green"
         />
       </section>
 
       {/* Evenly Spaced Segmented Navigation Tabs */}
-      <nav className="admin-tabs-nav">
-        <div className="admin-tabs-wrapper">
-          {TABS.map(tab => {
-            const TabIcon = tabIconMap[tab]
-            const isActive = activeTab === tab
-            return (
-              <button
-                key={tab}
-                className={`admin-tab-btn ${isActive ? 'active' : ''}`}
-                onClick={() => setActiveTab(tab)}
-                type="button"
-              >
-                {TabIcon && <TabIcon />}
-                <span>{tab}</span>
-              </button>
-            )
-          })}
-          {/* Platform tab — superadmin only */}
-          {isSuperAdmin && (
-            <button
-              className={`admin-tab-btn admin-tab-danger ${activeTab === 'Platform' ? 'active' : ''}`}
-              onClick={() => setActiveTab('Platform')}
-              type="button"
-            >
-              <Icons.Globe />
-              <span>Platform</span>
-            </button>
-          )}
-        </div>
-      </nav>
+      <div className="mt-6">
+        <Tabs items={tabItems} value={activeTab} onChange={setActiveTab} />
+      </div>
 
       {/* Tab Panels Container */}
       {loading ? (
-        <div className="admin-loading-card">
-          <Icons.Refresh className="admin-spin admin-loading-icon" />
-          <h3>Loading Admin Workspace</h3>
-          <p>Retrieving organization hierarchy, member permissions, performance analytics, and settings...</p>
-        </div>
+        <Card className="flex flex-col items-center justify-center gap-3 py-16 text-center mt-6">
+          <Icon name="refresh" size={26} className="animate-spin text-accent" />
+          <h3 className="text-sm font-bold text-text">Loading Admin Workspace</h3>
+          <p className="text-xs text-text3 max-w-sm leading-relaxed">
+            Retrieving organization hierarchy, member permissions, performance analytics, and settings...
+          </p>
+        </Card>
       ) : (
-        <main className="admin-tab-content">
+        <main className="pt-6">
           {activeTab === 'Overview' && (
             <CommandCenter
               adminUsers={adminUsers}
@@ -767,11 +604,14 @@ export default function Admin() {
 
       {/* Toast Notifications */}
       {toast && (
-        <div className={`admin-toast-banner ${toast.type || 'success'}`}>
-          <div className="admin-toast-icon">
-            {toast.type === 'error' ? '!' : <Icons.Check />}
-          </div>
-          <span>{toast.msg}</span>
+        <div
+          className={cn(
+            'fixed bottom-4 right-4 flex items-start gap-2.5 w-[min(360px,calc(100vw-2rem))] bg-surface border border-border rounded-[var(--radius-md)] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-lg)] p-3 animate-[toast-in_var(--duration-base)_var(--ease-standard)]'
+          )}
+          style={{ zIndex: 'var(--z-toast)' }}
+        >
+          <Icon name={toast.type === 'error' ? 'xCircle' : 'checkCircle'} size={16} className={cn('shrink-0 mt-0.5', toast.type === 'error' ? 'text-red' : 'text-green')} />
+          <p className="text-sm font-semibold text-text min-w-0 flex-1">{toast.msg}</p>
         </div>
       )}
     </PageContainer>
@@ -789,129 +629,91 @@ function CommandCenter({ adminUsers, onSeed, saving, teamGroups, userStats }) {
     .slice(0, 6)
 
   return (
-    <div className="admin-overview-grid">
-      {/* Light Clean Enterprise Governance Card */}
-      <section className="admin-card">
-        <div className="admin-card-header">
-          <div className="admin-card-title">
-            <Icons.Shield />
-            <span>Workspace Hierarchy & Governance</span>
-          </div>
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* Governance Card */}
+      <Card>
+        <CardHeader title="Workspace Hierarchy & Governance" />
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          <RolePill role="superadmin" />
+          <RolePill role="admin" />
+          <RolePill role="manager" />
+          <RolePill role="recruiter" />
+          <RolePill role="employee" />
         </div>
-        <div className="admin-card-body">
-          <div className="admin-role-legend-grid">
-            <RolePill role="superadmin" />
-            <RolePill role="admin" />
-            <RolePill role="manager" />
-            <RolePill role="recruiter" />
-            <RolePill role="employee" />
-          </div>
-          <p className="admin-card-description">
-            Admins oversee global operations. Recruitment Managers supervise Account Managers. Account Managers direct recruiters and monitor candidate submission funnels.
-          </p>
-          {needsTeamSetup && (
-            <button className="admin-btn admin-btn-primary admin-btn-sm" onClick={onSeed} disabled={saving}>
-              <Icons.Plus />
-              <span>Create Demo Profiles</span>
-            </button>
-          )}
-        </div>
-      </section>
+        <p className="text-xs text-text3 leading-relaxed mb-4">
+          Admins oversee global operations. Recruitment Managers supervise Account Managers. Account Managers direct recruiters and monitor candidate submission funnels.
+        </p>
+        {needsTeamSetup && (
+          <Button size="sm" leftIcon="plus" onClick={onSeed} disabled={saving}>
+            Create Demo Profiles
+          </Button>
+        )}
+      </Card>
 
       {/* Administrative Owners Card */}
-      <section className="admin-card">
-        <div className="admin-card-header">
-          <div className="admin-card-title">
-            <Icons.Access />
-            <span>Administrative Owners</span>
-          </div>
-          <span className="admin-card-badge">{adminUsers.length} Admins</span>
+      <Card>
+        <CardHeader title="Administrative Owners" action={<Badge tone="accent" size="sm">{adminUsers.length} Admins</Badge>} />
+        <div className="flex flex-col">
+          {adminUsers.map(user => (
+            <PersonMini key={user.id} stats={userStats.get(user.id)} user={user} />
+          ))}
         </div>
-        <div className="admin-card-body">
-          <div className="admin-owner-stack">
-            {adminUsers.map(user => (
-              <PersonMini key={user.id} stats={userStats.get(user.id)} user={user} />
-            ))}
-          </div>
-        </div>
-      </section>
+      </Card>
 
       {/* Manager Groups Overview Card */}
-      <section className="admin-card admin-span-2">
-        <div className="admin-card-header">
-          <div className="admin-card-title">
-            <Icons.GroupStat />
-            <span>Manager Groups Overview</span>
-          </div>
-          <span className="admin-card-subtitle">{teamGroups.length} Active Groups</span>
-        </div>
-        <div className="admin-card-body">
-          <div className="admin-team-health-list">
-            {teamGroups.length === 0 ? (
-              <EmptyState title="No team structure initialized" body="Click Add Demo Profiles or assign team leadership in the Members tab." />
-            ) : (
-              teamGroups.slice(0, 8).map(group => {
-                const maxSub = Math.max(...teamGroups.map(g => g.submissions), 1)
-                const percent = Math.min(Math.round((group.submissions / maxSub) * 100), 100)
-                return (
-                  <div className="admin-team-row" key={group.key}>
-                    <div className="admin-team-meta">
-                      <strong>{group.title}</strong>
-                      <span>{group.department} Department · {group.recruiters.length} recruiters</span>
-                    </div>
-                    <div className="admin-team-bar-wrapper">
-                      <div className="admin-team-bar" style={{ width: `${percent}%` }} />
-                    </div>
-                    <div className="admin-team-stat-tag">
-                      <b>{group.submissions}</b> Submissions
-                    </div>
+      <Card className="lg:col-span-2">
+        <CardHeader title="Manager Groups Overview" subtitle={`${teamGroups.length} active groups`} />
+        {teamGroups.length === 0 ? (
+          <EmptyState icon="users" title="No team structure initialized" description="Click Add Demo Profiles or assign team leadership in the Members tab." />
+        ) : (
+          <div className="flex flex-col gap-3">
+            {teamGroups.slice(0, 8).map(group => {
+              const maxSub = Math.max(...teamGroups.map(g => g.submissions), 1)
+              const percent = Math.min(Math.round((group.submissions / maxSub) * 100), 100)
+              return (
+                <div className="flex items-center gap-4" key={group.key}>
+                  <div className="min-w-0 w-56 shrink-0">
+                    <strong className="block text-[13px] font-semibold text-text truncate">{group.title}</strong>
+                    <span className="text-xs text-text3">{group.department} Department · {group.recruiters.length} recruiters</span>
                   </div>
-                )
-              })
-            )}
+                  <div className="flex-1 h-2 rounded-full bg-surface2 overflow-hidden">
+                    <div className="h-full bg-accent rounded-full" style={{ width: `${percent}%` }} />
+                  </div>
+                  <div className="shrink-0 text-xs text-text3 whitespace-nowrap">
+                    <b className="text-text">{group.submissions}</b> Submissions
+                  </div>
+                </div>
+              )
+            })}
           </div>
-        </div>
-      </section>
+        )}
+      </Card>
 
       {/* Top Performing Groups Card */}
-      <section className="admin-card">
-        <div className="admin-card-header">
-          <div className="admin-card-title">
-            <Icons.OrgChart />
-            <span>Top Performing Groups</span>
-          </div>
-        </div>
-        <div className="admin-card-body">
-          <div className="admin-leaderboard-list">
-            {topTeams.map(group => (
-              <div className="admin-leaderboard-row" key={group.key}>
-                <div className="admin-leaderboard-info">
-                  <strong>{group.title}</strong>
-                  <span>{group.members.length} members assigned</span>
-                </div>
-                <MetricStrip stats={group} />
+      <Card>
+        <CardHeader title="Top Performing Groups" />
+        <div className="flex flex-col divide-y divide-border">
+          {topTeams.map(group => (
+            <div className="py-2.5 flex items-center justify-between gap-3 flex-wrap" key={group.key}>
+              <div className="min-w-0">
+                <strong className="block text-[13px] font-semibold text-text truncate">{group.title}</strong>
+                <span className="text-xs text-text3">{group.members.length} members assigned</span>
               </div>
-            ))}
-          </div>
+              <MetricStrip stats={group} />
+            </div>
+          ))}
         </div>
-      </section>
+      </Card>
 
       {/* Submission Recruiters Card */}
-      <section className="admin-card">
-        <div className="admin-card-header">
-          <div className="admin-card-title">
-            <Icons.RecruiterStat />
-            <span>Recruiter Performance Spotlight</span>
-          </div>
+      <Card>
+        <CardHeader title="Recruiter Performance Spotlight" />
+        <div className="flex flex-col">
+          {topRecruiters.map(row => (
+            <PersonMini key={row.user.id} stats={row.stats} user={row.user} />
+          ))}
         </div>
-        <div className="admin-card-body">
-          <div className="admin-owner-stack">
-            {topRecruiters.map(row => (
-              <PersonMini key={row.user.id} stats={row.stats} user={row.user} />
-            ))}
-          </div>
-        </div>
-      </section>
+      </Card>
     </div>
   )
 }
@@ -919,139 +721,94 @@ function CommandCenter({ adminUsers, onSeed, saving, teamGroups, userStats }) {
 /* Members / People Directory Tab Component */
 function PeopleTab({ departments, filteredUsers, invite, managers, memberFilters, onAssignManager, onFilterChange, onInviteChange, onSearch, onSendInvite, onUpdateUser, saving, search, teams }) {
   return (
-    <div className="admin-people-layout">
+    <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 items-start">
       {/* Invite Member Side Card */}
-      <section className="admin-card admin-invite-card">
-        <div className="admin-card-header">
-          <div className="admin-card-title">
-            <Icons.Plus />
-            <span>Invite Team Member</span>
-          </div>
-        </div>
-        <div className="admin-card-body">
-          <div className="admin-form-group">
-            <label className="admin-label">Email Address</label>
-            <input
-              className="admin-input"
+      <Card>
+        <CardHeader title="Invite Team Member" />
+        <div className="flex flex-col gap-4">
+          <FormField label="Email Address">
+            <Input
               value={invite.email}
               onChange={e => onInviteChange({ ...invite, email: e.target.value })}
               placeholder="colleague@company.com"
             />
-          </div>
-          <div className="admin-form-group">
-            <label className="admin-label">Workspace Role</label>
-            <select
-              className="admin-select"
+          </FormField>
+          <FormField label="Workspace Role">
+            <Select
               value={invite.role}
-              onChange={e => onInviteChange({ ...invite, role: e.target.value })}
-            >
-              {ROLES.filter(r => r !== 'superadmin').map(role => (
-                <option key={role} value={role}>{role.toUpperCase()}</option>
-              ))}
-            </select>
-          </div>
-          <div className="admin-form-group">
-            <label className="admin-label">Team Group</label>
-            <input
-              className="admin-input"
+              onChange={v => onInviteChange({ ...invite, role: v })}
+              options={ROLES.filter(r => r !== 'superadmin').map(role => ({ value: role, label: role.toUpperCase() }))}
+            />
+          </FormField>
+          <FormField label="Team Group">
+            <Input
               value={invite.team}
               onChange={e => onInviteChange({ ...invite, team: e.target.value })}
               list="admin-team-list"
               placeholder="e.g. Front-End Team"
             />
-          </div>
-          <div className="admin-form-group">
-            <label className="admin-label">Department</label>
-            <input
-              className="admin-input"
+          </FormField>
+          <FormField label="Department">
+            <Input
               value={invite.department}
               onChange={e => onInviteChange({ ...invite, department: e.target.value })}
               list="admin-department-list"
               placeholder="e.g. Recruiting"
             />
-          </div>
-          <div className="admin-form-group">
-            <label className="admin-label">Reporting Manager</label>
-            <select
-              className="admin-select"
+          </FormField>
+          <FormField label="Reporting Manager">
+            <Select
               value={invite.manager_id}
-              onChange={e => onInviteChange({ ...invite, manager_id: e.target.value })}
-            >
-              <option value="">Unassigned (Direct Root)</option>
-              {managers.map(manager => (
-                <option key={manager.id} value={manager.id}>{manager.full_name || manager.email}</option>
-              ))}
-            </select>
-          </div>
-          <button
-            className="admin-btn admin-btn-primary admin-btn-full"
-            onClick={onSendInvite}
-            disabled={saving}
-          >
+              onChange={v => onInviteChange({ ...invite, manager_id: v })}
+              options={[{ value: '', label: 'Unassigned (Direct Root)' }, ...managers.map(manager => ({ value: manager.id, label: manager.full_name || manager.email }))]}
+            />
+          </FormField>
+          <Button className="w-full" onClick={onSendInvite} disabled={saving}>
             {saving ? 'Processing...' : 'Send Invitation'}
-          </button>
+          </Button>
           <datalist id="admin-team-list">{teams.map(team => <option key={team} value={team} />)}</datalist>
         </div>
-      </section>
+      </Card>
 
       {/* Main Members Directory */}
-      <section className="admin-card admin-directory-card">
-        <div className="admin-card-header admin-directory-header">
-          <div>
-            <div className="admin-card-title">
-              <Icons.Members />
-              <span>Member Directory</span>
+      <Card>
+        <CardHeader
+          title="Member Directory"
+          subtitle={`${filteredUsers.length} members matching criteria`}
+          action={
+            <div className="flex items-center gap-2 flex-wrap">
+              <SearchBar value={search} onChange={onSearch} placeholder="Search name, email, role, team..." className="w-56" />
+              <div className="w-40">
+                <Select
+                  value={memberFilters.department}
+                  onChange={v => onFilterChange(prev => ({ ...prev, department: v }))}
+                  options={[{ value: 'All', label: 'All Departments' }, ...[...(departments || []), 'Unassigned'].map(department => ({ value: department, label: department }))]}
+                />
+              </div>
+              <div className="w-36">
+                <Select
+                  value={memberFilters.role}
+                  onChange={v => onFilterChange(prev => ({ ...prev, role: v }))}
+                  options={[{ value: 'All', label: 'All Roles' }, ...['superadmin', 'admin', 'manager', 'recruiter', 'employee', 'member'].map(role => ({ value: role, label: role.toUpperCase() }))]}
+                />
+              </div>
             </div>
-            <p className="admin-card-subtitle">{filteredUsers.length} members matching criteria</p>
-          </div>
-          <div className="admin-filter-bar">
-            <div className="admin-search-wrapper">
-              <Icons.Search />
-              <input
-                className="admin-search-input"
-                value={search}
-                onChange={e => onSearch(e.target.value)}
-                placeholder="Search name, email, role, team..."
-              />
-            </div>
-            <select
-              className="admin-filter-select"
-              value={memberFilters.department}
-              onChange={e => onFilterChange(prev => ({ ...prev, department: e.target.value }))}
-            >
-              <option value="All">All Departments</option>
-              {[...(departments || []), 'Unassigned'].map(department => (
-                <option key={department} value={department}>{department}</option>
-              ))}
-            </select>
-            <select
-              className="admin-filter-select"
-              value={memberFilters.role}
-              onChange={e => onFilterChange(prev => ({ ...prev, role: e.target.value }))}
-            >
-              <option value="All">All Roles</option>
-              {['superadmin', 'admin', 'manager', 'recruiter', 'employee', 'member'].map(role => (
-                <option key={role} value={role}>{role.toUpperCase()}</option>
-              ))}
-            </select>
-          </div>
+          }
+        />
+        <div className="grid sm:grid-cols-2 gap-3">
+          {filteredUsers.map(user => (
+            <MemberCard
+              key={user.id}
+              departments={departments}
+              managers={managers}
+              onAssignManager={onAssignManager}
+              onUpdateUser={onUpdateUser}
+              saving={saving}
+              user={user}
+            />
+          ))}
         </div>
-        <div className="admin-card-body">
-          <div className="admin-member-grid">
-            {filteredUsers.map(user => (
-              <MemberCard
-                key={user.id}
-                departments={departments}
-                managers={managers}
-                onAssignManager={onAssignManager}
-                onUpdateUser={onUpdateUser}
-                saving={saving}
-                user={user}
-              />
-            ))}
-          </div>
-        </div>
-      </section>
+      </Card>
     </div>
   )
 }
@@ -1094,85 +851,68 @@ function MemberCard({ departments, managers, onAssignManager, onUpdateUser, savi
   const role = displayRole(user)
 
   return (
-    <article className={`admin-member-item ${user.is_active === false ? 'inactive' : ''}`}>
-      <div className="admin-member-header-row">
-        <div className="admin-member-avatar-ring">
-          {initials(user.full_name || user.email)}
-        </div>
-        <div className="admin-member-info-col">
-          <strong className="admin-member-title">{user.full_name || 'Unnamed Member'}</strong>
-          <span className="admin-member-email">{user.email}</span>
-          <div className="admin-member-badge-row">
+    <article className={cn('rounded-[var(--radius-md)] border border-border bg-surface2/40 p-3.5', user.is_active === false && 'opacity-60')}>
+      <div className="flex items-start gap-3">
+        <Avatar name={user.full_name || user.email} />
+        <div className="min-w-0 flex-1">
+          <strong className="block text-[13px] font-semibold text-text truncate">{user.full_name || 'Unnamed Member'}</strong>
+          <span className="block text-xs text-text3 truncate">{user.email}</span>
+          <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
             <RolePill role={role} />
-            <span className="admin-chip">{user.department || 'Unassigned'}</span>
-            <span className="admin-chip">{user.team || 'No group'}</span>
+            <Badge tone="neutral" size="sm">{user.department || 'Unassigned'}</Badge>
+            <Badge tone="neutral" size="sm">{user.team || 'No group'}</Badge>
           </div>
         </div>
-        <div className="admin-member-action-col">
-          <button
-            className={`admin-toggle-switch ${user.is_active === false ? 'off' : 'on'}`}
-            onClick={() => onUpdateUser(user.id, { is_active: user.is_active === false })}
-            type="button"
-            title="Toggle account active status"
-          >
-            <span className="admin-toggle-thumb" />
-            <span className="admin-toggle-text">{user.is_active === false ? 'Inactive' : 'Active'}</span>
-          </button>
-          <button
-            className={`admin-btn-ghost ${expanded ? 'active' : ''}`}
+        <div className="flex flex-col items-end gap-2 shrink-0">
+          <StatusBadge status={user.is_active === false ? 'inactive' : 'active'} />
+          <Button
+            size="sm"
+            variant={expanded ? 'secondary' : 'ghost'}
             type="button"
             onClick={() => setExpanded(prev => !prev)}
           >
             {expanded ? 'Close' : 'Edit'}
-          </button>
+          </Button>
         </div>
       </div>
 
       {expanded && (
-        <div className="admin-member-drawer">
-          <div className="admin-drawer-grid">
-            <div className="admin-form-group">
-              <label className="admin-label">Role</label>
-              <select
-                className="admin-select"
-                value={user.role || 'recruiter'}
-                disabled={saving}
-                onChange={e => onUpdateUser(user.id, { role: e.target.value })}
-              >
-                {ROLES.map(r => <option key={r} value={r}>{r.toUpperCase()}</option>)}
-              </select>
-            </div>
-            <div className="admin-form-group">
-              <label className="admin-label">Team Group</label>
-              <input className="admin-input" {...editProps('team', 'Team Name')} />
-            </div>
-            <div className="admin-form-group">
-              <label className="admin-label">Department</label>
-              <input className="admin-input" {...editProps('department', 'Department')} list="admin-department-list" />
-            </div>
-            <div className="admin-form-group">
-              <label className="admin-label">Reporting Manager</label>
-              <select
-                className="admin-select"
-                value={user.manager_id || ''}
-                disabled={saving}
-                onChange={e => onAssignManager(user, e.target.value)}
-              >
-                <option value="">Unassigned (Direct Root)</option>
-                {managers.filter(m => m.id !== user.id).map(mgr => (
-                  <option key={mgr.id} value={mgr.id}>{mgr.full_name || mgr.email}</option>
-                ))}
-              </select>
-            </div>
-            <div className="admin-form-group">
-              <label className="admin-label">Phone</label>
-              <input className="admin-input" {...editProps('phone', '+1 (555) 000-0000')} />
-            </div>
-            <div className="admin-form-group">
-              <label className="admin-label">Extension</label>
-              <input className="admin-input" {...editProps('extension', 'x101')} />
-            </div>
-          </div>
+        <div className="mt-3.5 pt-3.5 border-t border-border grid sm:grid-cols-2 gap-3">
+          <FormField label="Active status" className="sm:col-span-2">
+            <Switch
+              checked={user.is_active !== false}
+              onChange={v => onUpdateUser(user.id, { is_active: v })}
+              label={user.is_active === false ? 'Inactive' : 'Active'}
+            />
+          </FormField>
+          <FormField label="Role">
+            <Select
+              value={user.role || 'recruiter'}
+              disabled={saving}
+              onChange={v => onUpdateUser(user.id, { role: v })}
+              options={ROLES.map(r => ({ value: r, label: r.toUpperCase() }))}
+            />
+          </FormField>
+          <FormField label="Team Group">
+            <Input {...editProps('team', 'Team Name')} />
+          </FormField>
+          <FormField label="Department">
+            <Input {...editProps('department', 'Department')} list="admin-department-list" />
+          </FormField>
+          <FormField label="Reporting Manager">
+            <Select
+              value={user.manager_id || ''}
+              disabled={saving}
+              onChange={v => onAssignManager(user, v)}
+              options={[{ value: '', label: 'Unassigned (Direct Root)' }, ...managers.filter(m => m.id !== user.id).map(mgr => ({ value: mgr.id, label: mgr.full_name || mgr.email }))]}
+            />
+          </FormField>
+          <FormField label="Phone">
+            <Input {...editProps('phone', '+1 (555) 000-0000')} />
+          </FormField>
+          <FormField label="Extension">
+            <Input {...editProps('extension', 'x101')} />
+          </FormField>
         </div>
       )}
       <datalist id="admin-department-list">{(departments || []).map(department => <option key={department} value={department} />)}</datalist>
@@ -1239,54 +979,41 @@ function TeamsTab({ onAssignManager, saving, userStats, users }) {
   }, [query, treeRoots, hierarchyUsers, getDescendantsMatch])
 
   return (
-    <section className="admin-card admin-org-tree-card">
-      <div className="admin-card-header admin-tree-toolbar">
-        <div>
-          <div className="admin-card-title">
-            <Icons.OrgChart />
-            <span>Interactive Organizational Tree</span>
+    <Card>
+      <CardHeader
+        title="Interactive Organizational Tree"
+        subtitle="Collapsible reporting hierarchy with real-time performance metrics"
+        action={
+          <div className="flex items-center gap-2 flex-wrap">
+            <SearchBar value={query} onChange={setQuery} placeholder="Search tree members..." className="w-56" />
+            <Button variant="secondary" size="sm" onClick={expandAll} type="button">Expand All</Button>
+            <Button variant="secondary" size="sm" onClick={collapseAll} type="button">Collapse All</Button>
           </div>
-          <p className="admin-card-subtitle">Collapsible reporting hierarchy with real-time performance metrics</p>
-        </div>
-        <div className="admin-tree-toolbar-actions">
-          <div className="admin-search-wrapper">
-            <Icons.Search />
-            <input
-              className="admin-search-input"
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder="Search tree members..."
-            />
-          </div>
-          <button className="admin-btn admin-btn-secondary admin-btn-sm" onClick={expandAll} type="button">Expand All</button>
-          <button className="admin-btn admin-btn-secondary admin-btn-sm" onClick={collapseAll} type="button">Collapse All</button>
-        </div>
-      </div>
+        }
+      />
 
-      <div className="admin-card-body">
-        {treeRoots.length === 0 ? (
-          <EmptyState title="No organizational hierarchy defined" body="Assign reporting managers under the Members tab to build reporting trees." />
-        ) : (
-          <div className="org-tree-root-container">
-            {treeRoots.map(root => (
-              <TreeNode
-                key={root.id}
-                user={root}
-                allUsers={hierarchyUsers}
-                userStats={userStats}
-                onAssignManager={onAssignManager}
-                query={query}
-                level={0}
-                expandedNodes={expandedNodes}
-                toggleExpand={toggleExpand}
-                getDescendantsMatch={getDescendantsMatch}
-                saving={saving}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
+      {treeRoots.length === 0 ? (
+        <EmptyState icon="layers" title="No organizational hierarchy defined" description="Assign reporting managers under the Members tab to build reporting trees." />
+      ) : (
+        <div className="flex flex-col gap-1">
+          {treeRoots.map(root => (
+            <TreeNode
+              key={root.id}
+              user={root}
+              allUsers={hierarchyUsers}
+              userStats={userStats}
+              onAssignManager={onAssignManager}
+              query={query}
+              level={0}
+              expandedNodes={expandedNodes}
+              toggleExpand={toggleExpand}
+              getDescendantsMatch={getDescendantsMatch}
+              saving={saving}
+            />
+          ))}
+        </div>
+      )}
+    </Card>
   )
 }
 
@@ -1304,7 +1031,6 @@ function TreeNode({ user, allUsers, userStats, onAssignManager, query, level, ex
   const hasChildren = children.length > 0
 
   const stats = userStats.get(user.id) || { submissions: 0, interviews: 0, hires: 0 }
-  const initialsText = initials(user.full_name || user.email)
 
   const countReports = (uid) => {
     const direct = allUsers.filter(u => u.manager_id === uid)
@@ -1318,75 +1044,69 @@ function TreeNode({ user, allUsers, userStats, onAssignManager, query, level, ex
   const reportsCount = countReports(user.id)
 
   const avatarGradients = [
-    'linear-gradient(135deg, #3b82f6, #6366f1)',
-    'linear-gradient(135deg, #8b5cf6, #d946ef)',
-    'linear-gradient(135deg, #10b981, #06b6d4)',
-    'linear-gradient(135deg, #f59e0b, #ef4444)'
+    'linear-gradient(135deg, var(--accent), var(--accent2))',
+    'linear-gradient(135deg, var(--ai), #d946ef)',
+    'linear-gradient(135deg, var(--green), #06b6d4)',
+    'linear-gradient(135deg, var(--yellow), var(--red))'
   ]
   const avatarBg = avatarGradients[(user.full_name || '').charCodeAt(0) % avatarGradients.length]
   const managerOptions = allUsers.filter(u => ['manager', 'admin', 'superadmin'].includes(u.role) && u.id !== user.id)
 
+  const roleLabel = user.role === 'recruiter'
+    ? `${user.department || ''} Recruiter`
+    : user.role === 'manager'
+      ? ((allUsers.some(u => u.manager_id === user.id && u.role === 'manager') || !user.manager_id) ? `${user.department || ''} Recruitment Manager` : `${user.department || ''} Account Manager`)
+      : `${user.department || ''} ${user.role}`
+
   return (
-    <div className="org-tree-node-wrapper">
-      <div className={`org-tree-node-row level-${level}`}>
+    <div className="flex flex-col">
+      <div className="flex items-center gap-2.5 py-2 border-b border-border/60" style={{ paddingLeft: level * 24 }}>
         {hasChildren ? (
           <button
-            className={`org-tree-node-toggle ${isOpen ? 'expanded' : ''}`}
+            className="shrink-0 w-5 h-5 flex items-center justify-center text-text3 hover:text-text transition-colors"
             onClick={() => toggleExpand(user.id)}
             type="button"
           >
-            ▶
+            <Icon name="chevronRight" size={13} className={cn('transition-transform duration-[var(--duration-fast)]', isOpen && 'rotate-90')} />
           </button>
         ) : (
-          <span className="org-tree-node-spacer" />
+          <span className="shrink-0 w-5 h-5" />
         )}
 
-        <div className="org-tree-node-avatar" style={{ background: avatarBg }}>
-          {initialsText}
+        <span className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ background: avatarBg }}>
+          {initials(user.full_name || user.email)}
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[13px] font-semibold text-text truncate">{user.full_name || 'Unnamed User'}</span>
+            <Badge tone="neutral" size="sm">{roleLabel}</Badge>
+            {reportsCount > 0 && (
+              <span className="text-[11px] text-text3">
+                ({reportsCount} {reportsCount === 1 ? 'direct report' : 'total reports'})
+              </span>
+            )}
+          </div>
+          <span className="text-xs text-text3 truncate">{user.email}</span>
         </div>
 
-        <div className="org-tree-node-details">
-          <span className="org-tree-node-name">{user.full_name || 'Unnamed User'}</span>
-          <span className={`org-tree-node-role-badge ${user.department?.toLowerCase() || 'operations'}`}>
-            {user.role === 'recruiter'
-              ? `${user.department || ''} Recruiter`
-              : user.role === 'manager'
-                ? ((allUsers.some(u => u.manager_id === user.id && u.role === 'manager') || !user.manager_id) ? `${user.department || ''} Recruitment Manager` : `${user.department || ''} Account Manager`)
-                : `${user.department || ''} ${user.role}`}
-          </span>
-          <span className="org-tree-node-email">{user.email}</span>
-          {reportsCount > 0 && (
-            <span className="org-tree-node-reports-count">
-              ({reportsCount} {reportsCount === 1 ? 'direct report' : 'total reports'})
-            </span>
-          )}
+        <div className="shrink-0 hidden sm:block">
+          <MetricStrip stats={stats} />
         </div>
 
-        <div className="org-tree-node-metrics">
-          <span className="org-tree-metric-pill"><b>{stats.submissions}</b> Sub</span>
-          <span className="org-tree-metric-pill"><b>{stats.interviews}</b> Int</span>
-          <span className="org-tree-metric-pill"><b>{stats.hires}</b> Hires</span>
-        </div>
-
-        <div className="org-tree-node-actions">
-          <select
-            className="admin-select admin-select-sm"
+        <div className="shrink-0 w-48">
+          <Select
+            size="sm"
             value={user.manager_id || ''}
             disabled={saving}
-            onChange={e => onAssignManager(user, e.target.value)}
-          >
-            <option value="">No manager (Root Node)</option>
-            {managerOptions.map(mgr => (
-              <option key={mgr.id} value={mgr.id}>
-                Reports to: {mgr.full_name || mgr.email}
-              </option>
-            ))}
-          </select>
+            onChange={v => onAssignManager(user, v)}
+            options={[{ value: '', label: 'No manager (Root Node)' }, ...managerOptions.map(mgr => ({ value: mgr.id, label: `Reports to: ${mgr.full_name || mgr.email}` }))]}
+          />
         </div>
       </div>
 
       {hasChildren && isOpen && (
-        <div className="org-tree-children-container">
+        <div className="flex flex-col">
           {children.map(child => (
             <TreeNode
               key={child.id}
@@ -1414,84 +1134,73 @@ function PermissionsTab({ onUpdateUser, saving, users }) {
   const staff = users.filter(user => !['admin', 'superadmin'].includes(user.role))
 
   return (
-    <div className="admin-permission-grid">
-      <section className="admin-card">
-        <div className="admin-card-header">
-          <div className="admin-card-title">
-            <Icons.Access />
-            <span>Administrative Privileges</span>
-          </div>
-          <span className="admin-card-badge">{admins.length} Executive Users</span>
-        </div>
-        <div className="admin-card-body">
-          <p className="admin-card-description">
-            Administrators hold full tenant privileges. Superadmin roles are reserved strictly for account owners.
-          </p>
-          <div className="admin-member-stack">
-            {admins.map(user => (
-              <div className="admin-member-perm-row" key={user.id}>
-                <div className="admin-member-avatar-ring">
-                  {initials(user.full_name || user.email)}
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <Card>
+        <CardHeader title="Administrative Privileges" action={<Badge tone="accent" size="sm">{admins.length} Executive Users</Badge>} />
+        <p className="text-xs text-text3 leading-relaxed mb-3">
+          Administrators hold full tenant privileges. Superadmin roles are reserved strictly for account owners.
+        </p>
+        <div className="flex flex-col divide-y divide-border">
+          {admins.map(user => (
+            <ProfileCard
+              key={user.id}
+              name={user.full_name || user.email}
+              email={user.email}
+              actions={
+                <div className="w-40">
+                  <Select
+                    size="sm"
+                    value={user.role || 'admin'}
+                    disabled={saving || user.role === 'superadmin'}
+                    onChange={v => onUpdateUser(user.id, { role: v })}
+                    options={[
+                      { value: 'admin', label: 'ADMIN' },
+                      { value: 'manager', label: 'MANAGER' },
+                      { value: 'employee', label: 'EMPLOYEE' },
+                      { value: 'recruiter', label: 'RECRUITER' },
+                      ...(user.role === 'superadmin' ? [{ value: 'superadmin', label: 'SUPERADMIN' }] : []),
+                    ]}
+                  />
                 </div>
-                <div className="admin-member-details">
-                  <strong className="admin-member-name">{user.full_name || user.email}</strong>
-                  <span className="admin-member-sub">{user.email}</span>
-                </div>
-                <select
-                  className="admin-select"
-                  value={user.role || 'admin'}
-                  disabled={saving || user.role === 'superadmin'}
-                  onChange={e => onUpdateUser(user.id, { role: e.target.value })}
-                >
-                  <option value="admin">ADMIN</option>
-                  <option value="manager">MANAGER</option>
-                  <option value="employee">EMPLOYEE</option>
-                  <option value="recruiter">RECRUITER</option>
-                  {user.role === 'superadmin' && <option value="superadmin">SUPERADMIN</option>}
-                </select>
-              </div>
-            ))}
-          </div>
+              }
+            />
+          ))}
         </div>
-      </section>
+      </Card>
 
-      <section className="admin-card">
-        <div className="admin-card-header">
-          <div className="admin-card-title">
-            <Icons.Members />
-            <span>Staff Member Promotions</span>
-          </div>
-        </div>
-        <div className="admin-card-body">
-          <p className="admin-card-description">
-            Elevate staff roles to grant manager supervision or workspace-wide administration privileges.
-          </p>
-          <div className="admin-member-stack">
-            {staff.slice(0, 20).map(user => (
-              <div className="admin-member-perm-row" key={user.id}>
-                <div className="admin-member-avatar-ring">
-                  {initials(user.full_name || user.email)}
+      <Card>
+        <CardHeader title="Staff Member Promotions" />
+        <p className="text-xs text-text3 leading-relaxed mb-3">
+          Elevate staff roles to grant manager supervision or workspace-wide administration privileges.
+        </p>
+        <div className="flex flex-col divide-y divide-border">
+          {staff.slice(0, 20).map(user => (
+            <ProfileCard
+              key={user.id}
+              name={user.full_name || user.email}
+              email={user.email}
+              department={user.team || 'No team'}
+              team={user.department || 'No department'}
+              actions={
+                <div className="w-40">
+                  <Select
+                    size="sm"
+                    value={user.role || 'employee'}
+                    disabled={saving}
+                    onChange={v => onUpdateUser(user.id, { role: v })}
+                    options={[
+                      { value: 'employee', label: 'EMPLOYEE' },
+                      { value: 'recruiter', label: 'RECRUITER' },
+                      { value: 'manager', label: 'MANAGER' },
+                      { value: 'admin', label: 'ADMIN' },
+                    ]}
+                  />
                 </div>
-                <div className="admin-member-details">
-                  <strong className="admin-member-name">{user.full_name || user.email}</strong>
-                  <span className="admin-member-sub">{user.team || 'No team'} · {user.department || 'No department'}</span>
-                </div>
-                <select
-                  className="admin-select"
-                  value={user.role || 'employee'}
-                  disabled={saving}
-                  onChange={e => onUpdateUser(user.id, { role: e.target.value })}
-                >
-                  <option value="employee">EMPLOYEE</option>
-                  <option value="recruiter">RECRUITER</option>
-                  <option value="manager">MANAGER</option>
-                  <option value="admin">ADMIN</option>
-                </select>
-              </div>
-            ))}
-          </div>
+              }
+            />
+          ))}
         </div>
-      </section>
+      </Card>
     </div>
   )
 }
@@ -1499,61 +1208,47 @@ function PermissionsTab({ onUpdateUser, saving, users }) {
 /* Company / Settings Tab Component */
 function OrgSettingsTab({ form, onChange, onSave, saving }) {
   return (
-    <section className="admin-card admin-settings-card">
-      <div className="admin-card-header">
-        <div className="admin-card-title">
-          <Icons.Company />
-          <span>Organization Governance Settings</span>
-        </div>
+    <Card>
+      <CardHeader title="Organization Governance Settings" />
+      <p className="text-xs text-text3 leading-relaxed mb-4">
+        Configure multi-tenant subdomain routing, enterprise email domain verification, branding, and default timezones.
+      </p>
+      <div className="grid sm:grid-cols-2 gap-4">
+        <FormField label="Company Name">
+          <Input value={form.name} onChange={e => onChange({ ...form, name: e.target.value })} />
+        </FormField>
+        <FormField label="Workspace Slug">
+          <Input value={form.slug} onChange={e => onChange({ ...form, slug: e.target.value })} />
+        </FormField>
+        <FormField label="Subdomain Prefix">
+          <Input value={form.subdomain} onChange={e => onChange({ ...form, subdomain: e.target.value.toLowerCase() })} placeholder="e.g. acme" />
+        </FormField>
+        <FormField label="Allowed Email Domain">
+          <Input value={form.email_domain} onChange={e => onChange({ ...form, email_domain: e.target.value.toLowerCase() })} placeholder="e.g. company.com" />
+        </FormField>
+        <FormField label="Primary Brand Accent Color">
+          <div className="flex items-center gap-2">
+            <Input type="color" value={form.primary_color} onChange={e => onChange({ ...form, primary_color: e.target.value })} className="w-11 h-9 p-1 shrink-0" />
+            <Input value={form.primary_color} onChange={e => onChange({ ...form, primary_color: e.target.value })} />
+          </div>
+        </FormField>
+        <FormField label="Default Timezone">
+          <Select
+            value={form.timezone}
+            onChange={v => onChange({ ...form, timezone: v })}
+            options={['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'Asia/Calcutta', 'UTC'].map(zone => ({ value: zone, label: zone }))}
+          />
+        </FormField>
+        <FormField label="Logo Image URL" className="sm:col-span-2">
+          <Input value={form.logo_url} onChange={e => onChange({ ...form, logo_url: e.target.value })} placeholder="https://..." />
+        </FormField>
       </div>
-      <div className="admin-card-body">
-        <p className="admin-card-description">
-          Configure multi-tenant subdomain routing, enterprise email domain verification, branding, and default timezones.
-        </p>
-        <div className="admin-form-grid">
-          <div className="admin-form-group">
-            <label className="admin-label">Company Name</label>
-            <input className="admin-input" value={form.name} onChange={e => onChange({ ...form, name: e.target.value })} />
-          </div>
-          <div className="admin-form-group">
-            <label className="admin-label">Workspace Slug</label>
-            <input className="admin-input" value={form.slug} onChange={e => onChange({ ...form, slug: e.target.value })} />
-          </div>
-          <div className="admin-form-group">
-            <label className="admin-label">Subdomain Prefix</label>
-            <input className="admin-input" value={form.subdomain} onChange={e => onChange({ ...form, subdomain: e.target.value.toLowerCase() })} placeholder="e.g. acme" />
-          </div>
-          <div className="admin-form-group">
-            <label className="admin-label">Allowed Email Domain</label>
-            <input className="admin-input" value={form.email_domain} onChange={e => onChange({ ...form, email_domain: e.target.value.toLowerCase() })} placeholder="e.g. company.com" />
-          </div>
-          <div className="admin-form-group">
-            <label className="admin-label">Primary Brand Accent Color</label>
-            <div className="admin-color-picker-row">
-              <input type="color" className="admin-color-input" value={form.primary_color} onChange={e => onChange({ ...form, primary_color: e.target.value })} />
-              <input className="admin-input" value={form.primary_color} onChange={e => onChange({ ...form, primary_color: e.target.value })} />
-            </div>
-          </div>
-          <div className="admin-form-group">
-            <label className="admin-label">Default Timezone</label>
-            <select className="admin-select" value={form.timezone} onChange={e => onChange({ ...form, timezone: e.target.value })}>
-              {['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'Asia/Calcutta', 'UTC'].map(zone => (
-                <option key={zone} value={zone}>{zone}</option>
-              ))}
-            </select>
-          </div>
-          <div className="admin-form-group admin-span-full">
-            <label className="admin-label">Logo Image URL</label>
-            <input className="admin-input" value={form.logo_url} onChange={e => onChange({ ...form, logo_url: e.target.value })} placeholder="https://..." />
-          </div>
-        </div>
-        <div className="admin-form-actions">
-          <button className="admin-btn admin-btn-primary" onClick={onSave} disabled={saving}>
-            {saving ? 'Saving Changes...' : 'Save Organization Settings'}
-          </button>
-        </div>
+      <div className="flex justify-end mt-5">
+        <Button onClick={onSave} disabled={saving}>
+          {saving ? 'Saving Changes...' : 'Save Organization Settings'}
+        </Button>
       </div>
-    </section>
+    </Card>
   )
 }
 
@@ -1562,13 +1257,11 @@ function PersonMini({ stats, user }) {
   const role = displayRole(user)
   const subTitle = user.team ? `${user.team}` : user.department ? `${user.department}` : role
   return (
-    <div className="admin-person-mini-card">
-      <div className="admin-member-avatar-ring">
-        {initials(user.full_name || user.email)}
-      </div>
-      <div className="admin-member-details">
-        <strong className="admin-member-name">{user.full_name || user.email}</strong>
-        <span className="admin-member-sub">{subTitle}</span>
+    <div className="flex items-center gap-3 py-2.5 border-b border-border last:border-0 flex-wrap">
+      <Avatar name={user.full_name || user.email} size="sm" />
+      <div className="min-w-0 flex-1">
+        <strong className="block text-[13px] font-semibold text-text truncate">{user.full_name || user.email}</strong>
+        <span className="block text-xs text-text3 truncate">{subTitle}</span>
       </div>
       <RolePill role={role} />
       <MetricStrip stats={stats || { submissions: 0, interviews: 0, hires: 0 }} />
@@ -1579,19 +1272,31 @@ function PersonMini({ stats, user }) {
 /* Metric Strip Component */
 function MetricStrip({ stats }) {
   return (
-    <div className="admin-metric-badge-strip">
-      <span className="admin-metric-tag"><b>{stats.submissions || 0}</b> Sub</span>
-      <span className="admin-metric-tag"><b>{stats.interviews || 0}</b> Int</span>
-      <span className="admin-metric-tag"><b>{stats.hires || 0}</b> Hires</span>
+    <div className="flex items-center gap-1.5 shrink-0">
+      <Badge tone="accent" size="sm">{stats.submissions || 0} Sub</Badge>
+      <Badge tone="ai" size="sm">{stats.interviews || 0} Int</Badge>
+      <Badge tone="green" size="sm">{stats.hires || 0} Hires</Badge>
     </div>
   )
+}
+
+const ROLE_TONE = {
+  superadmin: 'ai',
+  admin: 'accent',
+  manager: 'green',
+  recruitment_manager: 'green',
+  account_manager: 'green',
+  operations_manager: 'green',
+  recruiter: 'yellow',
+  employee: 'neutral',
+  member: 'neutral',
 }
 
 /* Role Pill Component */
 function RolePill({ role }) {
   const normRole = (role || 'recruiter').toLowerCase().replace(/\s+/g, '_')
   const formattedText = (role || 'recruiter').replace('_', ' ')
-  return <span className={`admin-role-pill ${normRole}`}>{formattedText}</span>
+  return <Badge tone={ROLE_TONE[normRole] || 'neutral'} size="sm">{formattedText}</Badge>
 }
 
 function displayRole(user) {
@@ -1608,32 +1313,6 @@ function initials(value = '') {
   const parts = value.trim().split(/\s+/).filter(Boolean)
   if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
   return value.slice(0, 2).toUpperCase()
-}
-
-/* Stat Card Component with Identical Alignment */
-function Stat({ label, value, helper, icon: Icon, accent = 'blue' }) {
-  return (
-    <div className={`admin-stat-card accent-${accent}`}>
-      <div className="admin-stat-top">
-        <span className="admin-stat-label">{label}</span>
-        {Icon && <div className="admin-stat-icon-wrapper"><Icon /></div>}
-      </div>
-      <div className="admin-stat-bottom">
-        <strong className="admin-stat-value">{value}</strong>
-        <span className="admin-stat-helper">{helper}</span>
-      </div>
-    </div>
-  )
-}
-
-function EmptyState({ title, body }) {
-  return (
-    <div className="admin-empty-state">
-      <div className="admin-empty-icon">!</div>
-      <strong>{title}</strong>
-      <span>{body}</span>
-    </div>
-  )
 }
 
 /* ========================================================
@@ -1679,185 +1358,159 @@ function PlatformTab({
   const canExecute = platformConfirmText === targetOrg?.name && platformTargetOrgId
 
   return (
-    <div className="platform-tab">
+    <div className="flex flex-col gap-6">
 
       {/* ── Section 1: Platform Overview ── */}
-      <section className="platform-section">
-        <div className="platform-section-header">
-          <div className="platform-section-title">
-            <Icons.Globe />
-            <span>Platform Organization Overview</span>
-          </div>
-          <span className="platform-section-badge">{allOrgs.length} Organizations</span>
-        </div>
-        <div className="platform-org-table">
-          <div className="platform-org-table-head">
-            <span>Organization</span>
-            <span>Slug</span>
-            <span>Email Domain</span>
-            <span>Status</span>
-            <span>Action</span>
-          </div>
-          {allOrgs.map(o => (
-            <div key={o.id} className={`platform-org-row ${o.id === orgId ? 'own-org' : ''}`}>
-              <div className="platform-org-name-cell">
-                <span className="platform-org-color-dot" />
-                <strong>{o.name}</strong>
-                {o.id === orgId && <span className="platform-your-badge">YOUR ORG</span>}
-              </div>
-              <span className="platform-org-meta" data-label="Slug">{o.slug || '—'}</span>
-              <span className="platform-org-meta" data-label="Email Domain">{o.email_domain || '—'}</span>
-              <span className="platform-status-pill active" data-label="Status">Active</span>
-              <div className="platform-org-action-cell">
-                {o.id !== orgId ? (
-                  <button
-                    type="button"
-                    className="admin-btn admin-btn-secondary admin-btn-sm"
-                    onClick={() => onSwitchMyOrg(o)}
-                    disabled={saving}
-                  >
+      <Card>
+        <CardHeader title="Platform Organization Overview" action={<Badge tone="accent" size="sm">{allOrgs.length} Organizations</Badge>} />
+        <Table
+          columns={[
+            {
+              key: 'name',
+              header: 'Organization',
+              render: o => (
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-2 h-2 rounded-full bg-accent shrink-0" />
+                  <strong className="text-text truncate">{o.name}</strong>
+                  {o.id === orgId && <Badge tone="accent" size="sm">Your Org</Badge>}
+                </div>
+              ),
+            },
+            { key: 'slug', header: 'Slug', render: o => o.slug || '—' },
+            { key: 'email_domain', header: 'Email Domain', render: o => o.email_domain || '—' },
+            { key: 'status', header: 'Status', render: () => <StatusBadge status="active" /> },
+            {
+              key: 'action',
+              header: 'Action',
+              align: 'right',
+              render: o => (
+                o.id !== orgId ? (
+                  <Button type="button" variant="secondary" size="sm" onClick={() => onSwitchMyOrg(o)} disabled={saving}>
                     Set as My Org
-                  </button>
+                  </Button>
                 ) : (
-                  <span style={{ fontSize: '11px', color: '#2563eb', fontWeight: 600 }}>Active Workspace</span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+                  <span className="text-xs font-semibold text-accent">Active Workspace</span>
+                )
+              ),
+            },
+          ]}
+          data={allOrgs}
+          getRowId={o => o.id}
+        />
+      </Card>
 
       {/* ── Section 2: Create New Organization ── */}
-      <section className="platform-section">
-        <div className="platform-section-header">
-          <div className="platform-section-title">
-            <Icons.Plus />
-            <span>Create New Organization</span>
-          </div>
-        </div>
-        <div className="platform-create-form">
-          <div className="admin-form-group">
-            <label className="admin-label">Organization Name <span className="platform-required">*</span></label>
-            <input
-              className="admin-input"
+      <Card>
+        <CardHeader title="Create New Organization" />
+        <div className="grid sm:grid-cols-3 gap-4">
+          <FormField label="Organization Name" required>
+            <Input
               placeholder="e.g. Acme Corp"
               value={newOrgForm.name}
               onChange={e => onNewOrgFormChange({ ...newOrgForm, name: e.target.value })}
             />
-          </div>
-          <div className="admin-form-group">
-            <label className="admin-label">Slug <span className="platform-hint">(auto-generated if blank)</span></label>
-            <input
-              className="admin-input"
+          </FormField>
+          <FormField label="Slug" hint="Auto-generated if blank">
+            <Input
               placeholder="e.g. acme-corp"
               value={newOrgForm.slug}
               onChange={e => onNewOrgFormChange({ ...newOrgForm, slug: e.target.value })}
             />
-          </div>
-          <div className="admin-form-group">
-            <label className="admin-label">Email Domain <span className="platform-hint">(optional)</span></label>
-            <input
-              className="admin-input"
+          </FormField>
+          <FormField label="Email Domain" hint="Optional">
+            <Input
               placeholder="e.g. acmecorp.com"
               value={newOrgForm.email_domain}
               onChange={e => onNewOrgFormChange({ ...newOrgForm, email_domain: e.target.value })}
             />
-          </div>
-          <button
-            type="button"
-            className="admin-btn admin-btn-primary"
-            onClick={onCreateOrg}
-            disabled={creatingOrg || !newOrgForm.name.trim()}
-          >
-            <Icons.Plus />
-            <span>{creatingOrg ? 'Creating…' : 'Create Organization'}</span>
-          </button>
+          </FormField>
         </div>
-      </section>
+        <div className="mt-4">
+          <Button
+            type="button"
+            leftIcon="plus"
+            onClick={onCreateOrg}
+            disabled={!newOrgForm.name.trim()}
+            loading={creatingOrg}
+          >
+            {creatingOrg ? 'Creating…' : 'Create Organization'}
+          </Button>
+        </div>
+      </Card>
 
       {/* ── Section 3: Danger Zone ── */}
-      <section className="platform-section platform-danger-section">
-        <div className="platform-section-header">
-          <div className="platform-section-title platform-danger-title">
-            <Icons.Warning />
-            <span>Danger Zone — Irreversible Operations</span>
-          </div>
-          <span className="platform-danger-badge">⚠️ Superadmin Only</span>
-        </div>
-        <p className="platform-danger-intro">
+      <Card className="border-red/25">
+        <CardHeader
+          title={<span className="inline-flex items-center gap-1.5 text-red"><Icon name="alertCircle" size={14} />Danger Zone — Irreversible Operations</span>}
+          action={<Badge tone="red" size="sm">Superadmin Only</Badge>}
+        />
+        <InfoBanner tone="warn" className="mb-4">
           These operations are permanent and cannot be undone. All actions require you to select a target organization
           and type its exact name as confirmation before executing.
-        </p>
+        </InfoBanner>
 
         {/* Danger Op Cards */}
-        <div className="platform-danger-grid">
+        <div className="grid md:grid-cols-3 gap-3">
           {DANGER_OPS.map(op => (
-            <div key={op.id} className={`platform-danger-card ${op.color} ${platformOp === op.id ? 'expanded' : ''}`}>
-              <div className="platform-danger-card-top">
-                <div className="platform-danger-card-info">
-                  <div className="platform-danger-icon">{op.icon}</div>
-                  <div>
-                    <strong className="platform-danger-label">{op.label}</strong>
-                    <p className="platform-danger-desc">{op.description}</p>
-                    <p className="platform-danger-warn">⚠️ {op.warning}</p>
-                  </div>
+            <div key={op.id} className={cn('rounded-[var(--radius-md)] border p-3.5 flex flex-col gap-3', platformOp === op.id ? 'border-red/40 bg-red/5' : 'border-border')}>
+              <div className="flex items-start gap-2.5">
+                <div className="text-xl leading-none shrink-0">{op.icon}</div>
+                <div className="min-w-0">
+                  <strong className="block text-[13px] font-semibold text-text">{op.label}</strong>
+                  <p className="text-xs text-text3 mt-1 leading-relaxed">{op.description}</p>
+                  <p className="text-xs text-red mt-1.5 leading-relaxed">⚠️ {op.warning}</p>
                 </div>
-                <button
-                  type="button"
-                  className={`admin-btn platform-danger-trigger-btn ${op.color}`}
-                  onClick={() => onSetPlatformOp(platformOp === op.id ? null : op.id, platformTargetOrgId)}
-                >
-                  {platformOp === op.id ? 'Cancel' : 'Configure →'}
-                </button>
               </div>
+              <Button
+                type="button"
+                variant={platformOp === op.id ? 'secondary' : 'outline'}
+                size="sm"
+                onClick={() => onSetPlatformOp(platformOp === op.id ? null : op.id, platformTargetOrgId)}
+              >
+                {platformOp === op.id ? 'Cancel' : 'Configure →'}
+              </Button>
 
               {/* Expanded Confirmation Panel */}
               {platformOp === op.id && (
-                <div className="platform-danger-confirm-panel">
-                  <div className="platform-confirm-step">
-                    <label className="admin-label">Step 1 — Select Target Organization</label>
-                    <select
-                      className="admin-select"
+                <div className="flex flex-col gap-3 pt-3 border-t border-border">
+                  <FormField label="Step 1 — Select Target Organization">
+                    <Select
+                      size="sm"
                       value={platformTargetOrgId}
-                      onChange={e => onSetPlatformOp(platformOp, e.target.value)}
-                    >
-                      <option value="">— Select an organization —</option>
-                      {allOrgs
+                      onChange={v => onSetPlatformOp(platformOp, v)}
+                      placeholder="— Select an organization —"
+                      options={allOrgs
                         .filter(o => op.id !== 'delete_org' || o.id !== orgId)
-                        .map(o => (
-                          <option key={o.id} value={o.id}>{o.name}{o.id === orgId ? ' (your org)' : ''}</option>
-                        ))
-                      }
-                    </select>
-                  </div>
+                        .map(o => ({ value: o.id, label: `${o.name}${o.id === orgId ? ' (your org)' : ''}` }))}
+                    />
+                  </FormField>
                   {platformTargetOrgId && (
-                    <div className="platform-confirm-step">
-                      <label className="admin-label">
-                        Step 2 — Type <strong>"{targetOrg?.name}"</strong> to confirm
-                      </label>
-                      <input
-                        className={`admin-input platform-confirm-input ${canExecute ? 'valid' : ''}`}
+                    <FormField label={<>Step 2 — Type <strong>&quot;{targetOrg?.name}&quot;</strong> to confirm</>}>
+                      <Input
+                        size="sm"
+                        className={canExecute ? 'border-green focus:border-green' : ''}
                         placeholder={`Type: ${targetOrg?.name}`}
                         value={platformConfirmText}
                         onChange={e => onPlatformConfirmTextChange(e.target.value)}
                       />
-                    </div>
+                    </FormField>
                   )}
-                  <button
+                  <Button
                     type="button"
-                    className={`admin-btn platform-execute-btn ${op.color}`}
+                    variant="danger"
+                    size="sm"
+                    leftIcon="trash"
                     onClick={onExecuteDanger}
                     disabled={!canExecute || saving}
                   >
-                    <Icons.Trash />
-                    <span>{saving ? 'Executing…' : `⚡ Execute: ${op.btnLabel}`}</span>
-                  </button>
+                    {saving ? 'Executing…' : `Execute: ${op.btnLabel}`}
+                  </Button>
                 </div>
               )}
             </div>
           ))}
         </div>
-      </section>
+      </Card>
     </div>
   )
 }

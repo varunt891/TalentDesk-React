@@ -44,7 +44,7 @@ export function ToastProvider({ children }) {
             return (
               <div
                 key={t.id}
-                className="flex items-start gap-2.5 bg-surface border border-border rounded-[var(--radius-md)] shadow-[var(--shadow-lg)] p-3 animate-[toast-in_var(--duration-base)_var(--ease-standard)]"
+                className="flex items-start gap-2.5 bg-surface border border-border rounded-[var(--radius-md)] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-lg)] p-3 animate-[toast-in_var(--duration-base)_var(--ease-standard)]"
               >
                 <Icon name={tone.icon} size={16} className={cn('shrink-0 mt-0.5', tone.cls)} />
                 <div className="min-w-0 flex-1">

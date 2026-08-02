@@ -100,7 +100,7 @@ export const Checkbox = forwardRef(function Checkbox({ label, className = '', id
 
 export const Switch = forwardRef(function Switch({ checked, onChange, disabled, label, className = '' }, ref) {
   return (
-    <label className={cn('inline-flex items-center gap-2.5 cursor-pointer select-none', disabled && 'opacity-50 cursor-not-allowed', className)}>
+    <label className={cn('inline-flex items-center gap-2 cursor-pointer select-none align-middle py-1.5 px-2.5 rounded-[var(--radius-sm)] border border-border bg-surface2/60 hover:bg-surface2 transition-colors', disabled && 'opacity-50 cursor-not-allowed', className)}>
       <button
         ref={ref}
         type="button"
@@ -109,18 +109,18 @@ export const Switch = forwardRef(function Switch({ checked, onChange, disabled, 
         disabled={disabled}
         onClick={() => onChange?.(!checked)}
         className={cn(
-          'relative inline-flex h-5 w-9 shrink-0 p-0 cursor-pointer rounded-full transition-colors duration-[var(--duration-fast)] ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30',
+          'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full p-[2px] transition-colors duration-[var(--duration-fast)] ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30',
           checked ? 'bg-accent border border-transparent' : 'bg-surface3 border border-border'
         )}
       >
         <span
           className={cn(
-            'pointer-events-none absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow-md ring-0 transition-transform duration-[var(--duration-fast)] ease-in-out',
+            'pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-md transform ring-0 transition-transform duration-[var(--duration-fast)] ease-in-out',
             checked ? 'translate-x-4' : 'translate-x-0'
           )}
         />
       </button>
-      {label && <span className="text-sm font-medium text-text">{label}</span>}
+      {label && <span className="text-xs font-semibold text-text2 leading-none whitespace-nowrap">{label}</span>}
     </label>
   )
 })

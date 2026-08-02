@@ -196,12 +196,11 @@ function withOwnership(req, table, body) {
   delete data.created_at
   delete data.updated_at
 
+  const activeOrgId = req.organizationId || req.tenantOrg?.id || req.profile?.org_id
+
   if (tables[table]?.orgScoped) {
-    if (isSuperAdminUser(req)) {
-      // Don't clobber another org's row with the superadmin's own org when they didn't ask to change it.
-      if (data.org_id === undefined) delete data.org_id
-    } else {
-      data.org_id = req.organizationId || req.profile.org_id
+    if (!data.org_id && activeOrgId) {
+      data.org_id = activeOrgId
     }
   } else {
     delete data.org_id

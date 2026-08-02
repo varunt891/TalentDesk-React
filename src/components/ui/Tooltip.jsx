@@ -25,7 +25,7 @@ export default function Tooltip({ label, side = 'top', children, className = '' 
         <span
           role="tooltip"
           className={cn(
-            'absolute whitespace-nowrap px-2 py-1 rounded-[var(--radius-sm)] bg-surface3 border border-border text-text text-xs font-semibold shadow-[var(--shadow-md)] pointer-events-none',
+            'absolute whitespace-nowrap px-2 py-1 rounded-[var(--radius-sm)] bg-surface3 border border-border text-text text-xs font-semibold shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-md)] pointer-events-none animate-in fade-in zoom-in-95 duration-100',
             SIDE_CLS[side]
           )}
           style={{ zIndex: 'var(--z-tooltip)' }}

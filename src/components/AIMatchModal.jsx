@@ -96,7 +96,7 @@ export default function AIMatchModal({ isOpen, onClose, candidate, job, onOpenSu
               <span>🎯 Deep AI Fit Radar & Screening Script</span>
             </div>
             <div style={{ fontSize: '13px', color: 'var(--text3, #8f92a1)', marginTop: '2px' }}>
-              Candidate: <strong style={{ color: 'var(--text, #fff)' }}>{candidate?.first_name} {candidate?.last_name}</strong> vs <strong style={{ color: 'var(--accent, #4f7cff)' }}>{job?.title} ({job?.job_id || 'Req'})</strong>
+              Candidate: <strong style={{ color: 'var(--text, #fff)' }}>{candidate?.first_name} {candidate?.last_name}</strong> vs <strong style={{ color: 'var(--accent, #0d9488)' }}>{job?.title} ({job?.job_id || 'Req'})</strong>
             </div>
           </div>
           <button
@@ -180,7 +180,7 @@ export default function AIMatchModal({ isOpen, onClose, candidate, job, onOpenSu
                   padding: '7px 16px',
                   borderRadius: '8px',
                   border: 'none',
-                  background: 'linear-gradient(135deg, var(--accent, #4f7cff), #7c5cff)',
+                  background: 'linear-gradient(135deg, var(--accent, #0d9488), #7c5cff)',
                   color: '#fff',
                   fontSize: '13px',
                   fontWeight: '700',
@@ -188,7 +188,7 @@ export default function AIMatchModal({ isOpen, onClose, candidate, job, onOpenSu
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
-                  boxShadow: '0 2px 10px rgba(79, 124, 255, 0.3)'
+                  boxShadow: '0 2px 10px color-mix(in srgb, var(--accent) 30%, transparent)'
                 }}
               >
                 ⚡ Generate Client Submittal

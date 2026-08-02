@@ -29,9 +29,10 @@ import {
   EmptyState, Skeleton, Avatar, Icon, Menu, MenuTrigger, Input,
 } from '../components/ui'
 import MarkdownView from '../components/MarkdownView'
+import { CHART_COLORS } from '../lib/chartColors'
 
 const STAGES = ['Submitted', 'Screening', 'Interview Scheduled', 'Client Review', 'Offer Extended', 'Hired', 'Rejected']
-const COLORS = ['#2563eb', '#8b5cf6', '#f59e0b', '#06b6d4', '#10b981', '#059669', '#ef4444']
+const COLORS = CHART_COLORS
 // Presentational-only effort estimate, keyed off the mission board's task tag — there is no
 // effort-tracking field in the data model, so this is a heuristic display, not real duration data.
 const TASK_EFFORT_MINUTES = { 'Follow-up': 10, 'Call': 15, 'Screening': 25, 'Interview': 30, 'Offer': 15, 'EOD Review': 20 }
@@ -221,7 +222,8 @@ export default function Dashboard({ onNavigate }) {
       try {
         const parsed = JSON.parse(savedNotes)
         if (Array.isArray(parsed)) {
-          setDailyNotes(parsed)
+          const userOnly = parsed.filter(t => !t.text?.includes('Alex Rivera') && !t.text?.includes('Perform EOD submittal audit') && !t.text?.includes('DevOps candidates') && !t.text?.includes('Sarah Jenkins'))
+          setDailyNotes(userOnly)
           return
         }
       } catch { /* ignore */ }
@@ -232,17 +234,7 @@ export default function Dashboard({ onNavigate }) {
     const savedPad = localStorage.getItem(padKey)
     setScratchpad(savedPad || '')
 
-    // Default tasks only for initial TalentDesk demo org profile
-    if (profile.org_id === '4871af76-fa56-4069-af34-5f9ab4c0be10') {
-      setDailyNotes([
-        { id: 1, text: 'Follow up with Alex Rivera on Senior React Developer offer letter', done: false, tag: 'Offer', priority: 'High', candidate: 'Alex Rivera', job: 'Senior React Developer' },
-        { id: 2, text: 'Screen 3 DevOps candidates for Acme Corp requisition', done: true, tag: 'Screening', priority: 'Medium', candidate: 'DevOps Leads', job: 'Lead DevOps Eng' },
-        { id: 3, text: 'Schedule final technical interview round for candidate Sarah Jenkins', done: true, tag: 'Interview', priority: 'Urgent', candidate: 'Sarah Jenkins', job: 'Full-Stack Lead' },
-        { id: 4, text: 'Perform EOD submittal audit & clean up stalled CRM leads', done: false, tag: 'EOD Review', priority: 'Normal', candidate: 'N/A', job: 'Operations' }
-      ])
-    } else {
-      setDailyNotes([])
-    }
+    setDailyNotes([])
   }, [profile, storagePrefix, initialWelcomeMessage])
 
   // Sync message changes to persistence store
@@ -1590,10 +1582,10 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
   const priorityWorkspaceItems = useMemo(() => {
     const atRiskJobs = priorityJobs.filter(j => j.statusTag === 'Critical' || j.statusTag === 'At Risk')
     return [
-      { id: 'callbacks', label: 'Due Callbacks', count: todaysCallbacks.length, icon: 'callbacks', tone: 'accent', page: 'callbacks', helper: todaysCallbacks.length > 0 ? `${todaysCallbacks.length} scheduled today` : 'All caught up' },
-      { id: 'followups', label: 'Overdue Follow-ups', count: overdueFollowups.length, icon: 'followups', tone: 'red', page: 'followups', helper: overdueFollowups.length > 0 ? 'Needs immediate attention' : 'Nothing overdue' },
-      { id: 'offers', label: 'Offers Awaiting Decision', count: offerCount, icon: 'reports', tone: 'yellow', page: 'candidates', helper: offerCount > 0 ? 'Follow up with candidates' : 'No pending offers' },
-      { id: 'atrisk', label: 'At-Risk Requisitions', count: atRiskJobs.length, icon: 'jobs', tone: 'orange', page: 'jobs', helper: atRiskJobs.length > 0 ? 'Stale or under-submitted' : 'Pipeline healthy' },
+      { id: 'callbacks', label: 'Due Callbacks', count: todaysCallbacks.length, icon: 'callbacks', tone: 'accent', page: 'callbacks', helper: todaysCallbacks.length > 0 ? `${todaysCallbacks.length} scheduled today` : 'All caught up', badge: 'CALLBACKS' },
+      { id: 'followups', label: 'Overdue Follow-ups', count: overdueFollowups.length, icon: 'followups', tone: 'red', page: 'followups', helper: overdueFollowups.length > 0 ? 'Needs immediate attention' : 'Nothing overdue', badge: 'URGENT' },
+      { id: 'offers', label: 'Offers Awaiting Decision', count: offerCount, icon: 'reports', tone: 'yellow', page: 'candidates', helper: offerCount > 0 ? 'Follow up with candidates' : 'No pending offers', badge: 'PENDING' },
+      { id: 'atrisk', label: 'At-Risk Requisitions', count: atRiskJobs.length, icon: 'jobs', tone: 'orange', page: 'jobs', helper: atRiskJobs.length > 0 ? 'Stale or under-submitted' : 'Pipeline healthy', badge: 'AT-RISK' },
     ]
   }, [todaysCallbacks, overdueFollowups, offerCount, priorityJobs])
 
@@ -1619,20 +1611,25 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
   return (
     <PageContainer>
       {/* EXECUTIVE HEADER */}
-      <header className="flex flex-col gap-4 pb-6 mb-7 border-b border-border lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-3.5 min-w-0">
-          <Avatar name={profile?.full_name || firstName} size="lg" />
+      <header
+        className="relative overflow-hidden flex flex-col gap-4 mb-7 rounded-[var(--radius-lg)] border border-border p-5 lg:flex-row lg:items-center lg:justify-between"
+        style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent) 7%, var(--surface)), var(--surface) 60%)' }}
+      >
+        <span aria-hidden="true" className="pointer-events-none absolute -top-16 -right-16 w-56 h-56 rounded-full opacity-[0.16] blur-[70px]" style={{ background: 'var(--ai)' }} />
+
+        <div className="relative flex items-center gap-3.5 min-w-0">
+          <Avatar name={profile?.full_name || firstName} size="lg" className="shrink-0" />
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-[22px] font-extrabold text-text leading-tight tracking-tight">Good morning, {firstName}</h1>
+              <h1 className="font-serif text-[26px] font-medium text-text leading-tight tracking-[-0.01em]">Good morning, {firstName}</h1>
               <Badge tone="neutral" size="sm">{timeStr}</Badge>
             </div>
             <p className="text-[13px] text-text3 mt-1.5 truncate">{dateStr} · {todaysFocus.title}</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
-          <div className="flex items-center gap-2.5 bg-surface border border-border rounded-[var(--radius-lg)] pl-2 pr-3.5 py-1.5">
+        <div className="relative flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-2.5 bg-surface border border-border rounded-[var(--radius-lg)] pl-2 pr-3.5 py-1.5 shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-xs)]">
             <div
               className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
               style={{ background: `conic-gradient(var(--accent) ${productivityScore * 3.6}deg, var(--surface3) 0deg)` }}
@@ -1658,28 +1655,97 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
         </div>
       </header>
 
-      {/* PRIORITY WORKSPACE — what actually needs attention today, unfiltered by the toolbar below */}
+      {/* PRIORITY WORKSPACE — what actually needs attention today */}
       <section className="mb-8">
-        <h2 className="text-[11px] font-bold text-text3 uppercase tracking-wider mb-3">Priority Workspace</h2>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-[11px] font-bold text-text3 uppercase tracking-wider">Priority Workspace</h2>
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[10px] font-extrabold tracking-wider uppercase">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Live Stream
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate && onNavigate('tasks')}
+            className="focus-ring flex items-center gap-1 text-[11px] font-bold text-text3 hover:text-accent transition-colors duration-[var(--duration-fast)] rounded-[var(--radius-sm)]"
+          >
+            View All <Icon name="arrowUpRight" size={11} />
+          </button>
+        </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {priorityWorkspaceItems.map(item => (
             <button
               key={item.id}
               type="button"
               onClick={() => onNavigate && onNavigate(item.page)}
-              className="text-left bg-surface border border-border shadow-xs rounded-[var(--radius-lg)] p-4 transition-[box-shadow,border-color,transform] duration-[var(--duration-fast)] ease-[var(--ease-standard)] hover:border-border-strong hover:shadow-sm hover:-translate-y-px"
+              className="group relative overflow-hidden text-left rounded-[var(--radius-lg)] p-4 transition-all duration-[var(--duration-fast)] ease-[var(--ease-standard)] hover:-translate-y-0.5 hover:shadow-[0_16px_32px_-12px_var(--glow)]"
+              style={{
+                background: `linear-gradient(160deg, color-mix(in srgb, var(--${item.tone}) 14%, var(--surface)), var(--surface) 65%)`,
+                boxShadow: `inset 0 0 0 1px color-mix(in srgb, var(--${item.tone}) 22%, var(--border))`,
+                '--glow': `color-mix(in srgb, var(--${item.tone}) 45%, transparent)`,
+              }}
             >
-              <div className="flex items-center justify-between mb-2.5">
+              {/* Top Row: Icon + Live Pulsing Status Badge */}
+              <div className="relative z-10 flex items-center justify-between mb-3">
                 <span
-                  className="w-7 h-7 rounded-[var(--radius-sm)] flex items-center justify-center"
-                  style={{ background: `color-mix(in srgb, var(--${item.tone}) 12%, transparent)`, color: `var(--${item.tone})`, boxShadow: `inset 0 0 0 1px color-mix(in srgb, var(--${item.tone}) 18%, transparent)` }}
+                  className="w-9 h-9 rounded-[12px] flex items-center justify-center shrink-0 transition-transform duration-[var(--duration-fast)] group-hover:scale-105"
+                  style={{
+                    background: `color-mix(in srgb, var(--${item.tone}) 18%, transparent)`,
+                    color: `var(--${item.tone})`,
+                    boxShadow: `inset 0 0 0 1px color-mix(in srgb, var(--${item.tone}) 28%, transparent), 0 2px 8px -2px color-mix(in srgb, var(--${item.tone}) 35%, transparent)`
+                  }}
                 >
-                  <Icon name={item.icon} size={14} />
+                  <Icon name={item.icon} size={16} />
                 </span>
-                <span className="text-2xl font-extrabold text-text font-mono leading-none tracking-tight tabular-nums">{item.count}</span>
+
+                {/* Real-time live status indicator badge */}
+                <span
+                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold tracking-wider uppercase transition-all duration-200"
+                  style={{
+                    background: item.count > 0 
+                      ? `color-mix(in srgb, var(--${item.tone}) 16%, transparent)`
+                      : 'color-mix(in srgb, var(--green) 12%, transparent)',
+                    color: item.count > 0 ? `var(--${item.tone})` : 'var(--green)',
+                    border: `1px solid ${item.count > 0 ? `color-mix(in srgb, var(--${item.tone}) 30%, transparent)` : 'color-mix(in srgb, var(--green) 25%, transparent)'}`
+                  }}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${item.count > 0 ? 'animate-pulse' : ''}`}
+                    style={{ background: item.count > 0 ? `var(--${item.tone})` : 'var(--green)' }}
+                  />
+                  {item.count > 0 ? (item.badge || 'ACTIVE') : 'SYNCED'}
+                </span>
               </div>
-              <div className="text-[12.5px] font-bold text-text">{item.label}</div>
-              <div className="text-[11px] text-text3 mt-1 truncate">{item.helper}</div>
+
+              {/* Middle Row: Large Value + Title */}
+              <div className="relative z-10 flex items-baseline justify-between gap-2">
+                <span className="text-3xl font-extrabold text-text font-mono leading-none tracking-tight tabular-nums">
+                  {item.count}
+                </span>
+                <span className="text-[11px] font-bold text-text3 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+                  Open <Icon name="arrowUpRight" size={10} />
+                </span>
+              </div>
+
+              <div className="relative z-10 text-[13px] font-bold text-text mt-2 leading-tight">
+                {item.label}
+              </div>
+
+              {/* Bottom Row: Helper text */}
+              <div className="relative z-10 text-[11px] text-text3 mt-1 truncate flex items-center gap-1.5">
+                <span className="w-1 h-1 rounded-full shrink-0" style={{ background: item.count > 0 ? `var(--${item.tone})` : 'var(--text3)' }} />
+                <span>{item.helper}</span>
+              </div>
+
+              {/* Sleek Modern Real-Time Accent Line (replacing graph wave SVG) */}
+              <div
+                className="absolute left-0 right-0 bottom-0 h-[3px] transition-all duration-300 group-hover:h-[4px]"
+                style={{
+                  background: `linear-gradient(90deg, color-mix(in srgb, var(--${item.tone}) 70%, transparent), var(--${item.tone}))`,
+                  boxShadow: `0 0 10px color-mix(in srgb, var(--${item.tone}) 50%, transparent)`
+                }}
+              />
             </button>
           ))}
         </div>
@@ -1694,10 +1760,14 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
               key={action.label}
               type="button"
               onClick={action.onClick}
-              className={`flex flex-col items-center justify-center gap-1.5 rounded-[var(--radius-md)] border p-3 text-center transition-[box-shadow,border-color,color] duration-[var(--duration-fast)] ${action.ai ? 'bg-ai-soft border-ai/20 text-ai hover:border-ai/45 hover:shadow-sm' : 'bg-surface2/60 border-border text-text2 hover:border-border-strong hover:bg-surface hover:text-text hover:shadow-xs'}`}
+              className={`flex flex-col items-center justify-center gap-2 rounded-[var(--radius-md)] border p-3.5 text-center transition-all duration-[var(--duration-fast)] shadow-sm ${
+                action.ai
+                  ? 'bg-ai/15 border-ai/50 text-white hover:bg-ai/25 hover:border-ai hover:shadow-md hover:-translate-y-0.5'
+                  : 'bg-surface border-border-strong text-text hover:border-accent hover:bg-surface2 hover:shadow-md hover:-translate-y-0.5'
+              }`}
             >
-              <Icon name={action.icon} size={16} />
-              <span className="text-[11px] font-semibold leading-tight">{action.label}</span>
+              <Icon name={action.icon} size={18} className={action.ai ? 'text-ai' : 'text-accent'} />
+              <span className="text-[12px] font-bold tracking-tight text-text leading-tight">{action.label}</span>
             </button>
           ))}
         </div>
@@ -1724,17 +1794,26 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
         </div>
 
         <div className="grid sm:grid-cols-3 gap-3">
-          <div className="rounded-[var(--radius-md)] bg-surface2 border border-border p-3">
-            <div className="text-[10px] font-bold text-accent uppercase tracking-wide mb-1.5">Opportunity</div>
-            <p className="text-xs text-text2 leading-relaxed">{recommendedJobLabel} could use additional submittals this week — {todaysFocus.title.toLowerCase()}.</p>
+          <div className="flex gap-2.5 rounded-[var(--radius-md)] p-3" style={{ background: 'color-mix(in srgb, var(--accent) 9%, var(--surface2))' }}>
+            <span className="w-7 h-7 rounded-[10px] flex items-center justify-center shrink-0 bg-accent/16 text-accent"><Icon name="sparkles" size={13} /></span>
+            <div className="min-w-0">
+              <div className="text-[10px] font-bold text-accent uppercase tracking-wide mb-1">Opportunity</div>
+              <p className="text-xs text-text2 leading-relaxed">{recommendedJobLabel} could use additional submittals this week — {todaysFocus.title.toLowerCase()}.</p>
+            </div>
           </div>
-          <div className="rounded-[var(--radius-md)] bg-surface2 border border-border p-3">
-            <div className="text-[10px] font-bold text-red uppercase tracking-wide mb-1.5">Risk</div>
-            <p className="text-xs text-text2 leading-relaxed">{atRiskCount} candidate{atRiskCount === 1 ? '' : 's'} awaiting feedback · pipeline health is <b className="text-text">{pipelineHealthLabel.toLowerCase()}</b> at {pipelineHealthPct}%.</p>
+          <div className="flex gap-2.5 rounded-[var(--radius-md)] p-3" style={{ background: 'color-mix(in srgb, var(--red) 9%, var(--surface2))' }}>
+            <span className="w-7 h-7 rounded-[10px] flex items-center justify-center shrink-0 bg-red/16 text-red"><Icon name="alertCircle" size={13} /></span>
+            <div className="min-w-0">
+              <div className="text-[10px] font-bold text-red uppercase tracking-wide mb-1">Risk</div>
+              <p className="text-xs text-text2 leading-relaxed">{atRiskCount} candidate{atRiskCount === 1 ? '' : 's'} awaiting feedback · pipeline health is <b className="text-text">{pipelineHealthLabel.toLowerCase()}</b> at {pipelineHealthPct}%.</p>
+            </div>
           </div>
-          <div className="rounded-[var(--radius-md)] bg-surface2 border border-border p-3">
-            <div className="text-[10px] font-bold text-green uppercase tracking-wide mb-1.5">Recommendation</div>
-            <p className="text-xs text-text2 leading-relaxed">Budget ~{estimatedWorkloadHours}h today to clear {todaysCallbacks.length} calls and {overdueFollowups.length} overdue follow-ups.</p>
+          <div className="flex gap-2.5 rounded-[var(--radius-md)] p-3" style={{ background: 'color-mix(in srgb, var(--green) 9%, var(--surface2))' }}>
+            <span className="w-7 h-7 rounded-[10px] flex items-center justify-center shrink-0 bg-green/16 text-green"><Icon name="checkCircle" size={13} /></span>
+            <div className="min-w-0">
+              <div className="text-[10px] font-bold text-green uppercase tracking-wide mb-1">Recommendation</div>
+              <p className="text-xs text-text2 leading-relaxed">Budget ~{estimatedWorkloadHours}h today to clear {todaysCallbacks.length} calls and {overdueFollowups.length} overdue follow-ups.</p>
+            </div>
           </div>
         </div>
 
@@ -1931,7 +2010,7 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
                   <CartesianGrid stroke="var(--border)" vertical={false} />
                   <XAxis dataKey="stage" interval={0} angle={-35} textAnchor="end" height={48} tick={{ fill: 'var(--text3)', fontSize: 9 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: 'var(--text3)', fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                  <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={{ fill: 'rgba(37,99,235,0.04)' }} />
+                  <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} cursor={{ fill: 'color-mix(in srgb, var(--accent) 4%, transparent)' }} />
                   <Bar
                     dataKey="count"
                     radius={[4, 4, 0, 0]}
@@ -2076,9 +2155,11 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
               </div>
             )}
             <Table
+              pagination={false}
+              compact
               columns={[
                 {
-                  key: 'rank', header: '#', width: '36px', render: row => {
+                  key: 'rank', header: '#', width: '32px', render: row => {
                     const medal = row.rank === 1 ? '🥇' : row.rank === 2 ? '🥈' : row.rank === 3 ? '🥉' : null
                     return <span className="text-xs font-bold text-text3">{medal || `#${row.rank}`}</span>
                   }
@@ -2089,19 +2170,19 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
                     const ownerId = ownerMatch ? ownerMatch[0] : null
                     const isSelected = ownerId && selectedOwners.includes(ownerId)
                     return (
-                      <span className="flex items-center gap-2">
-                        <span className="font-bold text-text">{row.name}</span>
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-bold text-text truncate">{row.name}</span>
                         {isSelected && <Badge tone="accent" size="sm">Active</Badge>}
                       </span>
                     )
                   }
                 },
-                { key: 'submissions', header: 'Sub', sortable: true, align: 'right' },
-                { key: 'interviews', header: 'Int', sortable: true, align: 'right' },
-                { key: 'offers', header: 'Offers', sortable: true, align: 'right' },
-                { key: 'hires', header: 'Hires', sortable: true, align: 'right', render: row => <b className="text-green">{row.hires}</b> },
-                { key: 'fillRate', header: 'Yield %', sortable: true, align: 'right', render: row => <Badge tone="green" size="sm">{row.fillRate}%</Badge> },
-                { key: 'aiScore', header: 'AI Score', sortable: true, align: 'right', render: row => <span className="text-ai font-bold text-xs">⚡ {row.aiScore}</span> },
+                { key: 'submissions', header: 'Sub', sortable: true, align: 'right', width: '44px' },
+                { key: 'interviews', header: 'Int', sortable: true, align: 'right', width: '44px' },
+                { key: 'offers', header: 'Offers', sortable: true, align: 'right', width: '52px' },
+                { key: 'hires', header: 'Hires', sortable: true, align: 'right', width: '52px', render: row => <b className="text-green">{row.hires}</b> },
+                { key: 'fillRate', header: 'Yield %', sortable: true, align: 'right', width: '68px', render: row => <Badge tone="green" size="sm">{row.fillRate}%</Badge> },
+                { key: 'aiScore', header: 'AI Score', sortable: true, align: 'right', width: '72px', render: row => <span className="text-ai font-bold text-xs">⚡{row.aiScore}</span> },
               ]}
               data={sortedRecruiterData}
               getRowId={row => row.name}
@@ -2112,6 +2193,21 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
                 const ownerMatch = ownerOptions.find(([, name]) => name === row.name)
                 const ownerId = ownerMatch ? ownerMatch[0] : null
                 if (ownerId) setSelectedOwners(prev => prev.includes(ownerId) ? [] : [ownerId])
+              }}
+              mobileCard={row => {
+                const medal = row.rank === 1 ? '🥇' : row.rank === 2 ? '🥈' : row.rank === 3 ? '🥉' : `#${row.rank}`
+                return (
+                  <div className="flex items-center gap-2.5 px-3 py-2 border border-border rounded-[var(--radius-md)] bg-surface hover:bg-surface2 cursor-pointer transition-colors">
+                    <span className="text-sm w-7 text-center shrink-0">{medal}</span>
+                    <span className="font-semibold text-xs text-text flex-1 truncate">{row.name}</span>
+                    <div className="flex items-center gap-3 shrink-0 text-[11px] text-text3">
+                      <span title="Submissions"><span className="text-text font-bold">{row.submissions}</span> Sub</span>
+                      <span title="Hires"><span className="text-green font-bold">{row.hires}</span> Hire</span>
+                      <span title="Yield"><span className="text-green font-bold">{row.fillRate}%</span></span>
+                      <span title="AI Score" className="text-ai font-bold">⚡{row.aiScore}</span>
+                    </div>
+                  </div>
+                )
               }}
               rowActions={row => (
                 <button
@@ -2375,12 +2471,12 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
               <AreaChart data={trendData}>
                 <defs>
                   <linearGradient id="submissions" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
+                    <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="followups" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                    <stop offset="5%" stopColor="var(--green)" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="var(--green)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke="var(--border)" vertical={false} />
@@ -2388,8 +2484,8 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
                 <YAxis tick={{ fill: 'var(--text3)', fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
                 <Legend wrapperStyle={{ fontSize: 11 }} iconType="circle" iconSize={8} />
-                <Area type="monotone" dataKey="submissions" name="Submissions" stroke="#2563eb" fill="url(#submissions)" strokeWidth={2} />
-                <Area type="monotone" dataKey="followups" name="Follow-ups" stroke="#10b981" fill="url(#followups)" strokeWidth={2} />
+                <Area type="monotone" dataKey="submissions" name="Submissions" stroke="var(--accent)" fill="url(#submissions)" strokeWidth={2} />
+                <Area type="monotone" dataKey="followups" name="Follow-ups" stroke="var(--green)" fill="url(#followups)" strokeWidth={2} />
                 <Area
                   type="monotone"
                   dataKey="previousSubmissions"
@@ -2486,7 +2582,7 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
           className="fixed bottom-5 right-5 rounded-full flex items-center justify-center text-white shadow-[var(--shadow-lg)] transition-all duration-200 hover:scale-105 group"
           style={{
             zIndex: 'var(--z-overlay)',
-            background: 'linear-gradient(135deg, #4f7cff, #7c5cff)',
+            background: 'linear-gradient(135deg, var(--accent), var(--ai))',
             width: 52,
             height: 52,
           }}

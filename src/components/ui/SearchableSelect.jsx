@@ -85,7 +85,7 @@ export default function SearchableSelect({
 
       {isOpen && (
         <div
-          className="absolute left-0 right-0 top-[calc(100%+6px)] min-w-[240px] flex flex-col gap-1.5 bg-surface border border-border rounded-[var(--radius-md)] shadow-[var(--shadow-lg)] p-2"
+          className="absolute left-0 right-0 top-[calc(100%+6px)] min-w-[240px] flex flex-col gap-1.5 bg-surface border border-border rounded-[var(--radius-md)] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-lg)] p-2"
           style={{ zIndex: 'var(--z-dropdown)' }}
         >
           <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-[var(--radius-sm)] bg-surface2 border border-border focus-within:border-accent transition-all">

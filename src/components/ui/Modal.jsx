@@ -61,7 +61,7 @@ export default function Modal({ open, onClose, title, subtitle, size = 'md', foo
     >
       <div
         className={cn(
-          'w-full bg-surface border border-border rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] max-h-[90vh] flex flex-col',
+          'w-full bg-surface border border-border rounded-[var(--radius-lg)] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-lg)] max-h-[90vh] flex flex-col',
           'animate-[modal-in_var(--duration-base)_var(--ease-standard)]',
           MODAL_SIZES[size] || MODAL_SIZES.md,
           className
@@ -81,12 +81,12 @@ export default function Modal({ open, onClose, title, subtitle, size = 'md', foo
 }
 
 const DRAWER_SIZES = {
-  sm: 'max-w-sm',
-  md: 'max-w-md',
-  lg: 'max-w-xl',
-  xl: 'max-w-3xl',
-  '2xl': 'max-w-5xl',
-  full: 'max-w-[96vw] sm:max-w-[94vw] w-full',
+  sm:   'w-[300px]',
+  md:   'w-[360px]',
+  lg:   'w-[460px]',
+  xl:   'w-[560px]',
+  '2xl':'w-[720px]',
+  full: 'w-[min(96vw,1200px)]',
 }
 
 export function Drawer({ open, onClose, title, subtitle, size = 'md', side = 'right', footer, hideHeader = false, allowMaximize = true, children, className = '' }) {
@@ -104,7 +104,7 @@ export function Drawer({ open, onClose, title, subtitle, size = 'md', side = 'ri
     >
       <div
         className={cn(
-          'w-full h-full bg-surface border-border flex flex-col shadow-[var(--shadow-lg)] transition-all duration-300',
+          'h-full bg-surface border-border flex flex-col shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-lg)] transition-[width] duration-300',
           side === 'right' ? 'border-l animate-[drawer-in-right_var(--duration-base)_var(--ease-standard)]' : 'border-r animate-[drawer-in-left_var(--duration-base)_var(--ease-standard)]',
           DRAWER_SIZES[effectiveSize] || DRAWER_SIZES.md,
           className

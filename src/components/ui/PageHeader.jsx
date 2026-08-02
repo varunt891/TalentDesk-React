@@ -15,7 +15,7 @@ export default function PageHeader({ eyebrow, title, subtitle, search, filters, 
               {eyebrow}
             </span>
           )}
-          <h1 className="text-[26px] font-extrabold text-text leading-[1.15] tracking-[-0.02em] truncate">{title}</h1>
+          <h1 className="font-serif text-[28px] font-medium text-text leading-[1.15] tracking-[-0.01em] truncate">{title}</h1>
           {subtitle && <p className="text-[13px] text-text3 mt-1.5 leading-relaxed max-w-2xl">{subtitle}</p>}
         </div>
         {actions && <div className="flex items-center gap-2 shrink-0 flex-wrap">{actions}</div>}

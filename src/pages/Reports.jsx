@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
-  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ReferenceDot, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import * as XLSX from 'xlsx'
 import { db } from '../lib/api'
@@ -10,8 +10,9 @@ import { PageContainer } from '../components/layout/PageContainer'
 import { Button, Card, CardHeader, KPICard, PageHeader, Tabs, EmptyState, SearchableSelect, Badge, cn } from '../components/ui'
 import { InfoBanner } from '../components/admin'
 import { getUsageSummary, getActionUsageBreakdown, getQualitySummary } from '../lib/ai/usage'
+import { CHART_COLORS } from '../lib/chartColors'
 
-const COLORS = ['#4f7cff', '#2ecc8f', '#7c5cff', '#f5c842', '#ff8c42', '#ff4d6a']
+const COLORS = CHART_COLORS
 const STAGES = ['Submitted', 'Shortlisted', 'Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired', 'Rejected']
 const FUNNEL_STAGES = ['Submitted', 'Shortlisted', 'Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired']
 
@@ -496,22 +497,54 @@ function ReportPanel({ title, subtitle, action, children }) {
   )
 }
 
+// Custom ReferenceDot shape — recharts passes cx/cy directly to a function
+// `shape` prop (unlike `label`, which goes through a separate context), so
+// this renders both the marker and a pill callout off those coordinates.
+function PeakCallout({ cx, cy, value }) {
+  if (cx == null || cy == null) return null
+  const text = `${value} peak`
+  const width = text.length * 6.4 + 20
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={4} fill="var(--surface)" stroke={COLORS[0]} strokeWidth={2} />
+      <g transform={`translate(${cx - width / 2}, ${cy - 32})`}>
+        <rect width={width} height={22} rx={11} fill={COLORS[0]} />
+        <text x={width / 2} y={15} textAnchor="middle" fontSize={11} fontWeight={700} fill="#fff">{text}</text>
+      </g>
+    </g>
+  )
+}
+
 function OverviewTab({ trendData, pipelineData, recruiterData, teamData }) {
   const hasTrend = trendData.some(d => d.submissions || d.callbacks || d.followups)
+  const peakPoint = useMemo(() => {
+    if (!trendData.length) return null
+    const peak = trendData.reduce((max, d) => (d.submissions > max.submissions ? d : max), trendData[0])
+    return peak.submissions > 0 ? peak : null
+  }, [trendData])
   return (
     <div className="grid lg:grid-cols-2 gap-5">
       <ReportPanel title="Activity Trend" subtitle="Submissions, callbacks, and follow-ups over time">
         {hasTrend ? (
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trendData}>
+              <AreaChart data={trendData} margin={{ top: 28, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke="var(--border)" vertical={false} />
                 <XAxis dataKey="label" tick={{ fill: 'var(--text3)', fontSize: 11 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: 'var(--text3)', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip contentStyle={tooltipStyle} labelStyle={tooltipLabelStyle} itemStyle={tooltipItemStyle} />
-                <Area type="monotone" dataKey="submissions" name="Submissions" stroke={COLORS[0]} fill={`${COLORS[0]}33`} strokeWidth={2} />
-                <Area type="monotone" dataKey="callbacks" name="Callbacks" stroke={COLORS[1]} fill={`${COLORS[1]}24`} strokeWidth={2} />
-                <Area type="monotone" dataKey="followups" name="Follow-ups" stroke={COLORS[4]} fill={`${COLORS[4]}24`} strokeWidth={2} />
+                <Area type="monotone" dataKey="submissions" name="Submissions" stroke={COLORS[0]} fill={`color-mix(in srgb, ${COLORS[0]} 20%, transparent)`} strokeWidth={2} />
+                <Area type="monotone" dataKey="callbacks" name="Callbacks" stroke={COLORS[1]} fill={`color-mix(in srgb, ${COLORS[1]} 14%, transparent)`} strokeWidth={2} />
+                <Area type="monotone" dataKey="followups" name="Follow-ups" stroke={COLORS[4]} fill={`color-mix(in srgb, ${COLORS[4]} 14%, transparent)`} strokeWidth={2} />
+                {peakPoint && (
+                  <ReferenceDot
+                    x={peakPoint.label}
+                    y={peakPoint.submissions}
+                    r={4}
+                    ifOverflow="visible"
+                    shape={(props) => <PeakCallout {...props} value={peakPoint.submissions} />}
+                  />
+                )}
               </AreaChart>
             </ResponsiveContainer>
           </div>

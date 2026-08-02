@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { Icon } from '../ui/icons'
 import Avatar from '../ui/Avatar'
@@ -8,6 +9,7 @@ import { Modal, Button, Badge } from '../ui'
 import { cn } from '../ui/utils'
 import { fetchNotifications, markNotificationRead, markNotificationsRead } from '../../lib/admin/notifications'
 import { SETTINGS_TAB_FLAG } from '../../lib/admin/settingsNav'
+import { useTopBarInsights } from '../../lib/ai/topBarInsights'
 import PixelRobot from '../ui/PixelRobot'
 
 const ROLE_LABELS = {
@@ -32,11 +34,11 @@ const COMMAND_ITEMS = [
   { id: 'styleguide', title: 'Component Style Guide', category: 'Design', path: '/style-guide', icon: 'edit' },
 ]
 
-export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate }) {
+export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate, currentPage }) {
   const { user, profile, signOut } = useAuth()
   const navigate = useNavigate()
-  const location = useLocation()
   const userId = user?.id
+  const displayName = profile?.full_name || user?.email?.split('@')[0] || 'User'
 
   const [notifOpen, setNotifOpen] = useState(false)
   const [notifications, setNotifications] = useState([])
@@ -86,6 +88,7 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
   }, [notifOpen])
 
   const unread = notifications.filter(n => !n.read)
+  const { robotInsights, applicantInsights } = useTopBarInsights({ unreadCount: unread.length, userName: displayName })
 
   const handleMarkAllRead = async () => {
     const ids = unread.map(n => n.id)
@@ -122,10 +125,11 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
     if (item.path) navigate(item.path)
   }
 
-  const displayName = profile?.full_name || user?.email?.split('@')[0] || 'User'
-
   return (
-    <header className="h-16 shrink-0 flex items-center justify-between gap-3 px-4 sm:px-5 border-b border-border bg-surface/90 backdrop-blur-xl shadow-xs relative z-[var(--z-sticky)]">
+    <header
+      className="h-[72px] shrink-0 flex items-center justify-between gap-3 px-4 sm:px-5 border-b border-border bg-surface/90 backdrop-blur-xl shadow-xs relative z-[var(--z-sticky)]"
+      style={searchOpen ? { zIndex: 100000 } : undefined}
+    >
       {/* Left section: Mobile menu button + Pixel Robot Playground in left TopBar area */}
       <div className="flex items-center gap-3 min-w-0 shrink-0 h-full relative">
         <button
@@ -139,22 +143,29 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
           </svg>
         </button>
 
-        {/* Pixel Robot playground inside the left TopBar space (the exact red box area) */}
+        {/* Pixel Robot playground inside the left TopBar space */}
         <div className="w-36 sm:w-56 h-full relative flex items-center overflow-visible">
-          <PixelRobot currentPath={location?.pathname || ''} />
+          {currentPage !== 'ai_center' && (
+            <PixelRobot
+              currentPage={currentPage}
+              robotInsights={robotInsights}
+              applicantInsights={applicantInsights}
+              onNavigate={onNavigate}
+            />
+          )}
         </div>
       </div>
 
       {/* Center Section: Global Search Bar */}
-      <div className="flex-1 flex justify-center max-w-lg mx-auto px-2 relative min-w-0 h-full items-center">
+      <div className="flex-1 flex justify-center max-w-xs sm:max-w-sm mx-auto px-2 relative min-w-0 h-full items-center">
         <button
           type="button"
           onClick={() => setSearchOpen(true)}
-          className="w-full max-w-md h-9 px-3.5 rounded-full bg-surface2/70 hover:bg-surface2 border border-border/80 text-text3 hover:text-text flex items-center justify-between text-xs transition-all duration-200 shadow-2xs group hover:border-accent/40"
+          className="w-full max-w-xs sm:max-w-sm h-9 px-3.5 rounded-full bg-surface2/70 hover:bg-surface2 border border-border/80 text-text3 hover:text-text flex items-center justify-between text-xs transition-all duration-200 shadow-2xs group hover:border-accent/40 hover:shadow-[0_4px_16px_-6px_color-mix(in_srgb,var(--accent)_35%,transparent)]"
         >
           <div className="flex items-center gap-2 min-w-0 font-medium">
             <Icon name="search" size={14} className="text-text3 group-hover:text-accent transition-colors shrink-0" />
-            <span className="truncate">Search candidates, jobs, reports...</span>
+            <span className="truncate">Search candidates, jobs...</span>
           </div>
           <kbd className="hidden sm:inline-flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-semibold text-text3 bg-surface border border-border/70 rounded-md font-mono shrink-0">
             <span>Ctrl</span><span>K</span>
@@ -182,7 +193,7 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
 
           {notifOpen && (
             <div
-              className="absolute right-0 top-[calc(100%+6px)] w-[min(360px,calc(100vw-2rem))] max-h-[min(70vh,420px)] flex flex-col bg-surface border border-border rounded-[var(--radius-md)] shadow-[var(--shadow-lg)] overflow-hidden"
+              className="absolute right-0 top-[calc(100%+6px)] w-[min(360px,calc(100vw-2rem))] max-h-[min(70vh,420px)] flex flex-col bg-surface border border-border rounded-[var(--radius-md)] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-lg)] overflow-hidden animate-in fade-in zoom-in-95 duration-100"
               style={{ zIndex: 'var(--z-dropdown)' }}
             >
               <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 border-b border-border shrink-0">
@@ -250,14 +261,14 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
       </div>
 
       {/* Global Command Search Modal */}
-      {searchOpen && (
+      {searchOpen && typeof document !== 'undefined' && createPortal((
         <div
           className="fixed inset-0 flex items-start justify-center pt-[15vh] px-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
-          style={{ zIndex: 'var(--z-modal)' }}
+          style={{ zIndex: 100001 }}
           onClick={() => setSearchOpen(false)}
         >
           <div
-            className="w-full max-w-xl bg-surface border border-border rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-150"
+            className="isolate w-full max-w-xl bg-surface border border-border rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Search Input Bar */}
@@ -305,7 +316,7 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
             </div>
           </div>
         </div>
-      )}
+      ), document.body)}
 
       {/* User Profile Details Modal */}
       <Modal

@@ -4,13 +4,14 @@ import { useAuth } from '../context/AuthContext'
 import { PageContainer } from '../components/layout/PageContainer'
 import { Button, Card, PageHeader, Tabs, EmptyState, SearchBar, Badge, Modal, Select, Input, FormField, useToast } from '../components/ui'
 import { Icon } from '../components/ui/icons'
+import { CHART_COLORS } from '../lib/chartColors'
 
 const ROLE_OPTIONS = ['recruiter', 'account_manager', 'recruitment_manager', 'operations_manager', 'manager', 'admin', 'employee']
   .map(role => ({ value: role, label: role.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) }))
 
 const emptyForm = { full_name: '', email: '', phone: '', extension: '', role: 'recruiter', department: '', team: '' }
 
-const AVATAR_PALETTE = ['#4f7cff', '#7c5cff', '#ff5c87', '#2ecc8f', '#ff8c42', '#f5c842']
+const AVATAR_PALETTE = CHART_COLORS
 
 function getMemberDepartment(member) {
   if (member.department?.trim()) return member.department.trim()

@@ -548,18 +548,9 @@ export default function Candidates() {
         }
       />
 
-      {/* Compact stats bar — like Indeed's header metrics */}
-      <div className="flex items-stretch gap-0 my-4 border border-border rounded-[var(--radius-md)] bg-surface overflow-hidden shadow-xs">
-        {candidateStats.map((stat, i) => (
-          <div
-            key={stat.label}
-            className="flex-1 min-w-0 flex flex-col gap-0.5 px-4 py-2.5 relative"
-            style={{ borderRight: i < candidateStats.length - 1 ? '1px solid var(--border)' : 'none' }}
-          >
-            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: `var(--${stat.tone})` }}>{stat.label}</span>
-            <span className="text-xl font-extrabold text-text font-mono leading-none tabular-nums">{stat.value}</span>
-            <span className="text-[10px] text-text3 truncate">{stat.helper}</span>
-          </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 my-4">
+        {candidateStats.map((stat) => (
+          <KPICard key={stat.label} compact {...stat} />
         ))}
       </div>
 

@@ -48,7 +48,7 @@ export function statusTone(status) {
 
 const DOT_COLOR = {
   green:   '#16a34a',
-  accent:  '#3b82f6',
+  accent:  '#0d9488',
   yellow:  '#f59e0b',
   orange:  '#f97316',
   red:     '#ef4444',

@@ -47,7 +47,7 @@ export default function Combobox({ value = '', onChange, options = [], placehold
       />
       {open && filtered.length > 0 && (
         <div
-          className="absolute left-0 right-0 top-[calc(100%+4px)] max-h-52 overflow-y-auto bg-surface border border-border rounded-[var(--radius-md)] shadow-[var(--shadow-lg)] p-1.5"
+          className="absolute left-0 right-0 top-[calc(100%+4px)] max-h-52 overflow-y-auto bg-surface border border-border rounded-[var(--radius-md)] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-lg)] p-1.5"
           style={{ zIndex: 'var(--z-dropdown)' }}
         >
           {filtered.map(opt => (

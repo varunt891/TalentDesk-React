@@ -118,7 +118,7 @@ export function MultiSelect({ label, options = [], selected = [], onChange, clas
       />
       {open && (
         <div
-          className="absolute left-0 top-[calc(100%+6px)] min-w-[220px] flex flex-col bg-surface border border-border rounded-[var(--radius-md)] shadow-[var(--shadow-lg)] p-1.5 gap-1"
+          className="absolute left-0 top-[calc(100%+6px)] min-w-[220px] flex flex-col bg-surface border border-border rounded-[var(--radius-md)] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-lg)] p-1.5 gap-1"
           style={{ zIndex: 'var(--z-dropdown)' }}
         >
           {searchable && options.length > 0 && (

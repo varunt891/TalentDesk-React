@@ -1,12 +1,12 @@
 import { cn } from './utils'
+import { CHART_COLORS } from '../../lib/chartColors'
 
 const SIZES = { xs: 'w-6 h-6 text-[10px]', sm: 'w-7 h-7 text-xs', md: 'w-9 h-9 text-sm', lg: 'w-12 h-12 text-base' }
-const PALETTE = ['#4f7cff', '#a855f7', '#ec4899', '#f59e0b', '#10b981', '#ef4444', '#7c5cff']
 
 function colorFor(seed) {
   let hash = 0
   for (let i = 0; i < seed.length; i++) hash = seed.charCodeAt(i) + ((hash << 5) - hash)
-  return PALETTE[Math.abs(hash) % PALETTE.length]
+  return CHART_COLORS[Math.abs(hash) % CHART_COLORS.length]
 }
 
 export default function Avatar({ name = '', src, size = 'md', status, className = '' }) {

@@ -108,7 +108,7 @@ export default function Signup() {
             <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-accent bg-accent/10 rounded-full px-2.5 py-1 w-fit">
               {inviteToken ? "You're invited" : 'Start hiring smarter'}
             </span>
-            <h1 className="text-[32px] leading-[1.15] font-extrabold text-text tracking-[-0.02em]">
+            <h1 className="font-serif text-[36px] leading-[1.15] font-medium text-text tracking-[-0.01em]">
               {inviteToken ? 'Join your team on TalentDesk.' : 'Set up your recruiting workspace.'}
             </h1>
             <p className="text-[14px] text-text2 leading-relaxed">

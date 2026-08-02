@@ -2,10 +2,9 @@ import { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react'
 import { useCandidates } from '../hooks/useCandidates'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../lib/api'
-import { PageContainer } from '../components/layout/PageContainer'
 import {
-  Button, Badge, StatusPill, Card, CardHeader, KPICard, PageHeader, Modal, Input, Select,
-  Textarea, FormField, Icon, Avatar, Menu, MenuTrigger, EmptyState, cn,
+  Button, Badge, StatusPill, Card, CardHeader, KPICard, PageHeader, Modal, Input, Select, TimePicker,
+  Textarea, FormField, Icon, Avatar, Menu, MenuTrigger, EmptyState, Tooltip, cn,
 } from '../components/ui'
 import { WorkspaceSearch, FilterWorkspace, EntityDrawer } from '../components/workspace'
 import { ensureArray, STATUS_TONE, computeScore } from '../lib/candidateHealth'
@@ -227,6 +226,10 @@ export default function Pipeline() {
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
   }, [draggingId])
+  const scrollBoardBy = (dir) => {
+    boardRef.current?.scrollBy({ left: dir * 380, behavior: 'smooth' })
+  }
+
   const handleBoardDragOver = (event) => {
     const el = boardRef.current
     if (!el) return
@@ -237,17 +240,18 @@ export default function Pipeline() {
     else scrollDirRef.current = 0
   }
 
+  // Plain vertical wheel/trackpad scroll pans the board horizontally between
+  // stage columns — the natural desktop affordance for a wide kanban board,
+  // since a mouse wheel has no horizontal axis of its own. Scrolling while
+  // hovering a column's own card list is left alone so that list still
+  // scrolls vertically as expected. (Compact-header toggling has its own
+  // explicit button below, so it no longer needs to also live on the wheel.)
   const handleBoardWheel = (e) => {
-    if (e.deltaY > 15 && !compactHeader) {
-      setCompactHeader(true)
-      try { localStorage.setItem('td_pipeline_compact_header', 'true') } catch {}
-    } else if (e.deltaY < -15 && compactHeader) {
-      const cardList = e.target.closest?.('[data-pipeline-card-list]')
-      if (!cardList || cardList.scrollTop <= 5) {
-        setCompactHeader(false)
-        try { localStorage.setItem('td_pipeline_compact_header', 'false') } catch {}
-      }
-    }
+    if (e.target.closest?.('[data-pipeline-card-list]')) return
+    const el = boardRef.current
+    if (!el || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return
+    e.preventDefault()
+    el.scrollLeft += e.deltaY
   }
 
   // Filter option vocab, built from live data (same pattern as Candidates/Jobs)
@@ -576,186 +580,229 @@ export default function Pipeline() {
       </div>
 
       {/* Board */}
-      <div
-        ref={boardRef}
-        onDragOver={handleBoardDragOver}
-        onWheel={handleBoardWheel}
-        onKeyDown={handleBoardKeyDown}
-        tabIndex={0}
-        className={cn(
-          "flex-1 overflow-x-auto overflow-y-hidden px-4 sm:px-6 lg:px-8 pb-4 outline-none flex flex-col transition-all duration-300",
-          compactHeader ? "min-h-[calc(100vh-140px)]" : "min-h-[calc(100vh-90px)]"
+      <div className="relative flex-1 min-h-0 flex flex-col">
+        {!loading && filtered.length > 0 && (
+          <>
+            <button
+              type="button"
+              aria-label="Scroll stages left"
+              onClick={() => scrollBoardBy(-1)}
+              className="hidden lg:flex absolute left-5 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full items-center justify-center bg-surface border border-border shadow-md text-text2 hover:text-text hover:border-border-strong"
+            >
+              <Icon name="chevronLeft" size={15} />
+            </button>
+            <button
+              type="button"
+              aria-label="Scroll stages right"
+              onClick={() => scrollBoardBy(1)}
+              className="hidden lg:flex absolute right-1 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full items-center justify-center bg-surface border border-border shadow-md text-text2 hover:text-text hover:border-border-strong"
+            >
+              <Icon name="chevronRight" size={15} />
+            </button>
+          </>
         )}
-      >
-        {loading ? (
-          <div className="flex items-center justify-center h-full text-text3 text-sm">Loading pipeline...</div>
-        ) : filtered.length === 0 ? (
-          <EmptyState icon="pipeline" title={hasFilters ? 'No candidates match your filters' : 'No candidates yet'} description={hasFilters ? 'Try widening your search or clearing filters.' : 'Candidates you submit will appear here.'} />
-        ) : (
-          <div className="flex gap-5 h-full min-h-[680px] min-w-max pr-4 sm:pr-6 lg:pr-8">
-            {STAGES.map((stage, stageIdx) => {
-              const stats = stageStats[stage.id]
-              const isOver = overStage === stage.id
-              const isCollapsed = collapsed.includes(stage.id)
+        <div
+          ref={boardRef}
+          onDragOver={handleBoardDragOver}
+          onWheel={handleBoardWheel}
+          onKeyDown={handleBoardKeyDown}
+          tabIndex={0}
+          className={cn(
+            "pipeline-board-scroll flex-1 overflow-x-auto overflow-y-hidden snap-x snap-proximity scroll-smooth pl-7 pr-4 sm:pl-9 sm:pr-6 lg:pl-12 lg:pr-8 pb-4 outline-none flex flex-col transition-all duration-300",
+            compactHeader ? "min-h-[calc(100vh-140px)]" : "min-h-[calc(100vh-90px)]"
+          )}
+        >
+          {loading ? (
+            <div className="flex items-center justify-center h-full text-text3 text-sm">Loading pipeline...</div>
+          ) : filtered.length === 0 ? (
+            <EmptyState icon="pipeline" title={hasFilters ? 'No candidates match your filters' : 'No candidates yet'} description={hasFilters ? 'Try widening your search or clearing filters.' : 'Candidates you submit will appear here.'} />
+          ) : (
+            <div className="flex gap-5 h-full min-h-[680px] min-w-max pr-4 sm:pr-6 lg:pr-8">
+              {STAGES.map((stage, stageIdx) => {
+                const stats = stageStats[stage.id]
+                const isOver = overStage === stage.id
+                const isCollapsed = collapsed.includes(stage.id)
 
-              if (isCollapsed) {
+                if (isCollapsed) {
+                  return (
+                    <button
+                      key={stage.id}
+                      ref={(node) => {
+                        if (node) stageRefs.current.set(stage.id, node)
+                        else stageRefs.current.delete(stage.id)
+                      }}
+                      type="button"
+                      onClick={() => toggleCollapsed(stage.id)}
+                      onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setOverStage(stage.id) }}
+                      onDragLeave={() => setOverStage(null)}
+                      onDrop={event => handleDrop(event, stage.id)}
+                      className="relative w-14 shrink-0 snap-start h-full flex flex-col items-center rounded-[var(--radius-lg)] border shadow-xs transition-colors duration-[var(--duration-fast)] overflow-hidden"
+                      style={{ background: isOver ? `${stage.color}14` : 'var(--surface)', borderColor: isOver ? stage.color : 'var(--border)' }}
+                    >
+                      <span aria-hidden="true" className="pointer-events-none absolute top-0 left-0 right-0 h-[3px]" style={{ background: stage.color }} />
+                      <div className="flex flex-col items-center gap-3 pt-4 shrink-0">
+                        <Icon name="chevronRight" size={13} className="text-text3" />
+                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: stage.color }} />
+                      </div>
+                      <div className="relative flex-1 w-full min-h-0">
+                        <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap text-[11px] font-bold text-text2 tracking-wide">
+                          {stage.label}
+                        </span>
+                      </div>
+                      <span className="mb-4 shrink-0 text-[10px] font-bold text-text3 font-mono px-1 py-0.5 rounded bg-surface2 border border-border/60">{stats.count}</span>
+                    </button>
+                  )
+                }
+
                 return (
-                  <button
+                  <div
                     key={stage.id}
                     ref={(node) => {
                       if (node) stageRefs.current.set(stage.id, node)
                       else stageRefs.current.delete(stage.id)
                     }}
-                    type="button"
-                    onClick={() => toggleCollapsed(stage.id)}
                     onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setOverStage(stage.id) }}
                     onDragLeave={() => setOverStage(null)}
                     onDrop={event => handleDrop(event, stage.id)}
-                    className="w-14 shrink-0 h-full flex flex-col items-center rounded-[var(--radius-lg)] border shadow-xs transition-colors duration-[var(--duration-fast)] overflow-hidden"
-                    style={{ background: isOver ? `${stage.color}14` : 'var(--surface)', borderColor: isOver ? stage.color : 'var(--border)' }}
+                    className="relative w-[45vw] lg:w-[358px] shrink-0 snap-start flex flex-col h-full min-h-0 rounded-[var(--radius-lg)] border shadow-xs overflow-hidden transition-[box-shadow,border-color,background-color] duration-[var(--duration-fast)]"
+                    style={{ background: isOver ? `${stage.color}10` : 'var(--surface)', borderColor: isOver ? stage.color : 'var(--border)' }}
                   >
-                    <div className="flex flex-col items-center gap-3 pt-4 shrink-0">
-                      <Icon name="chevronRight" size={13} className="text-text3" />
-                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: stage.color }} />
-                    </div>
-                    <div className="relative flex-1 w-full min-h-0">
-                      <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap text-[11px] font-bold text-text2 tracking-wide">
-                        {stage.label}
-                      </span>
-                    </div>
-                    <span className="mb-4 shrink-0 text-[10px] font-bold text-text3 font-mono px-1 py-0.5 rounded bg-surface2 border border-border/60">{stats.count}</span>
-                  </button>
-                )
-              }
+                    <span aria-hidden="true" className="pointer-events-none absolute top-0 left-0 right-0 h-[3px] z-10" style={{ background: stage.color }} />
 
-              return (
-                <div
-                  key={stage.id}
-                  ref={(node) => {
-                    if (node) stageRefs.current.set(stage.id, node)
-                    else stageRefs.current.delete(stage.id)
-                  }}
-                  onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setOverStage(stage.id) }}
-                  onDragLeave={() => setOverStage(null)}
-                  onDrop={event => handleDrop(event, stage.id)}
-                  className="w-[344px] sm:w-[358px] shrink-0 flex flex-col h-full min-h-0 rounded-[var(--radius-lg)] border shadow-xs overflow-hidden transition-[box-shadow,border-color,background-color] duration-[var(--duration-fast)]"
-                  style={{ background: isOver ? `${stage.color}10` : 'var(--surface)', borderColor: isOver ? stage.color : 'var(--border)' }}
-                >
-                  {/* Column header */}
-                  <div className="sticky top-0 z-10 px-3.5 py-2.5 border-b border-border bg-surface2 shrink-0">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: stage.color, boxShadow: `0 0 0 3px ${stage.color}1f` }} />
-                      <span className="text-[13.5px] font-bold text-text tracking-tight flex-1 truncate">{stage.label}</span>
-                      <Tooltip3 health={stats.health} />
-                      <span className="text-[11px] font-extrabold font-mono px-1.5 py-0.5 rounded-full" style={{ background: `${stage.color}1a`, color: stage.color, boxShadow: `inset 0 0 0 1px ${stage.color}38` }}>{stats.count}</span>
-                      <button type="button" onClick={() => toggleCollapsed(stage.id)} aria-label={`Collapse ${stage.label}`} className="text-text3 hover:text-text p-0.5 shrink-0 transition-colors duration-[var(--duration-fast)]">
-                        <Icon name="chevronLeft" size={13} />
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-2.5 mt-1.5 text-[10.5px] text-text3 font-semibold">
-                      <span>{stats.conversionPct}% of pipeline</span>
-                      <span className="text-border-strong">·</span>
-                      <span>{stats.avgDays}d avg</span>
-                      {stats.agingCount > 0 && <><span className="text-border-strong">·</span><span className="text-yellow">{stats.agingCount} aging</span></>}
-                    </div>
-                  </div>
-
-                  {/* Cards */}
-                  <div data-pipeline-card-list className="flex-1 min-h-0 overflow-y-auto p-2.5 flex flex-col gap-2.5 bg-surface-sunken/30">
-                    {stats.cards.length === 0 ? (
-                      <div
-                        className="text-center py-8 px-2.5 rounded-[var(--radius-md)] text-xs text-text3 border border-dashed"
-                        style={{ borderColor: isOver ? stage.color : 'var(--border)' }}
-                      >
-                        Drop candidate here
+                    {/* Column header — not sticky: only the card list below scrolls,
+                      so sticky headers collide with the page-level scroll. */}
+                    <div
+                      className="relative z-10 px-3.5 py-2.5 border-b shrink-0"
+                      style={{ background: `color-mix(in srgb, ${stage.color} 9%, var(--surface2))`, borderColor: `${stage.color}30` }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: stage.color }} />
+                        <span className="text-[13.5px] font-bold text-text tracking-tight flex-1 truncate">{stage.label}</span>
+                        <Tooltip3 health={stats.health} />
+                        <span className="text-[11px] font-extrabold font-mono px-1.5 py-0.5 rounded-full" style={{ background: `${stage.color}1a`, color: stage.color, boxShadow: `inset 0 0 0 1px ${stage.color}38` }}>{stats.count}</span>
+                        <button type="button" onClick={() => toggleCollapsed(stage.id)} aria-label={`Collapse ${stage.label}`} className="text-text3 hover:text-text p-0.5 shrink-0 transition-colors duration-[var(--duration-fast)]">
+                          <Icon name="chevronLeft" size={13} />
+                        </button>
                       </div>
-                    ) : stats.cards.map((c, cardIdx) => {
-                      const sc = computeScore(c)
-                      const signals = getSignals(c)
-                      const isFocused = focus.stageIdx === stageIdx && focus.cardIdx === cardIdx
-                      const isSpotlit = spotlightIds.includes(c.id)
-                      const skills = ensureArray(c.skills).slice(0, 3)
-                      return (
+                      <div className="flex items-center gap-2.5 mt-1.5 text-[10.5px] text-text3 font-semibold">
+                        <span>{stats.conversionPct}% of pipeline</span>
+                        <span className="text-border-strong">·</span>
+                        <span>{stats.avgDays}d avg</span>
+                        {stats.agingCount > 0 && <><span className="text-border-strong">·</span><span className="text-yellow">{stats.agingCount} aging</span></>}
+                      </div>
+                    </div>
+
+                    {/* Cards */}
+                    <div
+                      data-pipeline-card-list
+                      className="flex-1 min-h-0 overflow-y-auto p-2.5 flex flex-col gap-2.5"
+                      style={{ background: `linear-gradient(180deg, ${stage.color}0f, var(--surface-sunken) 220px)` }}
+                    >
+                      {stats.cards.length === 0 ? (
                         <div
-                          key={c.id}
-                          draggable
-                          tabIndex={-1}
-                          onDragStart={event => handleDragStart(event, c.id)}
-                          onDragEnd={() => { setDraggingId(null); setOverStage(null) }}
-                          onClick={() => openDrawer(c)}
-                          onContextMenu={(e) => openContextMenu(e, c)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') openDrawer(c) }}
-                          className={cn(
-                            'group relative bg-surface border rounded-[var(--radius-md)] shadow-xs p-3.5 cursor-grab active:cursor-grabbing transition-all duration-[var(--duration-fast)] hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)]',
-                            draggingId === c.id ? 'opacity-40 scale-[0.98]' : 'opacity-100',
-                            isFocused && 'ring-2 ring-accent',
-                            isSpotlit && 'ring-2 ring-yellow animate-pulse'
-                          )}
-                          style={{ borderColor: 'var(--border)' }}
-                          onMouseEnter={e => { e.currentTarget.style.borderColor = stage.color }}
-                          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
+                          className="flex flex-col items-center gap-2 text-center py-9 px-2.5 rounded-[var(--radius-md)] text-xs text-text3 border border-dashed transition-colors duration-[var(--duration-fast)]"
+                          style={{ borderColor: isOver ? stage.color : 'var(--border)' }}
                         >
-                          <div className="flex items-start gap-2.5">
-                            <Avatar name={`${c.first_name || ''} ${c.last_name || ''}`.trim() || '?'} size="sm" />
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between gap-1.5">
-                                <strong className="text-[13px] font-bold text-text truncate">{c.first_name} {c.last_name}</strong>
-                                <Menu
-                                  align="end"
-                                  trigger={(p) => (
-                                    <span onClick={(e) => e.stopPropagation()}>
-                                      <MenuTrigger {...p} className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 w-6 h-6" />
-                                    </span>
-                                  )}
-                                  items={actionsFor(c)}
-                                />
-                              </div>
-                              <div className="text-[11px] text-text3 truncate">{c.job_title || 'No job title'}</div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-1.5 flex-wrap mt-2">
-                            <Badge size="sm" tone={c.priority === 'High' ? 'red' : c.priority === 'Low' ? 'neutral' : 'yellow'}>{c.priority || 'Medium'}</Badge>
-                            <Badge size="sm" tone={sc.total >= 80 ? 'green' : sc.total >= 60 ? 'accent' : sc.total >= 40 ? 'yellow' : 'red'}>{sc.gradeLabel}</Badge>
-                            {c.recruiter_name && <span className="text-[10px] text-text3 truncate max-w-[110px]">{c.recruiter_name}</span>}
-                          </div>
-
-                          {skills.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {skills.map(s => <span key={s} className="text-[10px] font-medium text-text2 bg-surface3 rounded-full px-1.5 py-0.5">{s}</span>)}
-                            </div>
-                          )}
-
-                          <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-border/70">
-                            <div className="flex items-center gap-2 text-text3">
-                              {c.rate && <span className="text-[10px] font-mono">{c.rate}</span>}
-                              {c.location && <span className="text-[10px] truncate max-w-[90px]">{c.location}</span>}
-                            </div>
-                            <span className="text-[10px] text-text3">{relativeTime(c.updated_at)}</span>
-                          </div>
-
-                          <div className="flex items-center gap-2 mt-1.5">
-                            {signals.hasNotes && <Icon name="edit" size={11} className="text-text3" aria-label="Has notes" />}
-                            {signals.upcomingCallback && <Icon name="callbacks" size={11} className="text-accent" aria-label="Upcoming callback" />}
-                            {c.interview_date && <Icon name="calendar" size={11} className="text-ai" aria-label="Interview scheduled" />}
-                            {c.external_status === 'Offer Extended' && <Icon name="reports" size={11} className="text-yellow" aria-label="Offer extended" />}
-                            {isToday(c.updated_at) && <Badge size="sm" tone="accent" className="ml-auto">New activity</Badge>}
-                          </div>
+                          <span
+                            className="w-8 h-8 rounded-full flex items-center justify-center"
+                            style={{ background: `${stage.color}14`, color: stage.color }}
+                          >
+                            <Icon name="pipeline" size={14} />
+                          </span>
+                          Drop candidate here
                         </div>
-                      )
-                    })}
+                      ) : stats.cards.map((c, cardIdx) => {
+                        const sc = computeScore(c)
+                        const signals = getSignals(c)
+                        const isFocused = focus.stageIdx === stageIdx && focus.cardIdx === cardIdx
+                        const isSpotlit = spotlightIds.includes(c.id)
+                        const skills = ensureArray(c.skills).slice(0, 3)
+                        return (
+                          <div
+                            key={c.id}
+                            draggable
+                            tabIndex={-1}
+                            onDragStart={event => handleDragStart(event, c.id)}
+                            onDragEnd={() => { setDraggingId(null); setOverStage(null) }}
+                            onClick={() => openDrawer(c)}
+                            onContextMenu={(e) => openContextMenu(e, c)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') openDrawer(c) }}
+                            className={cn(
+                              'group relative border rounded-[var(--radius-md)] shadow-xs p-3.5 cursor-grab active:cursor-grabbing transition-all duration-[var(--duration-fast)] hover:-translate-y-0.5 hover:border-[var(--stage-color)] hover:shadow-[0_10px_24px_-12px_var(--stage-glow)]',
+                              draggingId === c.id ? 'opacity-40 scale-[0.98]' : 'opacity-100',
+                              isFocused && 'ring-2 ring-accent',
+                              isSpotlit && 'ring-2 ring-yellow animate-pulse'
+                            )}
+                            style={{
+                              borderColor: `${stage.color}2a`,
+                              background: `linear-gradient(165deg, ${stage.color}22, var(--surface) 55%)`,
+                              '--stage-color': stage.color,
+                              '--stage-glow': `${stage.color}55`,
+                            }}
+                          >
+                            <span aria-hidden="true" className="absolute left-1.5 top-3 bottom-3 w-[3px] rounded-full" style={{ background: stage.color, opacity: 0.85 }} />
+                            <div className="flex items-start gap-2.5">
+                              <Avatar name={`${c.first_name || ''} ${c.last_name || ''}`.trim() || '?'} size="sm" />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-1.5">
+                                  <strong className="text-[13px] font-bold text-text truncate">{c.first_name} {c.last_name}</strong>
+                                  <Menu
+                                    align="end"
+                                    trigger={(p) => (
+                                      <span onClick={(e) => e.stopPropagation()}>
+                                        <MenuTrigger {...p} className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 w-6 h-6" />
+                                      </span>
+                                    )}
+                                    items={actionsFor(c)}
+                                  />
+                                </div>
+                                <div className="text-[11px] text-text3 truncate">{c.job_title || 'No job title'}</div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                              <Badge size="sm" tone={c.priority === 'High' ? 'red' : c.priority === 'Low' ? 'neutral' : 'yellow'}>{c.priority || 'Medium'}</Badge>
+                              <Badge size="sm" tone={sc.total >= 80 ? 'green' : sc.total >= 60 ? 'accent' : sc.total >= 40 ? 'yellow' : 'red'}>{sc.gradeLabel}</Badge>
+                              {c.recruiter_name && <span className="text-[10px] text-text3 truncate max-w-[110px]">{c.recruiter_name}</span>}
+                            </div>
+
+                            {skills.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {skills.map(s => <span key={s} className="text-[10px] font-medium text-text2 bg-surface3 rounded-full px-1.5 py-0.5">{s}</span>)}
+                              </div>
+                            )}
+
+                            <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-border/70">
+                              <div className="flex items-center gap-2 text-text3">
+                                {c.rate && <span className="text-[10px] font-mono">{c.rate}</span>}
+                                {c.location && <span className="text-[10px] truncate max-w-[90px]">{c.location}</span>}
+                              </div>
+                              <span className="text-[10px] text-text3">{relativeTime(c.updated_at)}</span>
+                            </div>
+
+                            <div className="flex items-center gap-2 mt-1.5">
+                              {signals.hasNotes && <Icon name="edit" size={11} className="text-text3" aria-label="Has notes" />}
+                              {signals.upcomingCallback && <Icon name="callbacks" size={11} className="text-accent" aria-label="Upcoming callback" />}
+                              {c.interview_date && <Icon name="calendar" size={11} className="text-ai" aria-label="Interview scheduled" />}
+                              {c.external_status === 'Offer Extended' && <Icon name="reports" size={11} className="text-yellow" aria-label="Offer extended" />}
+                              {isToday(c.updated_at) && <Badge size="sm" tone="accent" className="ml-auto">New activity</Badge>}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Right-click context menu */}
       {contextMenu && (
         <div
-          className="fixed min-w-[190px] max-h-[min(70vh,360px)] overflow-y-auto bg-surface border border-border rounded-[var(--radius-md)] shadow-[var(--shadow-lg)] p-1.5 flex flex-col gap-0.5"
+          className="fixed min-w-[190px] max-h-[min(70vh,360px)] overflow-y-auto bg-surface border border-border rounded-[var(--radius-md)] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-lg)] p-1.5 flex flex-col gap-0.5"
           style={{ top: contextMenu.y, left: contextMenu.x, zIndex: 'var(--z-dropdown)' }}
           onMouseDown={(e) => e.stopPropagation()}
         >
@@ -933,7 +980,7 @@ export default function Pipeline() {
         <div className="flex flex-col gap-3.5">
           <div className="grid grid-cols-2 gap-3">
             <FormField label="Date"><Input type="date" value={cbForm.date} onChange={e => setCbForm(f => ({ ...f, date: e.target.value }))} /></FormField>
-            <FormField label="Time"><Input type="time" value={cbForm.time} onChange={e => setCbForm(f => ({ ...f, time: e.target.value }))} /></FormField>
+            <FormField label="Time"><TimePicker value={cbForm.time} onChange={v => setCbForm(f => ({ ...f, time: v }))} /></FormField>
           </div>
           <FormField label="Notes"><Textarea rows={3} value={cbForm.notes} onChange={e => setCbForm(f => ({ ...f, notes: e.target.value }))} placeholder="What to discuss..." /></FormField>
         </div>
@@ -984,8 +1031,12 @@ export default function Pipeline() {
 
       {/* Toast */}
       {toast && (
-        <div style={{ position: 'fixed', bottom: '24px', right: '24px', background: toast.type === 'error' ? 'var(--red)' : 'var(--green)', color: '#fff', padding: '12px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', zIndex: 9999, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
-          {toast.msg}
+        <div
+          className="fixed bottom-4 right-4 flex items-start gap-2.5 w-[min(360px,calc(100vw-2rem))] bg-surface border border-border rounded-[var(--radius-md)] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-lg)] p-3 animate-[toast-in_var(--duration-base)_var(--ease-standard)]"
+          style={{ zIndex: 'var(--z-toast)' }}
+        >
+          <Icon name={toast.type === 'error' ? 'xCircle' : 'checkCircle'} size={16} className={cn('shrink-0 mt-0.5', toast.type === 'error' ? 'text-red' : 'text-green')} />
+          <p className="text-sm font-semibold text-text min-w-0 flex-1">{toast.msg}</p>
         </div>
       )}
     </div>
@@ -994,7 +1045,12 @@ export default function Pipeline() {
 
 function Tooltip3({ health }) {
   const color = health === 'red' ? 'var(--red)' : health === 'yellow' ? 'var(--yellow)' : 'var(--green)'
-  return <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: color }} title={`Stage health: ${health}`} />
+  const label = health === 'red' ? 'Stage health: needs attention' : health === 'yellow' ? 'Stage health: watch' : 'Stage health: good'
+  return (
+    <Tooltip label={label}>
+      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: color }} />
+    </Tooltip>
+  )
 }
 
 function DetailCard({ title, rows }) {

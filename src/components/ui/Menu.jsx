@@ -22,6 +22,7 @@ export default function Menu({ trigger, items = [], align = 'end', className = '
     const spaceAbove = rect.top
 
     const menuHeight = menuRef.current ? menuRef.current.offsetHeight : 220
+    const menuWidth = menuRef.current ? menuRef.current.offsetWidth : 190
     const openUp = spaceBelow < menuHeight && spaceAbove > spaceBelow
 
     const style = {
@@ -37,11 +38,14 @@ export default function Menu({ trigger, items = [], align = 'end', className = '
       style.maxHeight = `${Math.min(window.innerHeight - rect.bottom - 16, 360)}px`
     }
 
+    let leftPos = rect.left
     if (align === 'end') {
-      style.right = `${Math.max(8, window.innerWidth - rect.right)}px`
-    } else {
-      style.left = `${Math.max(8, rect.left)}px`
+      leftPos = rect.right - menuWidth
     }
+
+    // Clamp to viewport edges with 8px margin
+    leftPos = Math.max(8, Math.min(leftPos, window.innerWidth - menuWidth - 8))
+    style.left = `${leftPos}px`
 
     setCoords(style)
   }
@@ -93,7 +97,7 @@ export default function Menu({ trigger, items = [], align = 'end', className = '
       {open && coords && createPortal(
         <div
           ref={menuRef}
-          className="fixed min-w-[180px] overflow-y-auto bg-surface border border-border rounded-[var(--radius-md)] shadow-[var(--shadow-lg)] p-1.5 flex flex-col gap-0.5 animate-in fade-in zoom-in-95 duration-100"
+          className="fixed min-w-[180px] overflow-y-auto bg-surface border border-border rounded-[var(--radius-md)] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-lg)] p-1.5 flex flex-col gap-0.5 animate-in fade-in zoom-in-95 duration-100"
           style={coords}
         >
           {items.map((item, i) =>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
 import { db } from '../../lib/api'
@@ -9,6 +9,15 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('td_sidebar_collapsed') === 'true')
   const [pendingTasksCount, setPendingTasksCount] = useState(0)
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 1024 : false)
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 1024)
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark'
@@ -41,18 +50,36 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
     return () => clearInterval(interval)
   }, [])
 
+  // Disable browser scroll restoration so refresh always starts at the top
+  useEffect(() => {
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual'
+    return () => { if ('scrollRestoration' in history) history.scrollRestoration = 'auto' }
+  }, [])
+
+  const mainRef = useRef(null)
+  useEffect(() => {
+    if (mainRef.current) mainRef.current.scrollTop = 0
+  }, [currentPage])
+
   const handleNavigate = (page) => {
     onNavigate(page)
     setSidebarOpen(false)
   }
 
   return (
-    <div className="flex h-dvh w-full max-w-[100vw] overflow-hidden bg-bg text-text">
+    <div className="relative isolate flex h-dvh w-full max-w-[100vw] overflow-hidden bg-bg text-text">
+      {/* Ambient atmosphere */}
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute -top-32 left-[16%] w-[640px] h-[640px] rounded-full opacity-[0.20] blur-[120px]" style={{ background: 'var(--accent)' }} />
+        <div className="absolute top-[15%] -right-44 w-[700px] h-[700px] rounded-full opacity-[0.18] blur-[130px]" style={{ background: 'var(--ai)' }} />
+        <div className="absolute -bottom-52 left-[6%] w-[580px] h-[580px] rounded-full opacity-[0.14] blur-[120px]" style={{ background: 'var(--accent2)' }} />
+      </div>
+
       {sidebarOpen && (
         <div
           onClick={() => setSidebarOpen(false)}
           aria-hidden="true"
-          className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden animate-in fade-in duration-150"
         />
       )}
 
@@ -65,10 +92,12 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
         <Sidebar
           currentPage={currentPage}
           onNavigate={handleNavigate}
-          isCollapsed={sidebarCollapsed}
+          isCollapsed={isMobile ? false : sidebarCollapsed}
           onToggleCollapse={toggleSidebarCollapse}
           onClose={() => setSidebarOpen(false)}
           pendingTasksCount={pendingTasksCount}
+          theme={theme}
+          onToggleTheme={toggleTheme}
         />
       </div>
 
@@ -79,8 +108,9 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
           onToggleTheme={toggleTheme}
           pendingTasksCount={pendingTasksCount}
           onNavigate={handleNavigate}
+          currentPage={currentPage}
         />
-        <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col">
+        <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col">
           {children}
         </main>
       </div>

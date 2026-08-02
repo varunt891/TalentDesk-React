@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useCandidates } from '../hooks/useCandidates'
 import { db } from '../lib/api'
@@ -6,7 +6,7 @@ import SubmissionPacketModal from '../components/SubmissionPacketModal'
 import AIMatchModal from '../components/AIMatchModal'
 import { PageContainer } from '../components/layout/PageContainer'
 import {
-  Button, Badge, StatusPill, Card, CardHeader, KPICard, PageHeader, Modal, Input, Select,
+  Button, Badge, StatusPill, Card, CardHeader, KPICard, PageHeader, Modal, Input, Select, TimePicker,
   SearchableSelect, Textarea, FormField, Tabs, Icon, Avatar, Menu, MenuTrigger, EmptyState, CollapsibleSection, cn,
 } from '../components/ui'
 import { WorkspaceSearch, FilterWorkspace, EntityDrawer } from '../components/workspace'
@@ -28,6 +28,122 @@ const RESUBMIT_STATUSES = ['Rejected', 'Withdrew', 'On Hold']
 
 const todayStr = () => new Date().toISOString().slice(0, 10)
 function isToday(d) { return Boolean(d) && String(d).slice(0, 10) === todayStr() }
+
+const TZ_MAP = {
+  EST: 'America/New_York',
+  EDT: 'America/New_York',
+  ET: 'America/New_York',
+  CST: 'America/Chicago',
+  CDT: 'America/Chicago',
+  CT: 'America/Chicago',
+  MST: 'America/Denver',
+  MDT: 'America/Denver',
+  MT: 'America/Denver',
+  PST: 'America/Los_Angeles',
+  PDT: 'America/Los_Angeles',
+  PT: 'America/Los_Angeles',
+  IST: 'Asia/Kolkata',
+  UTC: 'UTC',
+  GMT: 'UTC',
+}
+
+function parseTime(timeStr) {
+  if (!timeStr) return { hours: 9, minutes: 0 }
+  const clean = String(timeStr).trim().toUpperCase()
+  const isPM = clean.includes('PM')
+  const isAM = clean.includes('AM')
+  const match = clean.match(/(\d{1,2}):(\d{2})/)
+  if (!match) return { hours: 9, minutes: 0 }
+  let hours = parseInt(match[1], 10)
+  const minutes = parseInt(match[2], 10)
+  if (isPM && hours < 12) hours += 12
+  if (isAM && hours === 12) hours = 0
+  return { hours, minutes }
+}
+
+function getTargetUtcTimestamp(dateStr, timeStr, tzAbbr) {
+  if (!dateStr) return null
+  const { hours, minutes } = parseTime(timeStr)
+  const parts = dateStr.slice(0, 10).split('-').map(Number)
+  if (parts.length !== 3 || parts.some(isNaN)) return null
+  const [y, m, d] = parts
+
+  const tzUpper = String(tzAbbr || 'EST').trim().toUpperCase()
+  const ianaName = TZ_MAP[tzUpper] || 'America/New_York'
+
+  try {
+    const testUtc = new Date(Date.UTC(y, m - 1, d, hours, minutes, 0))
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: ianaName,
+      timeZoneName: 'shortOffset',
+      year: 'numeric', month: 'numeric', day: 'numeric',
+      hour: 'numeric', minute: 'numeric', second: 'numeric',
+      hour12: false
+    })
+    
+    const formattedParts = formatter.formatToParts(testUtc)
+    const tzPart = formattedParts.find(p => p.type === 'timeZoneName')?.value || ''
+    
+    let offsetMinutes = -240
+    const offsetMatch = tzPart.match(/(GMT|UTC)?([+-])(\d{1,2})(?::(\d{2}))?/)
+    if (offsetMatch) {
+      const sign = offsetMatch[2] === '-' ? -1 : 1
+      const offsetHours = parseInt(offsetMatch[3], 10)
+      const offsetMins = parseInt(offsetMatch[4] || '0', 10)
+      offsetMinutes = sign * (offsetHours * 60 + offsetMins)
+    }
+
+    return Date.UTC(y, m - 1, d, hours, minutes, 0) - offsetMinutes * 60000
+  } catch {
+    let offsetMins = -240
+    if (['PST', 'PDT', 'PT'].includes(tzUpper)) offsetMins = -420
+    else if (['CST', 'CDT', 'CT'].includes(tzUpper)) offsetMins = -300
+    else if (['MST', 'MDT', 'MT'].includes(tzUpper)) offsetMins = -360
+    else if (tzUpper === 'IST') offsetMins = 330
+    else if (['UTC', 'GMT'].includes(tzUpper)) offsetMins = 0
+
+    return Date.UTC(y, m - 1, d, hours, minutes, 0) - offsetMins * 60000
+  }
+}
+
+function getCallbackCountdown(dateStr, timeStr, tzStr, now = new Date()) {
+  if (!dateStr) return null
+  const targetUtcMs = getTargetUtcTimestamp(dateStr, timeStr, tzStr)
+  if (!targetUtcMs) return null
+
+  const diffMs = targetUtcMs - now.getTime()
+  const isOverdue = diffMs < 0
+  const absMs = Math.abs(diffMs)
+
+  const totalMins = Math.floor(absMs / 60000)
+  const days = Math.floor(totalMins / (60 * 24))
+  const hrs = Math.floor((totalMins % (60 * 24)) / 60)
+  const mins = totalMins % 60
+  const secs = Math.floor((absMs % 60000) / 1000)
+
+  let text = ''
+  if (days > 0) {
+    text = `${days}d ${hrs}h ${mins}m`
+  } else if (hrs > 0) {
+    text = `${hrs}h ${mins}m ${secs}s`
+  } else if (mins > 0) {
+    text = `${mins}m ${secs}s`
+  } else {
+    text = `${secs}s`
+  }
+
+  return {
+    isOverdue,
+    text: isOverdue ? `${text} overdue` : `${text} left`,
+    raw: text,
+    days,
+    hrs,
+    mins,
+    secs,
+    diffMs,
+    urgent: !isOverdue && days === 0 && hrs < 2,
+  }
+}
 function daysDiff(dateStr) {
   if (!dateStr) return null
   return Math.round((new Date(dateStr).getTime() - new Date(todayStr()).getTime()) / 86400000)
@@ -51,7 +167,14 @@ function matchCandidateIn(map, name) { return map.get((name || '').trim().toLowe
 function recruiterNameIn(map, userId) { const p = map.get(userId); return p ? (p.full_name || p.email) : null }
 
 function readSession(key, fallback) {
-  try { const v = sessionStorage.getItem(key); return v ? JSON.parse(v) : fallback } catch { return fallback }
+  try {
+    const v = sessionStorage.getItem(key)
+    if (!v) return fallback
+    const parsed = JSON.parse(v)
+    return typeof parsed === 'object' && parsed !== null ? { ...fallback, ...parsed } : fallback
+  } catch {
+    return fallback
+  }
 }
 function writeSession(key, value) {
   try { sessionStorage.setItem(key, JSON.stringify(value)) } catch { /* ignore quota errors */ }
@@ -131,6 +254,79 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
 
   const [packetModal, setPacketModal] = useState({ isOpen: false, candidate: null, job: null })
   const [aiMatchModal, setAiMatchModal] = useState({ isOpen: false, candidate: null, job: null })
+
+  const [activeAlert, setActiveAlert] = useState(null)
+  const dismissedAlertsRef = useRef(new Set())
+
+  const playAlertChime = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)()
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime)
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15)
+      gain.gain.setValueAtTime(0.2, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start()
+      osc.stop(ctx.currentTime + 0.6)
+    } catch {
+      // Audio fallback
+    }
+  }
+
+  useEffect(() => {
+    const checkDueCallbacks = () => {
+      const now = new Date()
+      const dueCb = callbacks.find(cb => {
+        if ((cb.status || '').toLowerCase() === 'done') return false
+        if (dismissedAlertsRef.current.has(cb.id)) return false
+        const targetUtc = getTargetUtcTimestamp(cb.date, cb.time, cb.timezone)
+        if (!targetUtc) return false
+        const diffMs = targetUtc - now.getTime()
+        return diffMs <= 0
+      })
+
+      if (dueCb && (!activeAlert || activeAlert.id !== dueCb.id)) {
+        setActiveAlert(dueCb)
+        playAlertChime()
+      }
+    }
+
+    checkDueCallbacks()
+    const interval = setInterval(checkDueCallbacks, 4000)
+    return () => clearInterval(interval)
+  }, [callbacks, activeAlert])
+
+  const dismissAlert = () => {
+    if (activeAlert) {
+      dismissedAlertsRef.current.add(activeAlert.id)
+    }
+    setActiveAlert(null)
+  }
+
+  const completeAlertCb = async () => {
+    if (!activeAlert) return
+    const id = activeAlert.id
+    dismissedAlertsRef.current.add(id)
+    setActiveAlert(null)
+    setCallbacks(prev => prev.map(c => c.id === id ? { ...c, status: 'done' } : c))
+    await db.from('callbacks').update({ status: 'done' }).eq('id', id)
+    showToast('Callback marked complete!')
+  }
+
+  const snoozeAlertCb = (mins = 10) => {
+    if (!activeAlert) return
+    const id = activeAlert.id
+    dismissedAlertsRef.current.add(id)
+    setActiveAlert(null)
+    showToast(`Snoozed for ${mins} minutes`)
+    setTimeout(() => {
+      dismissedAlertsRef.current.delete(id)
+    }, mins * 60 * 1000)
+  }
 
   // Real cross-reference: Callback/Followup rows have no candidate FK, only a
   // free-text candidate_name — same name-matching technique used across the
@@ -283,56 +479,80 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
   const clearFilters = () => { setSearch(''); if (activeView === 'resubmit') setResubmitFilters(initialResubmitFilters); else setFilters(initialFilters) }
 
   const filteredCallbacks = useMemo(() => enrichedCallbacks.filter(item => {
-    const q = search.toLowerCase()
+    const q = (search || '').toLowerCase()
     if (q && !`${item.candidate_name} ${item._jobTitle || ''} ${item._client || ''} ${item.notes || ''}`.toLowerCase().includes(q)) return false
-    if (filters.recruiter.length && !filters.recruiter.includes(item._recruiter)) return false
-    if (filters.candidate.length && !filters.candidate.includes(item.candidate_name)) return false
-    if (filters.job.length && !filters.job.includes(item._jobTitle)) return false
-    if (filters.client.length && !filters.client.includes(item._client)) return false
-    if (filters.createdBy.length && !filters.createdBy.includes(item._createdBy)) return false
-    if (filters.priority.length && !filters.priority.includes(item.interest)) return false
-    if (filters.status.length && !filters.status.includes(item.status)) return false
-    if (filters.dateFrom && (!item.date || item.date < filters.dateFrom)) return false
-    if (filters.dateTo && (!item.date || item.date > filters.dateTo)) return false
-    if (filters.completed && item.status !== 'done') return false
-    if (filters.overdue && !(item.date && item.date < todayStr() && item.status !== 'done')) return false
+    const recruiters = Array.isArray(filters?.recruiter) ? filters.recruiter : []
+    if (recruiters.length && !recruiters.includes(item._recruiter)) return false
+    const candidatesSel = Array.isArray(filters?.candidate) ? filters.candidate : []
+    if (candidatesSel.length && !candidatesSel.includes(item.candidate_name)) return false
+    const jobsSel = Array.isArray(filters?.job) ? filters.job : []
+    if (jobsSel.length && !jobsSel.includes(item._jobTitle)) return false
+    const clientsSel = Array.isArray(filters?.client) ? filters.client : []
+    if (clientsSel.length && !clientsSel.includes(item._client)) return false
+    const createdBySel = Array.isArray(filters?.createdBy) ? filters.createdBy : []
+    if (createdBySel.length && !createdBySel.includes(item._createdBy)) return false
+    const prioritySel = Array.isArray(filters?.priority) ? filters.priority : []
+    if (prioritySel.length && !prioritySel.includes(item.interest)) return false
+    const statusSel = Array.isArray(filters?.status) ? filters.status : []
+    if (statusSel.length && !statusSel.includes(item.status)) return false
+    if (filters?.dateFrom && (!item.date || item.date < filters.dateFrom)) return false
+    if (filters?.dateTo && (!item.date || item.date > filters.dateTo)) return false
+    if (filters?.completed && item.status !== 'done') return false
+    if (filters?.overdue && !(item.date && item.date < todayStr() && item.status !== 'done')) return false
     return true
   }), [enrichedCallbacks, search, filters])
 
   const filteredFollowups = useMemo(() => enrichedFollowups.filter(item => {
-    const q = search.toLowerCase()
+    const q = (search || '').toLowerCase()
     if (q && !`${item.candidate_name} ${item._jobTitle || ''} ${item._client || ''} ${item.notes || ''}`.toLowerCase().includes(q)) return false
-    if (filters.recruiter.length && !filters.recruiter.includes(item._recruiter)) return false
-    if (filters.candidate.length && !filters.candidate.includes(item.candidate_name)) return false
-    if (filters.job.length && !filters.job.includes(item._jobTitle)) return false
-    if (filters.client.length && !filters.client.includes(item._client)) return false
-    if (filters.createdBy.length && !filters.createdBy.includes(item._createdBy)) return false
-    if (filters.priority.length && !filters.priority.includes(item.priority)) return false
-    if (filters.status.length && !filters.status.includes(item.status)) return false
-    if (filters.dateFrom && (!item.date || item.date < filters.dateFrom)) return false
-    if (filters.dateTo && (!item.date || item.date > filters.dateTo)) return false
-    if (filters.completed && item.status !== 'done') return false
-    if (filters.overdue && !(item.date && item.date < todayStr() && item.status !== 'done')) return false
+    const recruiters = Array.isArray(filters?.recruiter) ? filters.recruiter : []
+    if (recruiters.length && !recruiters.includes(item._recruiter)) return false
+    const candidatesSel = Array.isArray(filters?.candidate) ? filters.candidate : []
+    if (candidatesSel.length && !candidatesSel.includes(item.candidate_name)) return false
+    const jobsSel = Array.isArray(filters?.job) ? filters.job : []
+    if (jobsSel.length && !jobsSel.includes(item._jobTitle)) return false
+    const clientsSel = Array.isArray(filters?.client) ? filters.client : []
+    if (clientsSel.length && !clientsSel.includes(item._client)) return false
+    const createdBySel = Array.isArray(filters?.createdBy) ? filters.createdBy : []
+    if (createdBySel.length && !createdBySel.includes(item._createdBy)) return false
+    const prioritySel = Array.isArray(filters?.priority) ? filters.priority : []
+    if (prioritySel.length && !prioritySel.includes(item.priority)) return false
+    const statusSel = Array.isArray(filters?.status) ? filters.status : []
+    if (statusSel.length && !statusSel.includes(item.status)) return false
+    if (filters?.dateFrom && (!item.date || item.date < filters.dateFrom)) return false
+    if (filters?.dateTo && (!item.date || item.date > filters.dateTo)) return false
+    if (filters?.completed && item.status !== 'done') return false
+    if (filters?.overdue && !(item.date && item.date < todayStr() && item.status !== 'done')) return false
     return true
   }), [enrichedFollowups, search, filters])
 
   const filteredEligible = useMemo(() => eligible.filter(c => {
-    const q = search.toLowerCase()
+    const q = (search || '').toLowerCase()
     if (q && !`${c.first_name} ${c.last_name} ${c.job_title} ${c.client} ${ensureArray(c.skills).join(' ')}`.toLowerCase().includes(q)) return false
-    if (resubmitFilters.recruiter.length && !resubmitFilters.recruiter.includes(c.recruiter_name)) return false
-    if (resubmitFilters.client.length && !resubmitFilters.client.includes(c.client)) return false
-    if (resubmitFilters.skills.length && !resubmitFilters.skills.some(s => ensureArray(c.skills).includes(s))) return false
+    const recruiters = Array.isArray(resubmitFilters?.recruiter) ? resubmitFilters.recruiter : []
+    if (recruiters.length && !recruiters.includes(c.recruiter_name)) return false
+    const clientsSel = Array.isArray(resubmitFilters?.client) ? resubmitFilters.client : []
+    if (clientsSel.length && !clientsSel.includes(c.client)) return false
+    const skillsSel = Array.isArray(resubmitFilters?.skills) ? resubmitFilters.skills : []
+    if (skillsSel.length && !skillsSel.some(s => ensureArray(c.skills).includes(s))) return false
     return true
   }), [eligible, search, resubmitFilters])
 
   const splitByDate = (items) => {
     const today = [], overdue = [], upcoming = [], completed = []
+    const nowMs = Date.now()
     items.forEach(item => {
       if (item.status === 'done') { completed.push(item); return }
       if (!item.date) { upcoming.push(item); return }
-      if (item.date === todayStr()) today.push(item)
-      else if (item.date < todayStr()) overdue.push(item)
-      else upcoming.push(item)
+      const targetUtc = getTargetUtcTimestamp(item.date, item.time, item.timezone)
+      const isTimeOverdue = targetUtc ? targetUtc < nowMs : false
+      if (item.date < todayStr() || (item.date === todayStr() && isTimeOverdue)) {
+        overdue.push(item)
+      } else if (item.date === todayStr()) {
+        today.push(item)
+      } else {
+        upcoming.push(item)
+      }
     })
     return { today, overdue, upcoming, completed }
   }
@@ -345,8 +565,8 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
   const openCreateCb = (prefill = {}) => { setCbForm({ ...emptyCbForm, ...prefill }); setEditingId(null); setFormKind('callback'); setShowForm(true) }
   const openCreateFu = (prefill = {}) => { setFuForm({ ...emptyFuForm, ...prefill }); setEditingId(null); setFormKind('followup'); setShowForm(true) }
   const openEditItem = (item, kind) => {
-    if (kind === 'callback') setCbForm({ candidate_name: item.candidate_name || '', phone: item.phone || '', job: item.job || '', date: item.date || todayStr(), time: item.time || '10:00', timezone: item.timezone || 'EST', interest: item.interest || 'Warm', notes: item.notes || '', status: item.status || 'pending' })
-    else setFuForm({ candidate_name: item.candidate_name || '', date: item.date || todayStr(), type: item.type || 'General Check-in', status: item.status || 'pending', priority: item.priority || 'Medium', notes: item.notes || '', next_action: item.next_action || '' })
+    if (kind === 'callback') setCbForm({ candidate_name: item.candidate_name || '', phone: item.phone || '', job: item.job || '', date: item.date || todayStr(), time: item.time || '10:00', timezone: item.timezone || 'EST', interest: item.interest || 'Warm', notes: item.notes || '', status: 'pending' })
+    else setFuForm({ candidate_name: item.candidate_name || '', date: item.date || todayStr(), type: item.type || 'General Check-in', status: 'pending', priority: item.priority || 'Medium', notes: item.notes || '', next_action: item.next_action || '' })
     setEditingId(item.id)
     setFormKind(kind)
     setShowForm(true)
@@ -354,16 +574,18 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
   }
 
   const handleSaveForm = async () => {
+    const currentOrgId = organization?.id || profile?.org_id
     if (formKind === 'callback') {
       if (!cbForm.candidate_name) return showToast('Candidate name required', 'error')
       if (!cbForm.date || !cbForm.time) return showToast('Date and time required', 'error')
       setSaving(true)
-      const payload = { ...cbForm, date: cbForm.date || null, user_id: user?.id }
+      const payload = { ...cbForm, status: 'pending', date: cbForm.date || null, user_id: user?.id, org_id: currentOrgId }
       if (editingId) {
         const { error } = await db.from('callbacks').update(payload).eq('id', editingId)
         setSaving(false)
         if (error) return showToast(error.message, 'error')
         setCallbacks(prev => prev.map(c => c.id === editingId ? { ...c, ...payload } : c))
+        window.dispatchEvent(new CustomEvent('callback-updated'))
         showToast('Callback updated!')
       } else {
         const { data, error } = await db.from('callbacks').insert([payload])
@@ -371,12 +593,13 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
         if (error) return showToast(error.message, 'error')
         const created = Array.isArray(data) ? data[0] : data
         if (created) setCallbacks(prev => [created, ...prev])
+        window.dispatchEvent(new CustomEvent('callback-updated'))
         showToast('Callback scheduled!')
       }
     } else {
       if (!fuForm.candidate_name) return showToast('Candidate name required', 'error')
       setSaving(true)
-      const payload = { ...fuForm, date: fuForm.date || null, user_id: user?.id }
+      const payload = { ...fuForm, status: 'pending', date: fuForm.date || null, user_id: user?.id, org_id: currentOrgId }
       if (editingId) {
         const { error } = await db.from('followups').update(payload).eq('id', editingId)
         setSaving(false)
@@ -515,7 +738,7 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
         subtitle="Callbacks, follow-ups, and re-submit opportunities — your daily contact queue in one place."
         actions={
           <Menu
-            align="end"
+            align="start"
             trigger={({ toggle }) => <Button variant="primary" leftIcon="plus" onClick={toggle}>New</Button>}
             items={[
               { label: 'Schedule Callback', icon: 'callbacks', onClick: () => openCreateCb() },
@@ -709,6 +932,37 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
           }
         >
           <div className="flex flex-col gap-4">
+            {detailKind === 'callback' && detailItem.status !== 'done' && (() => {
+              const timer = getCallbackCountdown(detailItem.date, detailItem.time, detailItem.timezone)
+              if (!timer) return null
+              return (
+                <div
+                  className={cn(
+                    'flex items-center justify-between gap-3 p-3.5 rounded-[var(--radius-md)] border shadow-xs',
+                    timer.isOverdue
+                      ? 'bg-red/10 border-red/30 text-red'
+                      : timer.urgent
+                      ? 'bg-orange/10 border-orange/30 text-orange'
+                      : 'bg-accent/10 border-accent/30 text-accent'
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={cn('w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0', timer.isOverdue ? 'bg-red/20 text-red' : 'bg-accent/20 text-accent')}>
+                      <Icon name="clock" size={16} />
+                    </span>
+                    <div>
+                      <div className="text-[10.5px] font-extrabold uppercase tracking-wider opacity-80">
+                        {timer.isOverdue ? 'Callback Overdue' : 'Countdown to Call'}
+                      </div>
+                      <div className="text-base font-extrabold font-mono tracking-tight leading-tight mt-0.5">
+                        {timer.text}
+                      </div>
+                    </div>
+                  </div>
+                  <span className={cn('w-2.5 h-2.5 rounded-full shrink-0 animate-ping', timer.isOverdue ? 'bg-red' : 'bg-accent')} />
+                </div>
+              )
+            })()}
             <DetailCard
               title={detailKind === 'callback' ? 'Callback' : 'Follow-up'}
               rows={detailKind === 'callback'
@@ -867,7 +1121,7 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
               <FormField label="Interest"><Select value={cbForm.interest} onChange={v => setCbForm(f => ({ ...f, interest: v }))} options={INTERESTS.map(o => ({ value: o, label: o }))} /></FormField>
               <FormField label="Status"><Select value={cbForm.status} onChange={v => setCbForm(f => ({ ...f, status: v }))} options={CB_STATUSES.map(o => ({ value: o, label: o }))} /></FormField>
               <FormField label="Date" required><Input type="date" value={cbForm.date} onChange={e => setCbForm(f => ({ ...f, date: e.target.value }))} /></FormField>
-              <FormField label="Time" required><Input type="time" value={cbForm.time} onChange={e => setCbForm(f => ({ ...f, time: e.target.value }))} /></FormField>
+              <FormField label="Time" required><TimePicker value={cbForm.time} onChange={v => setCbForm(f => ({ ...f, time: v }))} /></FormField>
               <FormField label="Timezone"><Select value={cbForm.timezone} onChange={v => setCbForm(f => ({ ...f, timezone: v }))} options={['EST', 'CST', 'MST', 'PST', 'IST'].map(o => ({ value: o, label: o }))} /></FormField>
             </div>
             <div className="flex flex-col gap-1.5">
@@ -940,6 +1194,8 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
   )
 }
 
+
+
 function CommCard({ item, kind, onOpen, onToggleDone, onContextMenu, actionsFor }) {
   const isCallback = kind === 'callback'
   const isDone = item.status === 'done'
@@ -948,6 +1204,15 @@ function CommCard({ item, kind, onOpen, onToggleDone, onContextMenu, actionsFor 
   const priorityTone = isCallback
     ? (priorityValue === 'Hot' ? 'red' : priorityValue === 'Warm' ? 'yellow' : 'accent')
     : (priorityValue === 'High' ? 'red' : priorityValue === 'Low' ? 'neutral' : 'yellow')
+
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    if (!isCallback || isDone) return
+    const interval = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(interval)
+  }, [isCallback, isDone])
+
+  const timer = isCallback && !isDone ? getCallbackCountdown(item.date, item.time, item.timezone, now) : null
 
   return (
     <div
@@ -970,7 +1235,26 @@ function CommCard({ item, kind, onOpen, onToggleDone, onContextMenu, actionsFor 
         <div className="flex items-center gap-1.5 flex-wrap mb-1">
           <Badge size="sm" tone={priorityTone}>{priorityValue || (isCallback ? 'Warm' : 'Medium')}</Badge>
           {item.status !== 'pending' && <StatusPill status={item.status} tone={(isCallback ? CB_STATUS_TONE : FU_STATUS_TONE)[item.status] || 'neutral'} size="sm" />}
-          {isOverdue && <Badge size="sm" tone="red">Overdue</Badge>}
+          
+          {timer && (
+            <span
+              className={cn(
+                'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10.5px] font-extrabold font-mono tracking-tight shadow-xs transition-all duration-200',
+                timer.isOverdue
+                  ? 'bg-red/15 text-red border border-red/30 animate-pulse'
+                  : timer.urgent
+                  ? 'bg-orange/15 text-orange border border-orange/30 animate-pulse'
+                  : 'bg-accent/12 text-accent border border-accent/25'
+              )}
+              title={timer.isOverdue ? `Call overdue by ${timer.raw}` : `Call due in ${timer.raw}`}
+            >
+              <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', timer.isOverdue ? 'bg-red animate-ping' : timer.urgent ? 'bg-orange animate-ping' : 'bg-accent animate-pulse')} />
+              <Icon name="clock" size={10} className="shrink-0" />
+              <span>{timer.text}</span>
+            </span>
+          )}
+
+          {!timer && isOverdue && <Badge size="sm" tone="red">Overdue</Badge>}
         </div>
         <strong className={cn('text-[13px] font-bold text-text block truncate', isDone && 'line-through text-text3')}>{item.candidate_name}</strong>
         <div className="flex items-center gap-2.5 flex-wrap mt-1 text-[10.5px] text-text3">

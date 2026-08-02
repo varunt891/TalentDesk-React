@@ -1,6 +1,9 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { Icon } from '../ui/icons'
+import Avatar from '../ui/Avatar'
+import Menu from '../ui/Menu'
 import { cn } from '../ui/utils'
 
 const navItems = [
@@ -31,21 +34,11 @@ function readJson(key, fallback) {
   }
 }
 
-export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggleCollapse, onClose, pendingTasksCount = 0 }) {
-  const { profile, organization } = useAuth()
+export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggleCollapse, onClose, pendingTasksCount = 0, theme, onToggleTheme }) {
+  const { profile, user, organization, signOut } = useAuth()
+  const navigate = useNavigate()
 
-  const [favorites, setFavorites] = useState(() => readJson('td_sidebar_favorites', []))
-  const [recentPages, setRecentPages] = useState(() => readJson('td_sidebar_recents', []))
   const [collapsedSections, setCollapsedSections] = useState(() => readJson('td_sidebar_section_state', {}))
-
-  const toggleFavorite = (id, e) => {
-    e.stopPropagation()
-    setFavorites(prev => {
-      const next = prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]
-      try { localStorage.setItem('td_sidebar_favorites', JSON.stringify(next)) } catch { /* ignore quota errors */ }
-      return next
-    })
-  }
 
   const toggleSectionCollapse = (title) => {
     setCollapsedSections(prev => {
@@ -56,16 +49,18 @@ export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggle
   }
 
   const handleNavigate = (id) => {
-    setRecentPages(prev => {
-      const next = [id, ...prev.filter(p => p !== id)].slice(0, 3)
-      try { localStorage.setItem('td_sidebar_recents', JSON.stringify(next)) } catch { /* ignore quota errors */ }
-      return next
-    })
     onNavigate(id)
+  }
+
+  const handleSignOut = async () => {
+    await signOut()
+    navigate('/login', { replace: true })
   }
 
   const role = (profile?.role || 'recruiter').toLowerCase()
   const orgName = organization?.name || 'Recruiter CRM'
+  const displayName = profile?.full_name || user?.email?.split('@')[0] || 'User'
+  const roleLabel = profile?.role ? profile.role.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Recruiter'
 
   const visibleItems = navItems.filter(item => {
     if (item.adminOnly) return ['admin', 'superadmin', 'owner'].includes(role)
@@ -77,33 +72,26 @@ export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggle
   const workspaceItems = visibleItems.filter(i => i.section === 'Workspace')
   const adminItems = visibleItems.filter(i => i.section === 'Admin')
 
-  const favoriteItems = visibleItems.filter(i => favorites.includes(i.id))
-  const recentItems = recentPages
-    .map(id => visibleItems.find(i => i.id === id))
-    .filter(i => i && i.id !== currentPage && !favorites.includes(i.id))
-    .slice(0, 3)
-
-  const showFavoritesAndRecents = !isCollapsed && (favoriteItems.length > 0 || recentItems.length > 0)
-
   return (
     <aside
       className={cn(
-        'h-full flex flex-col bg-surface2 border-r border-border shrink-0',
+        'h-full flex flex-col bg-[var(--sidebar-bg)] border-r border-border shrink-0',
         'transition-[width] duration-200 ease-[var(--ease-standard)]',
         isCollapsed ? 'w-16' : 'w-52'
       )}
     >
+      {/* Header */}
       <div className={cn('flex items-center gap-2 h-14 border-b border-border shrink-0', isCollapsed ? 'justify-center px-2' : 'justify-between px-4')}>
         {isCollapsed ? (
           <div
-            className="w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center text-sm font-extrabold bg-gradient-to-br from-accent to-accent2 text-white shrink-0"
+            className="w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center text-sm font-extrabold bg-gradient-to-br from-accent to-accent2 text-white shrink-0 shadow-[0_4px_14px_-2px_color-mix(in_srgb,var(--accent)_55%,transparent)]"
             title={orgName}
           >
             TD
           </div>
         ) : (
           <div className="min-w-0">
-            <div className="text-[15px] font-extrabold text-text tracking-tight truncate">TalentDesk</div>
+            <div className="font-serif text-[16px] font-medium text-text tracking-tight truncate">TalentDesk</div>
             <div className="text-[10px] font-semibold text-text3 uppercase tracking-wider truncate">{orgName}</div>
           </div>
         )}
@@ -127,27 +115,88 @@ export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggle
         </div>
       </div>
 
+      {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-2.5 py-3 flex flex-col gap-1">
-        {showFavoritesAndRecents && (
-          <NavSection title="Favorites & Recent" isCollapsed={isCollapsed} pinned>
-            {favoriteItems.map(item => (
-              <NavItem key={`fav-${item.id}`} item={item} active={currentPage === item.id} onClick={() => handleNavigate(item.id)} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} isFavorite onToggleFavorite={(e) => toggleFavorite(item.id, e)} />
-            ))}
-            {recentItems.map(item => (
-              <NavItem key={`recent-${item.id}`} item={item} active={false} onClick={() => handleNavigate(item.id)} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} isFavorite={false} onToggleFavorite={(e) => toggleFavorite(item.id, e)} muted />
-            ))}
-          </NavSection>
-        )}
-
-        <NavSection title="Main" items={mainItems} currentPage={currentPage} onNavigate={handleNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} favorites={favorites} onToggleFavorite={toggleFavorite} collapsed={!!collapsedSections['Main']} onToggleCollapse={() => toggleSectionCollapse('Main')} />
-        <NavSection title="Tools" items={toolItems} currentPage={currentPage} onNavigate={handleNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} favorites={favorites} onToggleFavorite={toggleFavorite} collapsed={!!collapsedSections['Tools']} onToggleCollapse={() => toggleSectionCollapse('Tools')} />
+        <NavSection title="Main" items={mainItems} currentPage={currentPage} onNavigate={handleNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} collapsed={!!collapsedSections['Main']} onToggleCollapse={() => toggleSectionCollapse('Main')} />
+        <NavSection title="Tools" items={toolItems} currentPage={currentPage} onNavigate={handleNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} collapsed={!!collapsedSections['Tools']} onToggleCollapse={() => toggleSectionCollapse('Tools')} />
         {workspaceItems.length > 0 && (
-          <NavSection title="Workspace" items={workspaceItems} currentPage={currentPage} onNavigate={handleNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} favorites={favorites} onToggleFavorite={toggleFavorite} collapsed={!!collapsedSections['Workspace']} onToggleCollapse={() => toggleSectionCollapse('Workspace')} />
+          <NavSection title="Workspace" items={workspaceItems} currentPage={currentPage} onNavigate={handleNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} collapsed={!!collapsedSections['Workspace']} onToggleCollapse={() => toggleSectionCollapse('Workspace')} />
         )}
         {adminItems.length > 0 && (
-          <NavSection title="Admin" items={adminItems} currentPage={currentPage} onNavigate={handleNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} favorites={favorites} onToggleFavorite={toggleFavorite} collapsed={!!collapsedSections['Admin']} onToggleCollapse={() => toggleSectionCollapse('Admin')} />
+          <NavSection title="Admin" items={adminItems} currentPage={currentPage} onNavigate={handleNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} collapsed={!!collapsedSections['Admin']} onToggleCollapse={() => toggleSectionCollapse('Admin')} />
         )}
       </nav>
+
+      {/* Profile + Theme Footer */}
+      <div className={cn('border-t border-border shrink-0 p-2', isCollapsed ? 'flex flex-col items-center gap-2' : 'flex flex-col gap-1.5')}>
+        {/* Account menu trigger */}
+        <Menu
+          align="start"
+          className={isCollapsed ? '' : 'w-full'}
+          trigger={({ open, toggle }) => (
+            <button
+              type="button"
+              onClick={toggle}
+              title={isCollapsed ? displayName : undefined}
+              aria-label="Account menu"
+              className={cn(
+                'focus-ring flex items-center min-w-0 rounded-[var(--radius-md)] border transition-colors duration-[var(--duration-fast)]',
+                isCollapsed ? 'w-9 h-9 justify-center p-0' : 'w-full gap-2.5 px-2 py-1.5',
+                open ? 'bg-surface3 border-border-strong shadow-xs' : 'border-transparent hover:bg-surface3/70 hover:border-border'
+              )}
+            >
+              <Avatar name={displayName} size="sm" className="shrink-0" />
+              {!isCollapsed && (
+                <>
+                  <div className="min-w-0 flex-1 text-left">
+                    <div className="text-[12.5px] font-semibold text-text truncate">{displayName}</div>
+                    <div className="text-[10px] font-bold text-text3 uppercase tracking-wide truncate">{roleLabel}</div>
+                  </div>
+                  <Icon name="chevronsUpDown" size={13} className="text-text3 shrink-0" />
+                </>
+              )}
+            </button>
+          )}
+          items={[
+            { label: user?.email || displayName, disabled: true },
+            'divider',
+            { label: 'Sign out', icon: 'logout', danger: true, onClick: handleSignOut },
+          ]}
+        />
+
+        {/* Theme toggle */}
+        {isCollapsed ? (
+          <button
+            type="button"
+            onClick={onToggleTheme}
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="focus-ring w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center text-text3 hover:text-text hover:bg-surface3 transition-colors duration-[var(--duration-fast)]"
+          >
+            <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={14} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onToggleTheme}
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="focus-ring relative flex items-center h-8 w-full rounded-full bg-surface3/70 border border-border/70 hover:border-border-strong transition-colors duration-[var(--duration-fast)]"
+          >
+            <span
+              className={cn(
+                'absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-full bg-surface shadow-sm transition-[left] duration-200 ease-[var(--ease-standard)]',
+                theme === 'dark' ? 'left-0.5' : 'left-1/2'
+              )}
+            />
+            <span className={cn('relative z-10 flex-1 flex items-center justify-center gap-1.5 h-full text-[10.5px] font-bold transition-colors duration-[var(--duration-fast)]', theme === 'dark' ? 'text-text' : 'text-text3')}>
+              <Icon name="moon" size={11} /> Dark
+            </span>
+            <span className={cn('relative z-10 flex-1 flex items-center justify-center gap-1.5 h-full text-[10.5px] font-bold transition-colors duration-[var(--duration-fast)]', theme === 'light' ? 'text-text' : 'text-text3')}>
+              <Icon name="sun" size={11} /> Light
+            </span>
+          </button>
+        )}
+      </div>
     </aside>
   )
 }
@@ -199,9 +248,9 @@ function NavItem({ item, active, onClick, isCollapsed, pendingTasksCount, isFavo
         onClick={onClick}
         title={isCollapsed ? item.label : undefined}
         className={cn(
-          'focus-ring relative flex items-center gap-2.5 w-full h-[34px] rounded-[var(--radius-sm)] text-[13px] font-semibold transition-colors duration-[var(--duration-fast)]',
+          'focus-ring relative flex items-center gap-2.5 w-full h-[34px] rounded-[var(--radius-md)] text-[13px] font-semibold transition-[background-color,box-shadow,color] duration-[var(--duration-fast)]',
           isCollapsed ? 'justify-center px-0' : 'px-2.5',
-          active ? 'bg-accent/12 text-accent shadow-[inset_0_0_0_1px_rgba(59,130,246,0.14)]' : muted ? 'text-text3 hover:bg-surface3 hover:text-text2' : 'text-text2 hover:bg-surface3 hover:text-text'
+          active ? 'bg-accent/14 text-accent shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent)_22%,transparent)]' : muted ? 'text-text3 hover:bg-surface3 hover:text-text2' : 'text-text2 hover:bg-surface3 hover:text-text'
         )}
       >
         <span className="relative shrink-0 flex items-center justify-center">

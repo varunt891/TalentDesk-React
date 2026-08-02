@@ -24,7 +24,19 @@ const APPLICANT_MESSAGES = [
 const ACTION_STATES = ['hire', 'review', 'coffee', 'peek', 'sit', 'sleep', 'work']
 const APPLICANT_IDLE_ACTIONS = ['idle', 'wave', 'phone', 'coffee', 'look']
 
-export default function PixelRobot({ currentPath = '' }) {
+// Maps App.jsx's internal `currentPage` keys to a human label for the
+// robot's page-change reaction (this app navigates via client state, not
+// the URL, so the browser location never changes — currentPage is the only
+// reliable signal for "the recruiter just went somewhere new").
+const PAGE_LABELS = {
+  dashboard: 'the Dashboard', tasks: 'Tasks', ai_center: 'the AI Copilot Center',
+  candidates: 'Candidates', jobs: 'Job Openings', pipeline: 'the Pipeline Board',
+  callbacks: 'Callbacks', followups: 'Follow-ups', reports: 'Reports',
+  postings: 'Postings', directory: 'the Directory', resubmit: 'Resubmit',
+  org_settings: 'Settings', team_management: 'Team Management', admin: 'Admin',
+}
+
+export default function PixelRobot({ currentPage = '', robotInsights = [], applicantInsights = [], onNavigate }) {
   const [posX, setPosX] = useState(30) // Position % inside Left TopBar Space (8% to 75%)
   const [targetX, setTargetX] = useState(30)
   const [dir, setDir] = useState(1) // 1 = right, -1 = left
@@ -37,24 +49,67 @@ export default function PixelRobot({ currentPath = '' }) {
   const [blink, setBlink] = useState(false)
   const [legStep, setLegStep] = useState(false)
   const [showRobotSpeech, setShowRobotSpeech] = useState(false)
-  const [robotSpeechText, setRobotSpeechText] = useState('')
+  const [robotSpeech, setRobotSpeech] = useState({ text: '', emoji: '🤖', path: null })
   const [showApplicantSpeech, setShowApplicantSpeech] = useState(false)
-  const [applicantSpeechText, setApplicantSpeechText] = useState('')
+  const [applicantSpeech, setApplicantSpeech] = useState({ text: '', emoji: '📄' })
   const [isHovered, setIsHovered] = useState(false)
 
   const DwellTimerRef = useRef(null)
   const SpeechTimerRef = useRef(null)
   const ApplicantSpeechTimerRef = useRef(null)
-  const PrevPathRef = useRef(currentPath)
+  const PrevPageRef = useRef(currentPage)
 
-  const getRandomMsg = (stateKey) => {
-    const pool = ROBOT_MESSAGES[stateKey] || ROBOT_MESSAGES.sit
-    return pool[Math.floor(Math.random() * pool.length)]
+  // Kept in refs (rather than read directly from props) so the periodic
+  // interval callbacks below always see the latest live data without
+  // needing to be torn down and rebuilt every time a new snapshot lands.
+  const robotInsightsRef = useRef(robotInsights)
+  const applicantInsightsRef = useRef(applicantInsights)
+  useEffect(() => { robotInsightsRef.current = robotInsights || [] }, [robotInsights])
+  useEffect(() => { applicantInsightsRef.current = applicantInsights || [] }, [applicantInsights])
+
+  const lastRobotMsgRef = useRef('')
+  const lastApplicantMsgRef = useRef('')
+
+  // Picks a message for a given robot state, blending real live insights
+  // (workspace counts, real candidate/job names) with a small pool of
+  // flavor lines for personality — and avoids repeating the same line twice
+  // in a row. Sleep is flavor-only; it wouldn't make sense for a "sleeping"
+  // bot to report live stats.
+  const pickRobotMessage = (stateKey) => {
+    const flavorPool = (ROBOT_MESSAGES[stateKey] || ROBOT_MESSAGES.sit).map(text => ({ text, emoji: null, path: null }))
+    const live = stateKey === 'sleep' ? [] : robotInsightsRef.current.filter(i => !i.isHireEvent)
+    const pool = live.length ? [...live, ...flavorPool.slice(0, 2)] : flavorPool
+    let choice
+    let tries = 0
+    do {
+      choice = pool[Math.floor(Math.random() * pool.length)]
+      tries += 1
+    } while (pool.length > 1 && choice.text === lastRobotMsgRef.current && tries < 6)
+    lastRobotMsgRef.current = choice.text
+    return choice
   }
 
-  const triggerRobotSpeech = (msg = null, duration = 3200) => {
+  const pickApplicantMessage = () => {
+    const flavorPool = APPLICANT_MESSAGES.map(text => ({ text, emoji: null }))
+    const pool = applicantInsightsRef.current.length ? applicantInsightsRef.current : flavorPool
+    let choice
+    let tries = 0
+    do {
+      choice = pool[Math.floor(Math.random() * pool.length)]
+      tries += 1
+    } while (pool.length > 1 && choice.text === lastApplicantMsgRef.current && tries < 6)
+    lastApplicantMsgRef.current = choice.text
+    return choice
+  }
+
+  const triggerRobotSpeech = (msgObj = null, duration = 3200) => {
     setShowApplicantSpeech(false) // Hide applicant bubble when robot speaks
-    setRobotSpeechText(msg || getRandomMsg(robotState))
+    const resolved = msgObj || pickRobotMessage(robotState)
+    setRobotSpeech({
+      text: resolved.text,
+      emoji: resolved.emoji || (robotState === 'hire' ? '🎉' : '🤖'),
+      path: resolved.path || null,
+    })
     setShowRobotSpeech(true)
     if (SpeechTimerRef.current) clearTimeout(SpeechTimerRef.current)
     SpeechTimerRef.current = setTimeout(() => {
@@ -62,9 +117,10 @@ export default function PixelRobot({ currentPath = '' }) {
     }, duration)
   }
 
-  const triggerApplicantSpeech = (msg = null, duration = 3000) => {
+  const triggerApplicantSpeech = (msgObj = null, duration = 3000) => {
     setShowRobotSpeech(false) // Hide robot bubble when applicant speaks
-    setApplicantSpeechText(msg || APPLICANT_MESSAGES[Math.floor(Math.random() * APPLICANT_MESSAGES.length)])
+    const resolved = msgObj || pickApplicantMessage()
+    setApplicantSpeech({ text: resolved.text, emoji: resolved.emoji || '📄' })
     setShowApplicantSpeech(true)
     if (ApplicantSpeechTimerRef.current) clearTimeout(ApplicantSpeechTimerRef.current)
     ApplicantSpeechTimerRef.current = setTimeout(() => {
@@ -86,7 +142,9 @@ export default function PixelRobot({ currentPath = '' }) {
   }, [applicantState])
 
   // Trigger robot to walk to the applicant on extreme left and say "YOU'RE HIRED!"
-  const triggerHiringEvent = (force = false) => {
+  // When a real recently-hired candidate is passed in (hireInsight), the whole
+  // exchange is personalized with their actual name and job title.
+  const triggerHiringEvent = (force = false, hireInsight = null) => {
     const now = Date.now()
     // Unless clicked manually (force=true), enforce a 2.5 minute (150,000ms) cooldown between automated hiring walks
     if (!force && (now - lastHiringTimeRef.current < 150000)) {
@@ -102,8 +160,16 @@ export default function PixelRobot({ currentPath = '' }) {
     const walkDist = Math.abs(10 - posX)
     const walkTime = Math.max(1000, (walkDist / 0.4) * 100)
 
+    const candidateName = hireInsight?.candidate?.first_name?.trim()
+    const jobTitle = hireInsight?.candidate?.job_title
+
     // Phase 1: Applicant asks for resume review while robot is walking
-    triggerApplicantSpeech("Hey Copilot, check my resume! 📄", walkTime)
+    triggerApplicantSpeech(
+      candidateName
+        ? { text: `Hey Copilot, how's my application for ${jobTitle || 'the role'}?`, emoji: '📄' }
+        : { text: 'Hey Copilot, check my resume!', emoji: '📄' },
+      walkTime
+    )
 
     if (DwellTimerRef.current) clearTimeout(DwellTimerRef.current)
     DwellTimerRef.current = setTimeout(() => {
@@ -111,14 +177,19 @@ export default function PixelRobot({ currentPath = '' }) {
       setDir(-1) // Face applicant on left
       setRobotState('hire')
       setApplicantState('celebrate')
-      triggerRobotSpeech(ROBOT_MESSAGES.hired[Math.floor(Math.random() * ROBOT_MESSAGES.hired.length)], 2800)
+      triggerRobotSpeech(
+        candidateName
+          ? { text: `${candidateName}, YOU'RE HIRED for ${jobTitle || 'the role'}! 🎉`, emoji: '🎉' }
+          : { text: ROBOT_MESSAGES.hired[Math.floor(Math.random() * ROBOT_MESSAGES.hired.length)], emoji: '🎉' },
+        2800
+      )
 
       setTimeout(() => {
         setApplicantState('idle')
         setApplicantAction('idle')
 
-        // Phase 3: Robot walks back out to main topbar playground (35% to 65%) and resumes solo actions
-        const returnPos = Math.floor(35 + Math.random() * 30)
+        // Phase 3: Robot walks back out to main topbar playground (20% to 40%) and resumes solo actions
+        const returnPos = Math.floor(20 + Math.random() * 20)
         setTargetX(returnPos)
         setRobotState('walk')
         setTimeout(() => setRobotState('sit'), 2000)
@@ -139,27 +210,34 @@ export default function PixelRobot({ currentPath = '' }) {
     return () => clearInterval(blinkInterval)
   }, [robotState])
 
-  // React dynamically to page navigation
+  // React dynamically to in-app page navigation. This app routes via
+  // App.jsx's `currentPage` state rather than the URL, so this listens to
+  // that instead of the browser location (which never changes here).
   useEffect(() => {
-    if (currentPath && currentPath !== PrevPathRef.current) {
-      PrevPathRef.current = currentPath
+    if (currentPage && currentPage !== PrevPageRef.current) {
+      PrevPageRef.current = currentPage
       setRobotState('peek')
-      triggerRobotSpeech("New recruiting page loaded! 🎯", 3500)
+      const label = PAGE_LABELS[currentPage] || 'this page'
+      const relevant = pickRobotMessage('peek')
+      const showLabel = Math.random() < 0.5 || !relevant?.text
+      triggerRobotSpeech(showLabel ? { text: `Now viewing ${label} 👀`, emoji: '🧭' } : relevant, 3500)
     }
-  }, [currentPath])
+  }, [currentPage])
 
   // Schedule robot solo walks & periodic hiring interaction events (every 2.5 mins)
   const triggerNextAction = () => {
     const now = Date.now()
     // Check if 2.5 minutes have passed since last hiring event
     if (now - lastHiringTimeRef.current >= 150000) {
-      if (triggerHiringEvent(false)) return
+      const realHire = robotInsightsRef.current.find(i => i.isHireEvent)
+      if (triggerHiringEvent(false, realHire)) return
     }
 
     const nextAction = ACTION_STATES.filter(a => a !== 'hire')[Math.floor(Math.random() * (ACTION_STATES.length - 1))]
+    const msg = pickRobotMessage(nextAction)
 
     if (Math.random() < 0.6) {
-      let newTarget = Math.floor(28 + Math.random() * 45)
+      let newTarget = Math.floor(20 + Math.random() * 20)
       setTargetX(newTarget)
       setRobotState('walk')
 
@@ -169,19 +247,21 @@ export default function PixelRobot({ currentPath = '' }) {
       if (DwellTimerRef.current) clearTimeout(DwellTimerRef.current)
       DwellTimerRef.current = setTimeout(() => {
         setRobotState(nextAction)
+        triggerRobotSpeech(msg, 3400)
       }, walkTime)
     } else {
       setRobotState(nextAction)
+      triggerRobotSpeech(msg, 3400)
     }
   }
 
-  // Action loop (Every 8.5 seconds)
+  // Action loop (Every 7.5 seconds)
   useEffect(() => {
     const interval = setInterval(() => {
-      if (!isHovered && robotState !== 'walk') {
+      if (!isHovered && robotState !== 'walk' && robotState !== 'hire') {
         triggerNextAction()
       }
-    }, 8500)
+    }, 7500)
     return () => clearInterval(interval)
   }, [posX, robotState, isHovered])
 
@@ -205,10 +285,21 @@ export default function PixelRobot({ currentPath = '' }) {
     return () => clearInterval(moveTimer)
   }, [robotState, targetX])
 
-  // Handle direct click interaction on Robot
+  // Handle direct click interaction on Robot. If there's a real, not-yet-
+  // celebrated hire in the live data it always gets the walk-over dance;
+  // otherwise there's a smaller chance of the dance for fun, and most
+  // clicks instead give an instant fresh, data-driven reaction — clicking
+  // repeatedly should feel responsive, not replay the same animation.
   const handleRobotClick = (e) => {
     e.stopPropagation()
-    triggerHiringEvent(true)
+    const realHire = robotInsightsRef.current.find(i => i.isHireEvent)
+    if (realHire || Math.random() < 0.4) {
+      triggerHiringEvent(true, realHire)
+      return
+    }
+    const nextState = robotState === 'sleep' || robotState === 'walk' ? 'peek' : robotState
+    setRobotState(nextState)
+    triggerRobotSpeech(pickRobotMessage('click'), 3400)
   }
 
   // Handle direct click on Job Seeker
@@ -222,7 +313,7 @@ export default function PixelRobot({ currentPath = '' }) {
     <div className="relative w-full h-full flex items-center select-none overflow-visible">
       {/* 1. EXTREME LEFT PIXELATED JOB APPLICANT (EXACT SAME SIZE AS ROBOT: w-8 h-8 / 32x32px) */}
       <div
-        className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center gap-1.5 cursor-pointer group z-[15]"
+        className="absolute left-0 top-[40%] -translate-y-1/2 flex items-center gap-1.5 cursor-pointer group z-[15]"
         onClick={handleApplicantClick}
         title="Job Candidate — Click to trigger interview & hire!"
       >
@@ -234,9 +325,9 @@ export default function PixelRobot({ currentPath = '' }) {
 
           {/* APPLICANT SPEECH BUBBLE */}
           {showApplicantSpeech && (
-            <div className="absolute left-[calc(100%+6px)] top-1/2 -translate-y-1/2 px-2.5 py-1 bg-surface border border-border shadow-xs rounded-full text-[11px] font-medium text-text whitespace-nowrap z-[100] animate-in fade-in slide-in-from-left-2 duration-150 flex items-center gap-1.5 shrink-0 pointer-events-none">
-              <span className="text-[10px]">📄</span>
-              <span className="tracking-tight max-w-[160px] sm:max-w-[200px] truncate">{applicantSpeechText}</span>
+            <div className="absolute top-[calc(100%+2px)] left-0 px-2 py-0.5 bg-surface border border-border shadow-xs rounded-full text-[10.5px] font-medium text-text whitespace-nowrap z-[100] animate-in fade-in slide-in-from-top-1 duration-150 flex items-center gap-1 shrink-0 pointer-events-none">
+              <span className="text-[10px]">{applicantSpeech.emoji || '📄'}</span>
+              <span className="tracking-tight max-w-[130px] sm:max-w-[170px] truncate">{applicantSpeech.text}</span>
             </div>
           )}
 
@@ -341,7 +432,7 @@ export default function PixelRobot({ currentPath = '' }) {
 
       {/* 2. RECRUITMENT PIXEL ROBOT & INLINE HORIZONTAL SPEECH PILL (EXACT SAME SIZE: w-8 h-8 / 32x32px) */}
       <div
-        className="absolute top-1/2 -translate-y-1/2 flex items-center gap-2 cursor-pointer transition-all duration-150 ease-out z-[20]"
+        className="absolute top-[40%] -translate-y-1/2 flex items-center gap-2 cursor-pointer transition-all duration-150 ease-out z-[20]"
         style={{ left: `${posX}%` }}
         onClick={handleRobotClick}
         onMouseEnter={() => {
@@ -554,11 +645,28 @@ export default function PixelRobot({ currentPath = '' }) {
           />
         </div>
 
-        {/* INLINE HORIZONTAL SPEECH PILL */}
+        {/* SPEECH PILL BELOW ROBOT — sits in bottom space of TopBar */}
         {(showRobotSpeech || isHovered) && !showApplicantSpeech && (
-          <div className="px-2.5 py-1 bg-surface border border-border shadow-xs rounded-full text-[11px] font-medium text-text whitespace-nowrap z-[100] animate-in fade-in slide-in-from-left-2 duration-150 flex items-center gap-1.5 shrink-0 pointer-events-none">
-            <span className="text-[10px]">{robotState === 'hire' ? '🎉' : '🤖'}</span>
-            <span className="tracking-tight max-w-[180px] sm:max-w-[260px] truncate">{robotSpeechText || getRandomMsg(robotState)}</span>
+          <div className={cn(
+            "absolute top-[calc(100%+2px)] z-[100] animate-in fade-in slide-in-from-top-1 duration-150 pointer-events-auto",
+            posX > 35 ? "right-0" : "left-0"
+          )}>
+            {robotSpeech.path ? (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onNavigate?.(robotSpeech.path) }}
+                className="px-2 py-0.5 bg-surface border border-accent/40 hover:border-accent hover:bg-accent/10 shadow-xs rounded-full text-[10.5px] font-medium text-text whitespace-nowrap flex items-center gap-1 transition-colors cursor-pointer"
+                title="Click to view"
+              >
+                <span className="text-[10px]">{robotSpeech.emoji || '🤖'}</span>
+                <span className="tracking-tight max-w-[130px] sm:max-w-[180px] truncate">{robotSpeech.text}</span>
+              </button>
+            ) : (
+              <div className="px-2 py-0.5 bg-surface border border-border shadow-xs rounded-full text-[10.5px] font-medium text-text whitespace-nowrap flex items-center gap-1 pointer-events-none">
+                <span className="text-[10px]">{robotSpeech.emoji || '🤖'}</span>
+                <span className="tracking-tight max-w-[130px] sm:max-w-[180px] truncate">{robotSpeech.text}</span>
+              </div>
+            )}
           </div>
         )}
       </div>

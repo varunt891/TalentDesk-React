@@ -120,7 +120,7 @@ export default function SubmissionPacketModal({ isOpen, onClose, candidate, job 
       // Headers
       if (trimmed.startsWith('### ')) {
         closeList()
-        html += `<h3 style="color:#2563eb;font-size:16px;font-weight:700;margin-top:24px;margin-bottom:10px;border-bottom:1px solid #e2e8f0;padding-bottom:6px;">${formatInline(trimmed.replace('### ', ''))}</h3>`
+        html += `<h3 style="color:#0d9488;font-size:16px;font-weight:700;margin-top:24px;margin-bottom:10px;border-bottom:1px solid #e2e8f0;padding-bottom:6px;">${formatInline(trimmed.replace('### ', ''))}</h3>`
         return
       }
       if (trimmed.startsWith('#### ')) {
@@ -130,7 +130,7 @@ export default function SubmissionPacketModal({ isOpen, onClose, candidate, job 
       }
       if (trimmed.startsWith('## ')) {
         closeList()
-        html += `<h2 style="color:#0f172a;font-size:18px;font-weight:800;margin-top:28px;margin-bottom:12px;border-bottom:2px solid #2563eb;padding-bottom:6px;">${formatInline(trimmed.replace('## ', ''))}</h2>`
+        html += `<h2 style="color:#0f172a;font-size:18px;font-weight:800;margin-top:28px;margin-bottom:12px;border-bottom:2px solid #0d9488;padding-bottom:6px;">${formatInline(trimmed.replace('## ', ''))}</h2>`
         return
       }
 
@@ -190,9 +190,9 @@ export default function SubmissionPacketModal({ isOpen, onClose, candidate, job 
           </style>
         </head>
         <body>
-          <div style="border-bottom: 2px solid #2563eb; padding-bottom: 12px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-end;">
+          <div style="border-bottom: 2px solid #0d9488; padding-bottom: 12px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-end;">
             <div>
-              <div style="font-size: 20px; font-weight: 800; color: #2563eb;">${brandHeader} SUBMISSION PACKET</div>
+              <div style="font-size: 20px; font-weight: 800; color: #0d9488;">${brandHeader} SUBMISSION PACKET</div>
               <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Confidential Client Submission Profile</div>
             </div>
             <div style="text-align: right; font-size: 12px; color: #64748b;">
@@ -250,7 +250,7 @@ export default function SubmissionPacketModal({ isOpen, onClose, candidate, job 
               <span>⚡ 1-Click Client Submission Package</span>
             </div>
             <div style={{ fontSize: '13px', color: 'var(--text3, #8f92a1)', marginTop: '2px' }}>
-              Candidate: <strong style={{ color: 'var(--text, #fff)' }}>{candidate?.first_name} {candidate?.last_name}</strong> → Target Job: <strong style={{ color: 'var(--accent, #4f7cff)' }}>{job?.title} ({job?.job_id || 'Req'})</strong>
+              Candidate: <strong style={{ color: 'var(--text, #fff)' }}>{candidate?.first_name} {candidate?.last_name}</strong> → Target Job: <strong style={{ color: 'var(--accent, #0d9488)' }}>{job?.title} ({job?.job_id || 'Req'})</strong>
             </div>
           </div>
           <button
@@ -287,9 +287,9 @@ export default function SubmissionPacketModal({ isOpen, onClose, candidate, job 
                 padding: '6px 14px',
                 borderRadius: '8px',
                 border: '1px solid',
-                borderColor: activeTab === 'packet' ? 'var(--accent, #4f7cff)' : 'transparent',
-                background: activeTab === 'packet' ? 'rgba(79, 124, 255, 0.15)' : 'transparent',
-                color: activeTab === 'packet' ? 'var(--accent, #4f7cff)' : 'var(--text2, #b0b4c0)',
+                borderColor: activeTab === 'packet' ? 'var(--accent, #0d9488)' : 'transparent',
+                background: activeTab === 'packet' ? 'color-mix(in srgb, var(--accent) 15%, transparent)' : 'transparent',
+                color: activeTab === 'packet' ? 'var(--accent, #0d9488)' : 'var(--text2, #b0b4c0)',
                 fontSize: '13px',
                 fontWeight: '600',
                 cursor: 'pointer'
@@ -303,9 +303,9 @@ export default function SubmissionPacketModal({ isOpen, onClose, candidate, job 
                 padding: '6px 14px',
                 borderRadius: '8px',
                 border: '1px solid',
-                borderColor: activeTab === 'raw' ? 'var(--accent, #4f7cff)' : 'transparent',
-                background: activeTab === 'raw' ? 'rgba(79, 124, 255, 0.15)' : 'transparent',
-                color: activeTab === 'raw' ? 'var(--accent, #4f7cff)' : 'var(--text2, #b0b4c0)',
+                borderColor: activeTab === 'raw' ? 'var(--accent, #0d9488)' : 'transparent',
+                background: activeTab === 'raw' ? 'color-mix(in srgb, var(--accent) 15%, transparent)' : 'transparent',
+                color: activeTab === 'raw' ? 'var(--accent, #0d9488)' : 'var(--text2, #b0b4c0)',
                 fontSize: '13px',
                 fontWeight: '600',
                 cursor: 'pointer'
@@ -342,7 +342,7 @@ export default function SubmissionPacketModal({ isOpen, onClose, candidate, job 
                 padding: '7px 16px',
                 borderRadius: '8px',
                 border: 'none',
-                background: copied ? 'var(--green, #2ecc8f)' : 'var(--accent, #4f7cff)',
+                background: copied ? 'var(--green, #2ecc8f)' : 'var(--accent, #0d9488)',
                 color: '#fff',
                 fontSize: '13px',
                 fontWeight: '600',
