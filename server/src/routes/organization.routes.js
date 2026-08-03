@@ -110,7 +110,7 @@ function getFrontendClientOrigin(req) {
 // POST /api/organization/onboard - Superadmin Onboard New Organization
 router.post('/onboard', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const { name, domain, website, industry, subscription_plan = 'Growth', candidate_limit = 500, ai_credit_limit = 1000, owner_name, owner_email } = req.body
+    const { name, domain, website, industry, subscription_plan = 'Growth', candidate_limit = 15000, ai_credit_limit = 1000, owner_name, owner_email, slug: inputSlug } = req.body
 
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Organization name is required' })
@@ -118,7 +118,8 @@ router.post('/onboard', requireAuth, requireAdmin, async (req, res, next) => {
 
     const cleanName = name.trim()
     const cleanDomain = domain ? domain.trim().toLowerCase() : null
-    const slug = cleanName.toLowerCase().replace(/\s+/g, '-').replace(/[^\w\-]+/g, '') + '-' + Math.floor(1000 + Math.random() * 9000)
+    const customSlug = inputSlug && inputSlug.trim() ? inputSlug.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^\w\-]+/g, '') : null
+    const slug = customSlug || (cleanName.toLowerCase().replace(/\s+/g, '-').replace(/[^\w\-]+/g, '') + '-' + Math.floor(1000 + Math.random() * 9000))
 
     const org = await prisma.organization.create({
       data: {
@@ -310,9 +311,12 @@ router.put('/', requireAuth, requireAdmin, async (req, res, next) => {
 
     let planData = {}
     if (subscription_plan) {
-      if (subscription_plan === 'Starter') planData = { subscription_plan: 'Starter', candidate_limit: 250, ai_credit_limit: 250 }
-      else if (subscription_plan === 'Growth') planData = { subscription_plan: 'Growth', candidate_limit: 500, ai_credit_limit: 1000 }
-      else if (subscription_plan === 'Enterprise') planData = { subscription_plan: 'Enterprise', candidate_limit: 2500, ai_credit_limit: 5000 }
+      if (subscription_plan === 'Starter') planData = { subscription_plan: 'Starter', candidate_limit: 2500, ai_credit_limit: 250 }
+      else if (subscription_plan === 'Growth') planData = { subscription_plan: 'Growth', candidate_limit: 15000, ai_credit_limit: 1000 }
+      // Enterprise's candidate limit isn't actually enforced (data.routes.js /
+      // upload.routes.js bypass the check entirely for this plan) — 100,000
+      // here is just a sensible number for usage-progress displays.
+      else if (subscription_plan === 'Enterprise') planData = { subscription_plan: 'Enterprise', candidate_limit: 100000, ai_credit_limit: 5000 }
     }
 
     const updated = await prisma.organization.update({
@@ -375,6 +379,97 @@ router.get('/members', requireAuth, async (req, res, next) => {
         manager_id: m.user.manager_id,
         is_active: m.user.is_active,
       })),
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// GET /api/organization/ai-usage - Real, server-recorded AI credit usage per
+// staff member for the current billing month (replaces the old
+// localStorage-based client computation, which could only ever see events
+// logged in the current browser — every other staff member showed fake demo
+// numbers instead of their real usage).
+router.get('/ai-usage', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const orgId = req.organizationId
+    if (!orgId) return res.json({ data: null })
+
+    const now = new Date()
+    const periodStart = new Date(now.getFullYear(), now.getMonth(), 1)
+
+    const [org, members, events] = await Promise.all([
+      prisma.organization.findUnique({ where: { id: orgId } }),
+      prisma.organizationMember.findMany({
+        where: { organization_id: orgId },
+        include: {
+          user: { select: { id: true, email: true, full_name: true, department: true, team: true, is_active: true } },
+        },
+      }),
+      prisma.aiUsageEvent.findMany({
+        where: { org_id: orgId, created_at: { gte: periodStart } },
+        select: { user_id: true, type: true, tool_id: true, created_at: true },
+      }),
+    ])
+
+    const perUser = {}
+    for (const event of events) {
+      if (!event.user_id) continue
+      const bucket = perUser[event.user_id] || (perUser[event.user_id] = {
+        creditsUsed: 0, chatCount: 0, actionCount: 0, autoCount: 0, toolCounts: {}, lastActive: null,
+      })
+      bucket.creditsUsed += 1
+      if (event.type === 'chat') bucket.chatCount += 1
+      else if (event.type === 'automation') bucket.autoCount += 1
+      else bucket.actionCount += 1
+      if (event.tool_id) bucket.toolCounts[event.tool_id] = (bucket.toolCounts[event.tool_id] || 0) + 1
+      if (!bucket.lastActive || event.created_at > bucket.lastActive) bucket.lastActive = event.created_at
+    }
+
+    const staffList = members.map(m => {
+      const bucket = perUser[m.user_id]
+      const topToolId = bucket
+        ? Object.entries(bucket.toolCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || null
+        : null
+      return {
+        memberId: m.id,
+        userId: m.user_id,
+        name: m.user?.full_name || m.user?.email?.split('@')[0] || 'Staff Member',
+        email: m.user?.email || '—',
+        role: m.role || 'recruiter',
+        department: m.user?.department || m.user?.team || 'Recruiting',
+        creditsUsed: bucket?.creditsUsed || 0,
+        chatCount: bucket?.chatCount || 0,
+        actionCount: bucket?.actionCount || 0,
+        autoCount: bucket?.autoCount || 0,
+        topToolId,
+        lastActive: bucket?.lastActive || null,
+        isActive: m.user?.is_active !== false,
+      }
+    }).sort((a, b) => b.creditsUsed - a.creditsUsed)
+
+    const totalCreditsUsed = staffList.reduce((sum, s) => sum + s.creditsUsed, 0)
+    const creditLimit = org?.ai_credit_limit || 1000
+    const staffWithShare = staffList.map(s => ({
+      ...s,
+      percentShare: totalCreditsUsed > 0 ? Math.round((s.creditsUsed / totalCreditsUsed) * 100) : 0,
+    }))
+
+    res.json({
+      data: {
+        creditLimit,
+        totalCreditsUsed,
+        percentUsed: Math.min(100, Math.round((totalCreditsUsed / creditLimit) * 100)),
+        remainingCredits: Math.max(0, creditLimit - totalCreditsUsed),
+        totalChat: staffList.reduce((sum, s) => sum + s.chatCount, 0),
+        totalAction: staffList.reduce((sum, s) => sum + s.actionCount, 0),
+        totalAuto: staffList.reduce((sum, s) => sum + s.autoCount, 0),
+        totalRequests: totalCreditsUsed,
+        activeStaffCount: staffList.filter(s => s.creditsUsed > 0).length,
+        totalStaffCount: staffList.length,
+        periodStart: periodStart.toISOString(),
+        staffList: staffWithShare,
+      },
     })
   } catch (err) {
     next(err)

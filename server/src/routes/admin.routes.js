@@ -344,4 +344,251 @@ router.post('/seed-demo-profiles', async (req, res, next) => {
   }
 })
 
+// GET /api/admin/platform/ai-usage - Real platform-wide AI usage for Superadmins
+router.get('/platform/ai-usage', async (req, res, next) => {
+  try {
+    const role = (req.memberRole || req.profile?.role || '').toUpperCase()
+    const isSuperAdmin = role === 'SUPERADMIN' || req.profile?.role === 'superadmin'
+
+    if (!isSuperAdmin) {
+      return res.status(403).json({ error: 'Superadmin privileges required to access platform AI usage.' })
+    }
+
+    const { days = '30' } = req.query
+    const numDays = parseInt(days, 10) || 30
+
+    let periodStart = null
+    if (numDays > 0) {
+      periodStart = new Date()
+      periodStart.setDate(periodStart.getDate() - numDays)
+      periodStart.setHours(0, 0, 0, 0)
+    }
+
+    const whereClause = periodStart ? { created_at: { gte: periodStart } } : {}
+
+    const [allOrgs, events] = await Promise.all([
+      prisma.organization.findMany({
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          subscription_plan: true,
+          ai_credit_limit: true,
+          is_active: true,
+        },
+        orderBy: { name: 'asc' },
+      }),
+      prisma.aiUsageEvent.findMany({
+        where: whereClause,
+        orderBy: { created_at: 'desc' },
+        take: 2500,
+      }),
+    ])
+
+    const orgMap = new Map()
+    allOrgs.forEach(o => orgMap.set(o.id, o))
+
+    let totalCreditsUsed = 0
+    let totalTokens = 0
+    let successfulRequests = 0
+    let failedRequests = 0
+    let totalDurationMs = 0
+    let durationCount = 0
+
+    const orgStats = {}
+    const providerStats = {}
+    const toolStats = {}
+    const dailyMap = {}
+
+    for (const event of events) {
+      totalCreditsUsed += 1
+      if (event.total_tokens) totalTokens += event.total_tokens
+      if (event.success) successfulRequests += 1
+      else failedRequests += 1
+
+      if (event.duration_ms) {
+        totalDurationMs += event.duration_ms
+        durationCount += 1
+      }
+
+      // Org aggregation
+      const orgId = event.org_id || 'unassigned'
+      if (!orgStats[orgId]) {
+        const orgInfo = orgMap.get(orgId)
+        orgStats[orgId] = {
+          orgId,
+          orgName: orgInfo?.name || 'Unassigned / System',
+          plan: orgInfo?.subscription_plan || 'Growth',
+          creditLimit: orgInfo?.ai_credit_limit || 1000,
+          creditsUsed: 0,
+          totalTokens: 0,
+          successfulRequests: 0,
+          failedRequests: 0,
+          userSet: new Set(),
+          toolCounts: {},
+          providerCounts: {},
+          lastActive: null,
+        }
+      }
+      const oStat = orgStats[orgId]
+      oStat.creditsUsed += 1
+      if (event.total_tokens) oStat.totalTokens += event.total_tokens
+      if (event.success) oStat.successfulRequests += 1
+      else oStat.failedRequests += 1
+      if (event.user_id) oStat.userSet.add(event.user_id)
+      if (event.tool_id) oStat.toolCounts[event.tool_id] = (oStat.toolCounts[event.tool_id] || 0) + 1
+      if (event.provider) oStat.providerCounts[event.provider] = (oStat.providerCounts[event.provider] || 0) + 1
+      if (!oStat.lastActive || event.created_at > oStat.lastActive) oStat.lastActive = event.created_at
+
+      // Provider aggregation
+      const provider = (event.provider || 'unknown').toLowerCase()
+      if (!providerStats[provider]) {
+        providerStats[provider] = {
+          provider,
+          requests: 0,
+          tokens: 0,
+          successful: 0,
+          failed: 0,
+          totalDurationMs: 0,
+          durationCount: 0,
+        }
+      }
+      const pStat = providerStats[provider]
+      pStat.requests += 1
+      if (event.total_tokens) pStat.tokens += event.total_tokens
+      if (event.success) pStat.successful += 1
+      else pStat.failed += 1
+      if (event.duration_ms) {
+        pStat.totalDurationMs += event.duration_ms
+        pStat.durationCount += 1
+      }
+
+      // Tool aggregation
+      const toolId = event.tool_id || 'other'
+      if (!toolStats[toolId]) {
+        toolStats[toolId] = {
+          toolId,
+          requests: 0,
+          tokens: 0,
+          successful: 0,
+          failed: 0,
+        }
+      }
+      const tStat = toolStats[toolId]
+      tStat.requests += 1
+      if (event.total_tokens) tStat.tokens += event.total_tokens
+      if (event.success) tStat.successful += 1
+      else tStat.failed += 1
+
+      // Daily trend
+      const dateKey = new Date(event.created_at).toISOString().slice(0, 10)
+      if (!dailyMap[dateKey]) {
+        dailyMap[dateKey] = { date: dateKey, requests: 0, tokens: 0, successful: 0, failed: 0 }
+      }
+      dailyMap[dateKey].requests += 1
+      if (event.total_tokens) dailyMap[dateKey].tokens += event.total_tokens
+      if (event.success) dailyMap[dateKey].successful += 1
+      else dailyMap[dateKey].failed += 1
+    }
+
+    // Format org list (include all registered orgs even if 0 usage)
+    const orgList = allOrgs.map(o => {
+      const stat = orgStats[o.id]
+      const topToolId = stat
+        ? Object.entries(stat.toolCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || null
+        : null
+      const topProvider = stat
+        ? Object.entries(stat.providerCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || null
+        : null
+
+      const creditsUsed = stat?.creditsUsed || 0
+      const limit = o.ai_credit_limit || 1000
+
+      return {
+        orgId: o.id,
+        name: o.name,
+        slug: o.slug,
+        plan: o.subscription_plan || 'Growth',
+        creditLimit: limit,
+        creditsUsed,
+        percentUsed: Math.min(100, Math.round((creditsUsed / limit) * 100)),
+        totalTokens: stat?.totalTokens || 0,
+        activeUsersCount: stat?.userSet ? stat.userSet.size : 0,
+        topToolId,
+        topProvider,
+        lastActive: stat?.lastActive || null,
+        successRate: stat && stat.creditsUsed > 0 ? Math.round((stat.successfulRequests / stat.creditsUsed) * 100) : 100,
+      }
+    }).sort((a, b) => b.creditsUsed - a.creditsUsed)
+
+    // Format provider list
+    const providerList = Object.values(providerStats).map(p => ({
+      provider: p.provider,
+      requests: p.requests,
+      percentShare: totalCreditsUsed > 0 ? Math.round((p.requests / totalCreditsUsed) * 100) : 0,
+      tokens: p.tokens,
+      successRate: p.requests > 0 ? Math.round((p.successful / p.requests) * 100) : 100,
+      avgLatencyMs: p.durationCount > 0 ? Math.round(p.totalDurationMs / p.durationCount) : null,
+    })).sort((a, b) => b.requests - a.requests)
+
+    // Format tool list
+    const toolList = Object.values(toolStats).map(t => ({
+      toolId: t.toolId,
+      requests: t.requests,
+      percentShare: totalCreditsUsed > 0 ? Math.round((t.requests / totalCreditsUsed) * 100) : 0,
+      tokens: t.tokens,
+      successRate: t.requests > 0 ? Math.round((t.successful / t.requests) * 100) : 100,
+    })).sort((a, b) => b.requests - a.requests)
+
+    // Format recent 50 events
+    const recentEvents = events.slice(0, 50).map(e => ({
+      id: e.id,
+      orgId: e.org_id,
+      orgName: orgMap.get(e.org_id)?.name || 'System / Direct',
+      userId: e.user_id,
+      userName: e.user_name || 'Staff Member',
+      type: e.type,
+      toolId: e.tool_id,
+      provider: e.provider,
+      model: e.model,
+      success: e.success,
+      durationMs: e.duration_ms,
+      totalTokens: e.total_tokens,
+      error: e.error,
+      createdAt: e.created_at,
+    }))
+
+    const dailyTrend = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date))
+
+    const activeOrgsCount = orgList.filter(o => o.creditsUsed > 0).length
+    const totalActiveUsersCount = new Set(events.map(e => e.user_id).filter(Boolean)).size
+
+    res.json({
+      data: {
+        summary: {
+          totalCreditsUsed,
+          totalTokens,
+          totalRequests: totalCreditsUsed,
+          successfulRequests,
+          failedRequests,
+          successRate: totalCreditsUsed > 0 ? Math.round((successfulRequests / totalCreditsUsed) * 100) : 100,
+          avgLatencyMs: durationCount > 0 ? Math.round(totalDurationMs / durationCount) : null,
+          totalOrgsCount: allOrgs.length,
+          activeOrgsCount,
+          activeUsersCount: totalActiveUsersCount,
+          days: numDays,
+        },
+        orgs: orgList,
+        providers: providerList,
+        tools: toolList,
+        dailyTrend,
+        recentEvents,
+      },
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
 export default router
+

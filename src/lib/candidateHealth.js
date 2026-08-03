@@ -47,7 +47,7 @@ export function computeScore(c) {
   if (skillCount === 0) insights.push({ type: 'bad', text: 'No skills listed' })
   else if (skillCount >= 5) insights.push({ type: 'good', text: `${skillCount} skills listed` })
   if (c.linkedin) insights.push({ type: 'good', text: 'LinkedIn present' })
-  if (c.internal_status === 'Hired') insights.push({ type: 'good', text: 'Successfully placed!' })
+  if (c.external_status === 'Hired' || c.internal_status === 'Hired') insights.push({ type: 'good', text: 'Successfully placed!' })
   if (c.internal_status === 'Interview Scheduled') insights.push({ type: 'good', text: 'Interview booked' })
   if (c.feedback_status === 'Positive') insights.push({ type: 'good', text: 'Positive feedback' })
   if (c.priority === 'High') insights.push({ type: 'warn', text: 'High priority' })

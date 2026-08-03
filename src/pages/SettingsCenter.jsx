@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { organizationApi, db } from '../lib/api'
+import { organizationApi, db, apiRequest } from '../lib/api'
 import { PageContainer } from '../components/layout/PageContainer'
 import {
   Button, Card, CardHeader, KPICard, PageHeader, Tabs, EmptyState, Select, Input, Textarea,
-  Switch, FormField, Badge, Avatar, Modal, useToast, cn, SearchBar,
+  Switch, FormField, Badge, Avatar, Modal, useToast, cn, SearchBar, Icon,
 } from '../components/ui'
-import { SettingsCard, StatusBadge, InfoBanner, ProfileCard, PermissionMatrix } from '../components/admin'
+import { SettingsCard, StatusBadge, InfoBanner, ProfileCard, PermissionMatrix, AIUsageSection } from '../components/admin'
 import { ROLES, MODULES, getRole } from '../lib/admin/permissions'
 import { useOrgPreferences } from '../lib/admin/orgPreferences'
 import { useNotificationPreferences, NOTIFICATION_CATEGORIES } from '../lib/admin/notificationPreferences'
@@ -48,15 +48,132 @@ const ALL_ROLES = [
 ]
 
 const SUBSCRIPTION_PLAN_OPTIONS = [
-  { value: 'Starter', label: 'Starter', desc: '250 Candidates | 250 AI Credits' },
-  { value: 'Growth', label: 'Growth', desc: '500 Candidates | 1,000 AI Credits' },
-  { value: 'Enterprise', label: 'Enterprise', desc: '2,500 Candidates | 5,000 AI Credits' },
+  { value: 'Starter', label: 'Starter', desc: '2,500 Candidates | 250 AI Credits' },
+  { value: 'Growth', label: 'Growth', desc: '15,000 Candidates | 1,000 AI Credits' },
+  { value: 'Enterprise', label: 'Enterprise', desc: 'Unlimited Candidates | 5,000 AI Credits' },
 ]
 
+// Every claim below is checked against real, shipped behavior — no invented
+// features (SSO/API/priority-support/SLAs aren't built, so they don't appear
+// here even though they're common pricing-page filler elsewhere).
 const PLAN_TIERS = [
-  { id: 'Starter', label: 'Starter', candidates: '250 candidates', credits: '250 AI credits/mo', seats: 'Up to 3 users' },
-  { id: 'Growth', label: 'Growth', candidates: '500 candidates', credits: '1,000 AI credits/mo', seats: 'Up to 15 users' },
-  { id: 'Enterprise', label: 'Enterprise', candidates: '2,500 candidates', credits: '5,000 AI credits/mo', seats: 'Unlimited users' },
+  {
+    id: 'Starter',
+    label: 'Starter',
+    price: '$79',
+    period: '/ month',
+    tagline: 'For solo recruiters & boutique agencies',
+    valueProp: 'Everything you need to run a lean recruiting desk.',
+    candidates: '2,500 candidates',
+    credits: '250 AI credits/mo',
+    creditsNote: '≈ 250 resumes parsed & analyzed every month',
+    seats: 'Up to 3 users',
+    highlights: [
+      'AI Copilot on every conversation',
+      'Bulk resume upload & AI auto-fill',
+      'Full pipeline, tasks & reporting',
+    ],
+    ctaLabel: 'Get Started',
+  },
+  {
+    id: 'Growth',
+    label: 'Growth',
+    price: '$249',
+    period: '/ month',
+    tagline: 'For scaling recruiting teams',
+    popular: true,
+    valueProp: 'Everything in Starter, built for teams that submit at volume.',
+    candidates: '15,000 candidates',
+    credits: '1,000 AI credits/mo',
+    creditsNote: '≈ 1,000 resumes parsed & analyzed every month',
+    seats: 'Up to 15 users',
+    highlights: [
+      '1-Click client submission packets',
+      'Deep AI candidate fit scoring',
+      '6× the candidate database of Starter',
+    ],
+    ctaLabel: 'Start Growing',
+  },
+  {
+    id: 'Enterprise',
+    label: 'Enterprise',
+    price: 'Custom',
+    period: 'pricing',
+    tagline: 'For enterprise hiring organizations',
+    valueProp: "Let's build your hiring platform — uncapped and tailored to your org.",
+    candidates: 'Unlimited candidates',
+    credits: '5,000 AI credits/mo',
+    creditsNote: 'Highest AI processing allotment, for high-volume hiring ops',
+    seats: 'Unlimited users',
+    highlights: [
+      'Unlimited candidate database',
+      'Unlimited team seats',
+      'Everything in Growth, uncapped',
+    ],
+    ctaLabel: 'Contact Sales',
+  },
+]
+
+// Reflects what's actually gated in code (Candidates.jsx's openPacketForCandidate
+// / openAiMatchForCandidate Starter checks) rather than aspirational marketing
+// copy — Copilot, bulk upload, and usage analytics aren't plan-gated at all
+// currently, so they're ticked across every tier. Grouped to read like a real
+// SaaS comparison page instead of a flat spreadsheet.
+const PLAN_COMPARISON = [
+  {
+    category: 'Recruiting',
+    rows: [
+      { label: 'Candidate Database', values: ['2,500', '15,000', 'Unlimited'] },
+      { label: 'Job Requisition Management', values: [true, true, true] },
+      { label: 'Pipeline (Kanban) View', values: [true, true, true] },
+      { label: 'Bulk Resume Upload & AI Parsing', values: [true, true, true] },
+      { label: 'Resume File Storage & Download', values: [true, true, true] },
+      { label: 'Client Postings Tracker', values: [true, true, true] },
+      { label: 'Callbacks & Follow-ups Tracking', values: [true, true, true] },
+    ],
+  },
+  {
+    category: 'AI-Powered Tools',
+    rows: [
+      { label: 'Monthly AI Credits', values: ['250', '1,000', '5,000'] },
+      { label: 'AI Copilot Chat', values: [true, true, true] },
+      { label: 'AI Action Framework (Summarize, Rewrite, Draft & more)', values: [true, true, true] },
+      { label: 'Boolean Search Builder', values: [true, true, true] },
+      { label: 'Job Description Analyzer', values: [true, true, true] },
+      { label: 'Salary Benchmarking & Market Demand', values: [true, true, true] },
+      { label: '1-Click Client Submission Packets', values: [false, true, true] },
+      { label: 'Deep AI Candidate Fit Radar (AI Match)', values: [false, true, true] },
+    ],
+  },
+  {
+    category: 'Collaboration & Admin',
+    rows: [
+      { label: 'Team Seats', values: ['Up to 3', 'Up to 15', 'Unlimited'] },
+      { label: 'Task Management', values: [true, true, true] },
+      { label: 'Team Directory & Org Chart', values: [true, true, true] },
+      { label: 'Role-Based Access Control', values: [true, true, true] },
+      { label: 'Audit & Activity Log', values: [true, true, true] },
+      { label: 'Reports & Analytics', values: [true, true, true] },
+      { label: 'Organization AI Usage Analytics', values: [true, true, true] },
+    ],
+  },
+  {
+    // Only real Enterprise-exclusive facts — genuinely uncapped resources,
+    // not invented enterprise-tier filler like SSO/API/priority support.
+    category: 'Enterprise Scale',
+    rows: [
+      { label: 'Unlimited Candidate Database', values: [false, false, true] },
+      { label: 'Unlimited Team Seats', values: [false, false, true] },
+      { label: 'Highest AI Credit Allotment (5,000/mo)', values: [false, false, true] },
+    ],
+  },
+]
+
+const TRUST_ROW = [
+  { icon: 'lock', label: 'Enterprise-grade Security' },
+  { icon: 'users', label: 'Role-Based Access' },
+  { icon: 'sparkles', label: 'AI-Powered Recruiting' },
+  { icon: 'refresh', label: 'Fast Performance' },
 ]
 
 const TIMEZONE_OPTIONS = [
@@ -137,7 +254,7 @@ export default function SettingsCenter({ initialTab = 'general', onNavigate }) {
   const [showOnboardModal, setShowOnboardModal] = useState(false)
   const [onboardForm, setOnboardForm] = useState({
     name: '', domain: '', website: '', industry: 'Staffing & Recruiting', subscription_plan: 'Growth',
-    candidate_limit: 500, ai_credit_limit: 1000, owner_name: '', owner_email: '',
+    candidate_limit: 15000, ai_credit_limit: 1000, owner_name: '', owner_email: '',
   })
   const [onboarding, setOnboarding] = useState(false)
   const [onboardInviteUrl, setOnboardInviteUrl] = useState('')
@@ -397,6 +514,7 @@ export default function SettingsCenter({ initialTab = 'general', onNavigate }) {
               <OrganizationTab
                 org={org} form={orgForm} setForm={setOrgForm} onSave={handleSaveOrg} saving={saving}
                 isOwnerOrAdmin={isOwnerOrAdmin} preferences={orgPrefs} updatePreferences={updateOrgPrefs}
+                members={members}
               />
             )}
             {activeTab === 'teams' && <TeamsTab members={members} />}
@@ -409,7 +527,7 @@ export default function SettingsCenter({ initialTab = 'general', onNavigate }) {
               />
             )}
             {activeTab === 'roles' && <RolesTab />}
-            {activeTab === 'ai' && <AITab orgId={orgId} onNavigate={onNavigate} />}
+            {activeTab === 'ai' && <AITab orgId={orgId} org={org} members={members} onNavigate={onNavigate} />}
             {activeTab === 'notifications' && (
               <NotificationsTab
                 notifications={notifications} loading={notifLoading} preferences={notifPrefs}
@@ -451,9 +569,13 @@ export default function SettingsCenter({ initialTab = 'general', onNavigate }) {
                   value={onboardForm.subscription_plan}
                   options={SUBSCRIPTION_PLAN_OPTIONS}
                   onChange={plan => {
-                    let candLimit = 500, aiLimit = 1000
-                    if (plan === 'Starter') { candLimit = 250; aiLimit = 250 }
-                    if (plan === 'Enterprise') { candLimit = 2500; aiLimit = 5000 }
+                    // Enterprise's candidate limit is not actually enforced
+                    // (see data.routes.js / upload.routes.js — Enterprise is
+                    // uncapped); 100,000 here is only a sensible number for
+                    // the usage progress bar to show, not a real ceiling.
+                    let candLimit = 15000, aiLimit = 1000
+                    if (plan === 'Starter') { candLimit = 2500; aiLimit = 250 }
+                    if (plan === 'Enterprise') { candLimit = 100000; aiLimit = 5000 }
                     setOnboardForm(f => ({ ...f, subscription_plan: plan, candidate_limit: candLimit, ai_credit_limit: aiLimit }))
                   }}
                 />
@@ -509,7 +631,22 @@ export default function SettingsCenter({ initialTab = 'general', onNavigate }) {
 }
 
 function GeneralTab({ org, allOrgs, isSuperAdmin, switchingId, onSwitchWorkspace, onOpenOnboard }) {
-  const candidateUsagePercent = Math.min(100, Math.round(((org?.stats?.candidates || 0) / (org?.candidate_limit || 500)) * 100))
+  const [showAll, setShowAll] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const candidateUsagePercent = Math.min(100, Math.round(((org?.stats?.candidates || 0) / (org?.candidate_limit || 15000)) * 100))
+
+  const filteredOrgs = useMemo(() => {
+    if (!searchQuery.trim()) return allOrgs
+    const q = searchQuery.toLowerCase().trim()
+    return allOrgs.filter(o => o.name.toLowerCase().includes(q) || (o.domain || o.email_domain || '').toLowerCase().includes(q))
+  }, [allOrgs, searchQuery])
+
+  const displayedOrgs = useMemo(() => {
+    if (showAll || searchQuery || filteredOrgs.length <= 6) return filteredOrgs
+    return filteredOrgs.slice(0, 6)
+  }, [showAll, searchQuery, filteredOrgs])
+
+  const hiddenCount = filteredOrgs.length - displayedOrgs.length
 
   return (
     <div className="flex flex-col gap-6">
@@ -535,33 +672,58 @@ function GeneralTab({ org, allOrgs, isSuperAdmin, switchingId, onSwitchWorkspace
           <CardHeader
             title={`All Platform Organizations (${allOrgs.length})`}
             subtitle="Superadmin privileged view"
-            action={<Button size="sm" leftIcon="plus" onClick={onOpenOnboard}>Onboard Organization</Button>}
+            action={
+              <div className="flex items-center gap-2">
+                {allOrgs.length > 6 && (
+                  <SearchBar
+                    value={searchQuery}
+                    onChange={setSearchQuery}
+                    placeholder="Search organizations..."
+                    className="w-48"
+                  />
+                )}
+                <Button size="sm" leftIcon="plus" onClick={onOpenOnboard}>Onboard Organization</Button>
+              </div>
+            }
           />
           {allOrgs.length === 0 ? (
             <EmptyState title="No organizations yet" />
           ) : (
-            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-              {allOrgs.map(o => {
-                const isActive = o.id === org?.id
-                return (
-                  <div key={o.id} className={cn('rounded-[var(--radius-md)] border p-3.5 flex flex-col gap-2', isActive ? 'border-accent bg-accent/5' : 'border-border bg-surface2')}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-bold text-text truncate">{o.name}</span>
-                      {isActive && <Badge tone="accent" size="sm">Active</Badge>}
+            <div className="flex flex-col gap-3">
+              <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                {displayedOrgs.map(o => {
+                  const isActive = o.id === org?.id
+                  return (
+                    <div key={o.id} className={cn('rounded-[var(--radius-md)] border p-3.5 flex flex-col gap-2', isActive ? 'border-accent bg-accent/5' : 'border-border bg-surface2')}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-bold text-text truncate">{o.name}</span>
+                        {isActive && <Badge tone="accent" size="sm">Active</Badge>}
+                      </div>
+                      <div className="text-xs text-text3">{o.domain || o.email_domain || '—'}</div>
+                      <div className="flex gap-3 text-xs text-text2 border-t border-border pt-2">
+                        <span>{o.stats?.members || 0} members</span>
+                        <span>{o.stats?.candidates || 0} candidates</span>
+                      </div>
+                      {!isActive && (
+                        <Button size="sm" variant="outline" loading={switchingId === o.id} onClick={() => onSwitchWorkspace(o.id, o.name)}>
+                          Switch workspace
+                        </Button>
+                      )}
                     </div>
-                    <div className="text-xs text-text3">{o.domain || o.email_domain || '—'}</div>
-                    <div className="flex gap-3 text-xs text-text2 border-t border-border pt-2">
-                      <span>{o.stats?.members || 0} members</span>
-                      <span>{o.stats?.candidates || 0} candidates</span>
-                    </div>
-                    {!isActive && (
-                      <Button size="sm" variant="outline" loading={switchingId === o.id} onClick={() => onSwitchWorkspace(o.id, o.name)}>
-                        Switch workspace
-                      </Button>
-                    )}
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
+
+              {allOrgs.length > 6 && !searchQuery && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setShowAll(prev => !prev)}
+                  className="self-center mt-1 text-accent"
+                >
+                  {showAll ? 'Show Less' : `See More (${hiddenCount} more organizations)`}
+                </Button>
+              )}
             </div>
           )}
         </Card>
@@ -570,7 +732,7 @@ function GeneralTab({ org, allOrgs, isSuperAdmin, switchingId, onSwitchWorkspace
   )
 }
 
-function OrganizationTab({ org, form, setForm, onSave, saving, isOwnerOrAdmin, preferences, updatePreferences }) {
+function OrganizationTab({ org, form, setForm, onSave, saving, isOwnerOrAdmin, preferences, updatePreferences, members }) {
   return (
     <div className="flex flex-col gap-6">
       <Card>
@@ -602,6 +764,8 @@ function OrganizationTab({ org, form, setForm, onSave, saving, isOwnerOrAdmin, p
           {isOwnerOrAdmin && <Button type="submit" loading={saving} className="self-start">Save changes</Button>}
         </form>
       </Card>
+
+      <AIUsageSection org={org} members={members} orgId={org?.id} />
 
       <Card>
         <CardHeader title="Regional & Recruiting Preferences" subtitle="Personalize currency, dates, language, and drafting defaults." />
@@ -823,13 +987,12 @@ function RolesTab() {
   )
 }
 
-function AITab({ orgId, onNavigate }) {
+function AITab({ orgId, org, members, onNavigate }) {
   const { settings } = useAIGovernance(orgId)
   return (
-    <div className="flex flex-col gap-5">
-      <InfoBanner tone="info">
-        Full AI configuration — chat/actions/automation toggles, workspace permissions, model preference, response style, and daily request limits — lives in the AI Center's Settings tab so it isn't duplicated in two places. This is a read-only summary.
-      </InfoBanner>
+    <div className="flex flex-col gap-6">
+      <AIUsageSection org={org} members={members} orgId={orgId} />
+
       <Card>
         <CardHeader title="Current AI Governance" action={<Button size="sm" variant="secondary" onClick={() => onNavigate?.('ai_center')}>Open AI Center Settings</Button>} />
         <div className="grid sm:grid-cols-2">
@@ -974,47 +1137,312 @@ function PlaceholderTab({ title, description }) {
 }
 
 function BillingTab({ org, isOwnerOrAdmin, saving, onPlanChange }) {
-  const candidateUsagePercent = Math.min(100, Math.round(((org?.stats?.candidates || 0) / (org?.candidate_limit || 500)) * 100))
+  const candidateUsagePercent = Math.min(100, Math.round(((org?.stats?.candidates || 0) / (org?.candidate_limit || 15000)) * 100))
+  const currentPlanId = org?.subscription_plan || 'Growth'
+
+  const [aiUsage, setAiUsage] = useState(null)
+  useEffect(() => {
+    if (!isOwnerOrAdmin || !org?.id) return
+    let cancelled = false
+    apiRequest('/organization/ai-usage')
+      .then(res => { if (!cancelled) setAiUsage(res?.data || null) })
+      .catch(() => { if (!cancelled) setAiUsage(null) })
+    return () => { cancelled = true }
+  }, [isOwnerOrAdmin, org?.id])
+
+  const aiUsagePercent = aiUsage ? Math.min(100, aiUsage.percentUsed) : 0
+
   return (
-    <div className="flex flex-col gap-6">
-      <Card>
-        <CardHeader title="Subscription" subtitle="Organization-wide SaaS license with centralized billing." action={<Badge tone="accent">{org?.subscription_plan || 'Growth'}</Badge>} />
-        <div className="flex flex-col gap-4">
-          <div>
-            <div className="flex justify-between text-xs font-semibold mb-1.5">
-              <span className="text-text2">Candidate Database Limit</span>
-              <span className="text-text">{org?.stats?.candidates || 0} / {org?.candidate_limit || 500}</span>
+    <div className="flex flex-col gap-9">
+      {/* Current Subscription Usage */}
+      <Card className="overflow-hidden">
+        <CardHeader
+          title="Subscription & Resource Usage"
+          subtitle="Organization-wide SaaS license and active resource utilization."
+          action={
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
+              </span>
+              <Badge tone="accent" size="md" className="font-semibold px-2.5 py-0.5">
+                {currentPlanId} Plan Active
+              </Badge>
             </div>
-            <div className="h-2 rounded-full bg-surface2 overflow-hidden">
-              <div className="h-full bg-accent" style={{ width: `${candidateUsagePercent}%` }} />
+          }
+        />
+        <div className="grid sm:grid-cols-2 gap-5 p-4 rounded-[var(--radius-md)] bg-surface2/40 border border-border/50">
+          <div>
+            <div className="flex items-center justify-between text-xs font-semibold mb-2">
+              <span className="text-text flex items-center gap-1.5">
+                <Icon name="layers" size={15} className="text-accent" />
+                Candidate Database Capacity
+              </span>
+              <span className="text-text font-bold">
+                {org?.stats?.candidates || 0} <span className="text-text3 font-normal">/ {currentPlanId === 'Enterprise' ? 'Unlimited' : (org?.candidate_limit || 15000).toLocaleString()}</span>
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-surface3/60 overflow-hidden border border-border/30">
+              <div
+                className="h-full bg-accent rounded-full transition-all duration-500"
+                style={{ width: `${currentPlanId === 'Enterprise' ? 4 : candidateUsagePercent}%` }}
+              />
+            </div>
+            <div className="flex justify-between items-center text-[11px] text-text3 mt-1.5">
+              <span>{candidateUsagePercent}% capacity used</span>
+              <span>{currentPlanId === 'Enterprise' ? 'Uncapped database' : `${((org?.candidate_limit || 15000) - (org?.stats?.candidates || 0)).toLocaleString()} slots available`}</span>
             </div>
           </div>
-          <InfoBanner tone="info">
-            AI copilot usage is tracked per-request in the AI Center's Usage Analytics tab. There is no aggregate "credits consumed" counter on the organization record yet, so it isn't shown here as a number that would otherwise have to be invented.
-          </InfoBanner>
+
+          <div>
+            <div className="flex items-center justify-between text-xs font-semibold mb-2">
+              <span className="text-text flex items-center gap-1.5">
+                <Icon name="sparkles" size={15} className="text-ai" />
+                Monthly AI Credits
+              </span>
+              <span className="text-text font-bold">
+                {aiUsage ? aiUsage.totalCreditsUsed.toLocaleString() : (isOwnerOrAdmin ? 'Loading…' : '—')}
+                <span className="text-text3 font-normal"> / {aiUsage ? aiUsage.creditLimit.toLocaleString() : '—'}</span>
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-surface3/60 overflow-hidden border border-border/30">
+              <div
+                className={cn(
+                  'h-full rounded-full transition-all duration-500',
+                  aiUsagePercent >= 80 ? 'bg-gradient-to-r from-orange to-red' : 'bg-gradient-to-r from-accent to-ai'
+                )}
+                style={{ width: `${aiUsagePercent}%` }}
+              />
+            </div>
+            <div className="flex justify-between items-center text-[11px] text-text3 mt-1.5">
+              <span>{aiUsagePercent}% quota consumed</span>
+              <span>Resets on the 1st of every month</span>
+            </div>
+          </div>
         </div>
       </Card>
 
-      <Card>
-        <CardHeader title="Plans" />
-        <div className="grid sm:grid-cols-3 gap-3">
+      {/* Plans */}
+      <div>
+        <div className="mb-6 text-center max-w-xl mx-auto">
+          <h2 className="font-serif text-2xl font-semibold text-text tracking-tight">Plans that grow with your desk</h2>
+          <p className="text-sm text-text3 mt-2 leading-relaxed">Every plan includes the full platform — pipeline, tasks, reporting, and AI Copilot. Higher tiers raise your ceilings and unlock deeper AI workflows.</p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
           {PLAN_TIERS.map(plan => {
-            const isCurrent = (org?.subscription_plan || 'Growth') === plan.id
+            const isCurrent = currentPlanId === plan.id
+            const isPopular = plan.popular && !isCurrent
+            const isEnterprise = plan.id === 'Enterprise'
+
             return (
-              <div key={plan.id} className={cn('rounded-[var(--radius-md)] border p-4 flex flex-col gap-2', isCurrent ? 'border-accent bg-accent/5' : 'border-border')}>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-text">{plan.label}</span>
-                  {isCurrent && <Badge tone="accent" size="sm">Current</Badge>}
-                </div>
-                <div className="text-xs text-text3">{plan.candidates} · {plan.credits} · {plan.seats}</div>
-                {isOwnerOrAdmin && !isCurrent && (
-                  <Button size="sm" variant="outline" loading={saving} onClick={() => onPlanChange(plan.id)}>Switch to {plan.id}</Button>
+              <div
+                key={plan.id}
+                className={cn(
+                  'relative flex flex-col justify-between rounded-[var(--radius-xl)] border p-6 transition-all duration-300 ease-[var(--ease-standard)]',
+                  isCurrent
+                    ? 'border-accent/60 bg-gradient-to-b from-accent/[0.07] via-surface to-surface shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,0_16px_40px_-16px_color-mix(in_srgb,var(--accent)_35%,transparent)] ring-1 ring-accent/25'
+                    : isPopular
+                    ? 'border-ai/40 bg-gradient-to-b from-ai/[0.06] via-surface to-surface shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,0_20px_48px_-16px_color-mix(in_srgb,var(--ai)_32%,transparent)] lg:-translate-y-2 hover:-translate-y-2.5'
+                    : isEnterprise
+                    ? 'border-border bg-gradient-to-b from-surface2/60 to-surface shadow-xs hover:border-border-strong hover:shadow-md hover:-translate-y-1'
+                    : 'border-border bg-surface shadow-xs hover:border-border-strong hover:shadow-md hover:-translate-y-1'
                 )}
+              >
+                {/* Top accent band */}
+                {(isCurrent || isPopular) && (
+                  <div className={cn(
+                    'absolute top-0 left-0 right-0 h-[3px] rounded-t-[var(--radius-xl)]',
+                    isCurrent ? 'bg-accent' : 'bg-gradient-to-r from-accent via-ai to-accent2'
+                  )} />
+                )}
+
+                <div className="flex flex-col gap-4">
+                  {/* Name + badge */}
+                  <div className="flex items-center justify-between gap-2 min-h-[24px]">
+                    <span className="text-base font-bold text-text">{plan.label}</span>
+                    {isCurrent ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full bg-accent text-white">
+                        <Icon name="check" size={10} strokeWidth={3} />
+                        CURRENT PLAN
+                      </span>
+                    ) : isPopular ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full bg-gradient-to-r from-accent to-ai text-white">
+                        <Icon name="sparkles" size={10} strokeWidth={3} />
+                        MOST POPULAR
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {/* Positioning sentence */}
+                  <p className="text-xs text-text3 leading-relaxed -mt-2">{plan.tagline}</p>
+
+                  {/* Price */}
+                  <div className="flex items-baseline gap-1.5 pt-1">
+                    <span className="font-serif text-4xl font-semibold text-text tracking-tight">{plan.price}</span>
+                    {plan.period && <span className="text-xs font-medium text-text3">{plan.period}</span>}
+                  </div>
+
+                  {/* Value proposition */}
+                  <p className="text-[13px] text-text2 leading-relaxed">{plan.valueProp}</p>
+
+                  {/* Resource limits */}
+                  <div className="rounded-[var(--radius-md)] bg-surface2/70 border border-border/50 p-3 flex flex-col gap-2.5">
+                    <div className="flex items-center gap-2.5 text-xs font-semibold text-text">
+                      <div className="p-1.5 rounded-[var(--radius-sm)] bg-accent/12 text-accent shrink-0">
+                        <Icon name="layers" size={13} />
+                      </div>
+                      <span>{plan.candidates}</span>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2.5 text-xs font-semibold text-text">
+                        <div className="p-1.5 rounded-[var(--radius-sm)] bg-ai/12 text-ai shrink-0">
+                          <Icon name="sparkles" size={13} />
+                        </div>
+                        <span>{plan.credits}</span>
+                      </div>
+                      <p className="text-[11px] text-text3 mt-1 ml-[34px] leading-snug">{plan.creditsNote}</p>
+                    </div>
+                    <div className="flex items-center gap-2.5 text-xs font-semibold text-text">
+                      <div className="p-1.5 rounded-[var(--radius-sm)] bg-surface3 text-text2 shrink-0">
+                        <Icon name="users" size={13} />
+                      </div>
+                      <span>{plan.seats}</span>
+                    </div>
+                  </div>
+
+                  {/* Highlights */}
+                  <ul className="flex flex-col gap-2 pt-1">
+                    {plan.highlights.map((feat, idx) => (
+                      <li key={idx} className="flex items-start gap-2.5">
+                        <span className="mt-0.5 w-4 h-4 flex items-center justify-center rounded-full bg-green/15 text-green shrink-0">
+                          <Icon name="check" size={10} strokeWidth={3} />
+                        </span>
+                        <span className="leading-snug text-[13px] text-text2">{feat}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* CTA */}
+                <div className="pt-6 mt-6 border-t border-border/60">
+                  {isCurrent ? (
+                    <div className="w-full py-2.5 px-3 text-center rounded-[var(--radius-sm)] bg-accent/10 text-accent font-semibold text-xs border border-accent/20 flex items-center justify-center gap-1.5">
+                      <Icon name="checkCircle" size={14} />
+                      Current Active Plan
+                    </div>
+                  ) : isOwnerOrAdmin ? (
+                    <Button
+                      size="md"
+                      variant={isEnterprise ? 'ai' : isPopular ? 'primary' : 'secondary'}
+                      loading={saving}
+                      onClick={() => onPlanChange(plan.id)}
+                      className="w-full justify-center"
+                    >
+                      {plan.ctaLabel}
+                    </Button>
+                  ) : (
+                    <div className="w-full py-2.5 text-center text-xs text-text3 font-medium">
+                      Contact your admin to switch
+                    </div>
+                  )}
+                </div>
               </div>
             )
           })}
+        </div>
+      </div>
+
+      {/* Trust row */}
+      <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-3 py-1">
+        {TRUST_ROW.map(item => (
+          <div key={item.label} className="flex items-center gap-2 text-xs font-medium text-text3">
+            <Icon name={item.icon} size={14} className="text-text3" />
+            {item.label}
+          </div>
+        ))}
+      </div>
+
+      {/* Plan Comparison Table */}
+      <Card className="overflow-hidden">
+        <CardHeader
+          title="Plan Comparison"
+          subtitle="What's actually different between tiers — no aspirational feature list."
+        />
+        <div className="overflow-x-auto -mx-1 mt-1">
+          <table className="w-full text-sm border-collapse min-w-[560px]">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left font-bold text-text3 py-3 px-4 text-[11px] uppercase tracking-wider">
+                  Feature
+                </th>
+                {PLAN_TIERS.map(plan => {
+                  const isCurrent = currentPlanId === plan.id
+                  return (
+                    <th
+                      key={plan.id}
+                      className={cn(
+                        'text-center font-bold py-3 px-4 text-xs tracking-wide',
+                        isCurrent ? 'text-accent' : 'text-text'
+                      )}
+                    >
+                      <div className="flex flex-col items-center gap-1">
+                        <span>{plan.label}</span>
+                        {isCurrent && (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-accent/12 text-accent uppercase tracking-tighter">
+                            Current
+                          </span>
+                        )}
+                      </div>
+                    </th>
+                  )
+                })}
+              </tr>
+            </thead>
+            {PLAN_COMPARISON.map(group => (
+              <tbody key={group.category}>
+                <tr>
+                  <td colSpan={PLAN_TIERS.length + 1} className="pt-6 pb-2 px-4 text-[10.5px] font-bold uppercase tracking-wider text-ai">
+                    {group.category}
+                  </td>
+                </tr>
+                {group.rows.map(row => (
+                  <tr key={row.label} className="border-b border-border/50 hover:bg-surface2/50 transition-colors">
+                    <td className="py-3 px-4 text-text2">
+                      {row.label}
+                    </td>
+                    {row.values.map((value, colIdx) => {
+                      const planId = PLAN_TIERS[colIdx].id
+                      const isCurrentCol = currentPlanId === planId
+                      return (
+                        <td
+                          key={colIdx}
+                          className={cn('text-center py-3 px-4', isCurrentCol && 'bg-accent/[0.03]')}
+                        >
+                          {typeof value === 'boolean' ? (
+                            value ? (
+                              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green/15 text-green mx-auto">
+                                <Icon name="check" size={11} strokeWidth={3} />
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-surface3/50 text-text3/40 mx-auto">
+                                <Icon name="x" size={10} strokeWidth={2.5} />
+                              </span>
+                            )
+                          ) : (
+                            <span className="font-semibold text-text">{value}</span>
+                          )}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            ))}
+          </table>
         </div>
       </Card>
     </div>
   )
 }
+

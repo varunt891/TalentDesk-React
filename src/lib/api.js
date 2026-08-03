@@ -59,6 +59,40 @@ export async function apiRequest(path, options = {}) {
   }
 }
 
+// Like apiRequest, but for multipart/form-data uploads — passes the FormData
+// straight through instead of JSON.stringify-ing it, and lets the browser set
+// its own Content-Type (with multipart boundary) rather than forcing JSON.
+export async function apiUpload(path, formData) {
+  const url = `${API_BASE}${path}`
+  const token = getAuthToken()
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    })
+
+    const payload = await response.json().catch(() => ({}))
+
+    if (!response.ok) {
+      console.error('[apiUpload] Error response:', response.status, payload)
+      if (response.status === 401) setAuthToken(null)
+      const error = new Error(payload.error || `Request failed with status ${response.status}`)
+      error.status = response.status
+      throw error
+    }
+
+    return payload
+  } catch (err) {
+    console.error('[apiUpload] Exception on', path, ':', err.message)
+    throw err
+  }
+}
+
 export const authApi = {
   async session() {
     return apiRequest('/auth/session')
@@ -240,6 +274,10 @@ class QueryBuilder {
 
   then(resolve, reject) {
     return this.execute().then(resolve, reject)
+  }
+
+  catch(onRejected) {
+    return this.execute().then(undefined, onRejected)
   }
 }
 

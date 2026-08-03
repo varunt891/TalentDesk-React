@@ -797,21 +797,6 @@ export default function Dashboard({ onNavigate }) {
 
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
-    if ((authContext.organization?.subscription_plan || 'Growth') === 'Starter') {
-      setCopilotMessages(prev => [
-        ...prev,
-        { sender: 'user', text: q, timestamp: timeStr },
-        {
-          sender: 'ai',
-          text: '⚡ TalentDesk AI Action Copilot requires Growth or Enterprise Plan. Please upgrade under Organization Settings to unlock automated CRM actions & Copilot controls.',
-          content: {
-            summary: '⚡ TalentDesk AI Action Copilot requires Growth or Enterprise Plan. Please upgrade under Organization Settings to unlock automated CRM actions & Copilot controls.',
-          },
-          timestamp: timeStr
-        }
-      ])
-      return
-    }
     const newMsg = { sender: 'user', text: q, timestamp: timeStr }
     setCopilotMessages(prev => [...prev, newMsg])
     setCopilotLoading(true)
@@ -1405,6 +1390,12 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
   const firstName = profile?.full_name?.split(' ')[0] || 'there'
   const dateStr = currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
   const timeStr = currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  const greeting = useMemo(() => {
+    const hour = currentTime.getHours()
+    if (hour >= 0 && hour < 12) return 'Good morning'
+    if (hour >= 12 && hour < 17) return 'Good afternoon'
+    return 'Good evening'
+  }, [currentTime])
 
   // Fetch Live AI Executive Briefing from backend
   // Migrated onto the shared AI Action Framework (Phase 5.4) — same
@@ -1621,7 +1612,7 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
           <Avatar name={profile?.full_name || firstName} size="lg" className="shrink-0" />
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="font-serif text-[26px] font-medium text-text leading-tight tracking-[-0.01em]">Good morning, {firstName}</h1>
+              <h1 className="font-serif text-[26px] font-medium text-text leading-tight tracking-[-0.01em]">{greeting}, {firstName}</h1>
               <Badge tone="neutral" size="sm">{timeStr}</Badge>
             </div>
             <p className="text-[13px] text-text3 mt-1.5 truncate">{dateStr} · {todaysFocus.title}</p>

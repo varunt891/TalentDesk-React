@@ -8,7 +8,7 @@ import { PageContainer } from '../components/layout/PageContainer'
 import { computeJobHealth } from '../lib/jobHealth'
 import {
   Button, Input, Textarea, FormField, Select, Combobox, Badge, StatusPill, Card, CardHeader,
-  KPICard, PageHeader, Table, Modal, Icon, Avatar, Menu, MenuTrigger, EmptyState, Switch,
+  KPICard, PageHeader, Table, Modal, Icon, Avatar, Menu, MenuTrigger, EmptyState, Switch, useToast,
 } from '../components/ui'
 import { WorkspaceSearch, FilterWorkspace, EntityDrawer } from '../components/workspace'
 import { Drawer } from '../components/ui/Modal'
@@ -143,7 +143,6 @@ export default function Jobs() {
   const [skillInput, setSkillInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [lastUpdatedJob, setLastUpdatedJob] = useState(null)
-  const [toast, setToast] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
   const [viewingCandidate, setViewingCandidate] = useState(null)
   const [packetModal, setPacketModal] = useState({ isOpen: false, candidate: null, job: null })
@@ -281,9 +280,13 @@ export default function Jobs() {
     }).catch(() => { /* timeline is supplementary; ignore failures */ })
   }, [])
 
+  const { toast: pushToast } = useToast()
+  // See Candidates.jsx for why this delegates to the shared toast instead of
+  // a locally-rendered fixed div: a page-nested toast can get trapped behind
+  // the floating Copilot launcher's stacking context; the shared one portals
+  // straight to document.body and doesn't have that problem.
   const showToast = (msg, type = 'success') => {
-    setToast({ msg, type })
-    setTimeout(() => setToast(null), 3000)
+    pushToast({ tone: type === 'error' ? 'error' : 'success', title: msg })
   }
 
   const typeOptions = [...new Set(jobs.map(j => j.type).filter(Boolean))].sort()
@@ -1020,8 +1023,6 @@ export default function Jobs() {
           </div>
         )}
       </Modal>
-
-      {toast && <div style={toastStyle(toast.type)}>{toast.msg}</div>}
     </PageContainer>
   )
 }
@@ -1029,6 +1030,4 @@ export default function Jobs() {
 function FormSectionTitle({ children }) {
   return <h3 className="text-xs font-bold text-accent uppercase tracking-wide pb-2 mb-3.5 border-b border-border">{children}</h3>
 }
-
-const toastStyle = (type) => ({ position: 'fixed', bottom: '24px', right: '24px', background: type === 'error' ? 'var(--red)' : 'var(--green)', color: '#fff', padding: '12px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', zIndex: 9999 })
 

@@ -14,6 +14,8 @@
     "prisma:migrate": "prisma migrate dev --schema server/prisma/schema.prisma"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1101.0",
+    "@aws-sdk/s3-request-presigner": "^3.1101.0",
     "@google/genai": "^2.13.0",
     "@neondatabase/serverless": "^1.1.0",
     "@prisma/adapter-neon": "^7.9.0",
@@ -26,8 +28,10 @@
     "docx": "^9.7.1",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "html-to-text": "^10.0.0",
     "jsonwebtoken": "^9.0.3",
     "mammoth": "^1.12.0",
+    "multer": "^2.2.0",
     "pdf-parse": "^2.4.5",
     "pdfmake": "^0.3.11",
     "prisma": "^6.19.0",

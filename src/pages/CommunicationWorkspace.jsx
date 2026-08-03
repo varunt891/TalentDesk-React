@@ -7,7 +7,7 @@ import AIMatchModal from '../components/AIMatchModal'
 import { PageContainer } from '../components/layout/PageContainer'
 import {
   Button, Badge, StatusPill, Card, CardHeader, KPICard, PageHeader, Modal, Input, Select, TimePicker,
-  SearchableSelect, Textarea, FormField, Tabs, Icon, Avatar, Menu, MenuTrigger, EmptyState, CollapsibleSection, cn,
+  SearchableSelect, Textarea, FormField, Tabs, Icon, Avatar, Menu, MenuTrigger, EmptyState, CollapsibleSection, cn, useToast,
 } from '../components/ui'
 import { WorkspaceSearch, FilterWorkspace, EntityDrawer } from '../components/workspace'
 import { Drawer } from '../components/ui/Modal'
@@ -240,8 +240,12 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
   useAISetContext({ workspace: 'Communication', activeView })
   const [showCandidateDetail, setShowCandidateDetail] = useState(null)
   const [candidatePreviewTab, setCandidatePreviewTab] = useState('overview')
-  const [toast, setToast] = useState(null)
-  const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000) }
+  const { toast: pushToast } = useToast()
+  // See Candidates.jsx for why this delegates to the shared toast instead of
+  // a locally-rendered fixed div: a page-nested toast can get trapped behind
+  // the floating Copilot launcher's stacking context; the shared one portals
+  // straight to document.body and doesn't have that problem.
+  const showToast = (msg, type = 'success') => pushToast({ tone: type === 'error' ? 'error' : 'success', title: msg })
 
   const [formKind, setFormKind] = useState('callback')
   const [cbForm, setCbForm] = useState(emptyCbForm)
@@ -1185,11 +1189,6 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
       <SubmissionPacketModal isOpen={packetModal.isOpen} onClose={() => setPacketModal({ isOpen: false, candidate: null, job: null })} candidate={packetModal.candidate} job={packetModal.job} />
       <AIMatchModal isOpen={aiMatchModal.isOpen} onClose={() => setAiMatchModal({ isOpen: false, candidate: null, job: null })} candidate={aiMatchModal.candidate} job={aiMatchModal.job} onOpenSubmissionPacket={(cand, j) => openPacketForCandidate(cand, j)} />
 
-      {toast && (
-        <div style={{ position: 'fixed', bottom: '24px', right: '24px', background: toast.type === 'error' ? 'var(--red)' : 'var(--green)', color: '#fff', padding: '12px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', zIndex: 9999, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
-          {toast.msg}
-        </div>
-      )}
     </PageContainer>
   )
 }

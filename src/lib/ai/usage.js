@@ -133,3 +133,4 @@ export function getActionUsageBreakdown(orgId, userId) {
   events.forEach(e => { counts[e.action] = (counts[e.action] || 0) + 1 })
   return Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([action, count]) => ({ action, count }))
 }
+

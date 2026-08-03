@@ -8,7 +8,8 @@ import { useCandidates } from '../hooks/useCandidates'
 import { useAuth } from '../context/AuthContext'
 import { PageContainer } from '../components/layout/PageContainer'
 import { Button, Card, CardHeader, KPICard, PageHeader, Tabs, EmptyState, SearchableSelect, Badge, cn } from '../components/ui'
-import { InfoBanner } from '../components/admin'
+import { InfoBanner, SuperadminAIUsageSection } from '../components/admin'
+
 import { getUsageSummary, getActionUsageBreakdown, getQualitySummary } from '../lib/ai/usage'
 import { CHART_COLORS } from '../lib/chartColors'
 
@@ -480,7 +481,8 @@ export default function Reports() {
             {activeTab === 'recruiters' && <RecruitersTab recruiterData={recruiterData} teamData={teamData} />}
             {activeTab === 'velocity' && <VelocityTab hireVelocity={hireVelocity} pipelineVelocity={pipelineVelocity} openJobs={openJobs} jobFillVelocity={jobFillVelocity} />}
             {activeTab === 'activity' && <ActivityTab callbackMetrics={callbackMetrics} followupMetrics={followupMetrics} taskMetrics={taskMetrics} reportTasks={reportTasks} />}
-            {activeTab === 'ai' && <AIUsageTab orgId={orgId} userId={profile?.id} />}
+            {activeTab === 'ai' && <AIUsageTab orgId={orgId} userId={profile?.id} isSuperAdmin={isSuperAdmin} />}
+
           </>
         )}
       </div>
@@ -827,13 +829,49 @@ function ActivityTab({ callbackMetrics, followupMetrics, taskMetrics, reportTask
   )
 }
 
-function AIUsageTab({ orgId, userId }) {
+function AIUsageTab({ orgId, userId, isSuperAdmin }) {
+  const [viewMode, setViewMode] = useState(isSuperAdmin ? 'platform' : 'local')
   const summary = useMemo(() => getUsageSummary(orgId, userId), [orgId, userId])
   const quality = useMemo(() => getQualitySummary(orgId, userId), [orgId, userId])
   const actions = useMemo(() => getActionUsageBreakdown(orgId, userId), [orgId, userId])
 
+  if (isSuperAdmin && viewMode === 'platform') {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex justify-between items-center bg-surface2 p-3 rounded-[var(--radius-md)] border border-border">
+          <div className="flex items-center gap-2">
+            <Badge tone="ai" size="sm">Superadmin Mode</Badge>
+            <span className="text-xs text-text2 font-semibold">Viewing Real Platform-Wide AI Analytics</span>
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setViewMode('local')}
+          >
+            Switch to Local Device View
+          </Button>
+        </div>
+
+        <SuperadminAIUsageSection />
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-5">
+      {isSuperAdmin && (
+        <div className="flex justify-between items-center bg-surface2 p-3 rounded-[var(--radius-md)] border border-border">
+          <span className="text-xs text-text2">Currently viewing local browser usage.</span>
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => setViewMode('platform')}
+          >
+            Switch to Platform AI Usage (Superadmin)
+          </Button>
+        </div>
+      )}
+
       <InfoBanner tone="info">
         AI usage is logged locally to this browser (per user, per organization) rather than in a shared database table, so these numbers reflect your own usage on this device — not the whole organization's. For org-wide AI governance and settings, see Settings → AI; for the full analytics surface, see the AI Center's Analytics tab.
       </InfoBanner>
@@ -860,3 +898,4 @@ function AIUsageTab({ orgId, userId }) {
     </div>
   )
 }
+

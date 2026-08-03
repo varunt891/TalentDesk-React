@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { db } from '../lib/api'
 import {
   Button, Badge, StatusPill, Card, CardHeader, KPICard, PageHeader, Modal, Input, Select, TimePicker,
-  Textarea, FormField, Icon, Avatar, Menu, MenuTrigger, EmptyState, Tooltip, cn,
+  Textarea, FormField, Icon, Avatar, Menu, MenuTrigger, EmptyState, Tooltip, cn, useToast,
 } from '../components/ui'
 import { WorkspaceSearch, FilterWorkspace, EntityDrawer } from '../components/workspace'
 import { ensureArray, STATUS_TONE, computeScore } from '../lib/candidateHealth'
@@ -180,8 +180,12 @@ export default function Pipeline() {
   } : null)
   const [previewTab, setPreviewTab] = useState('overview')
   const [spotlightIds, setSpotlightIds] = useState([])
-  const [toast, setToast] = useState(null)
-  const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000) }
+  const { toast: pushToast } = useToast()
+  // See Candidates.jsx for why this delegates to the shared toast instead of
+  // a locally-rendered fixed div: a page-nested toast can get trapped behind
+  // the floating Copilot launcher's stacking context; the shared one portals
+  // straight to document.body and doesn't have that problem.
+  const showToast = (msg, type = 'success') => pushToast({ tone: type === 'error' ? 'error' : 'success', title: msg })
 
   // Quick-create / quick-assign
   const [quickCallback, setQuickCallback] = useState(null)
@@ -1029,16 +1033,6 @@ export default function Pipeline() {
         </FormField>
       </Modal>
 
-      {/* Toast */}
-      {toast && (
-        <div
-          className="fixed bottom-4 right-4 flex items-start gap-2.5 w-[min(360px,calc(100vw-2rem))] bg-surface border border-border rounded-[var(--radius-md)] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-lg)] p-3 animate-[toast-in_var(--duration-base)_var(--ease-standard)]"
-          style={{ zIndex: 'var(--z-toast)' }}
-        >
-          <Icon name={toast.type === 'error' ? 'xCircle' : 'checkCircle'} size={16} className={cn('shrink-0 mt-0.5', toast.type === 'error' ? 'text-red' : 'text-green')} />
-          <p className="text-sm font-semibold text-text min-w-0 flex-1">{toast.msg}</p>
-        </div>
-      )}
     </div>
   )
 }

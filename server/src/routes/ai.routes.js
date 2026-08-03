@@ -1,23 +1,35 @@
 import { Router } from 'express';
 import { aiService } from '../services/aiService.js';
 import { buildActionPrompt, toolIdForAction } from '../services/promptService.js';
+import { parseResumeText } from '../services/resumeParsingService.js';
+import { recordAiUsage } from '../services/usageService.js';
 import { requireAuth } from '../auth.js';
-import { createRequire } from 'module';
-import mammoth from 'mammoth';
-
-const require = createRequire(import.meta.url);
-const pdfParse = require('pdf-parse');
 
 const router = Router();
 router.use(requireAuth);
 
+// Shared identity fields every usage-event log needs, pulled off the
+// authenticated request the same way logActivity() does in data.routes.js.
+function usageContext(req) {
+  return {
+    orgId: req.organizationId || req.profile?.org_id,
+    userId: req.user?.id,
+    userName: req.profile?.full_name || req.user?.email,
+  };
+}
+
 router.post('/generate', async (req, res) => {
+  const startedAt = Date.now();
   try {
     const { prompt, toolId } = req.body;
     const result = await aiService.generate({ prompt, toolId });
+    if (!result.cached) {
+      recordAiUsage({ ...usageContext(req), type: 'action', toolId, provider: result.provider, model: result.model, success: true, durationMs: Date.now() - startedAt, totalTokens: result.totalTokens });
+    }
     return res.json(result);
   } catch (err) {
     const status = err.status || 500;
+    recordAiUsage({ ...usageContext(req), type: 'action', toolId: req.body?.toolId, success: false, durationMs: Date.now() - startedAt, error: err.message });
     return res.status(status).json({
       success: false,
       provider: null,
@@ -28,6 +40,7 @@ router.post('/generate', async (req, res) => {
 });
 
 router.post('/submission-packet', async (req, res) => {
+  const startedAt = Date.now();
   try {
     const { candidate, job, resumeText } = req.body;
     const prompt = `Candidate Details:
@@ -53,9 +66,13 @@ ${resumeText || candidate.resume_text || 'No raw resume text provided. Use candi
 Please generate a top-tier Client Submission Package based on these details.`;
 
     const result = await aiService.generate({ prompt, toolId: 'submission_packet' });
+    if (!result.cached) {
+      recordAiUsage({ ...usageContext(req), type: 'action', toolId: 'submission_packet', provider: result.provider, model: result.model, success: true, durationMs: Date.now() - startedAt, totalTokens: result.totalTokens });
+    }
     return res.json(result);
   } catch (err) {
     const status = err.status || 500;
+    recordAiUsage({ ...usageContext(req), type: 'action', toolId: 'submission_packet', success: false, durationMs: Date.now() - startedAt, error: err.message });
     return res.status(status).json({
       success: false,
       error: err.message || 'Submission packet generation failed.',
@@ -65,6 +82,7 @@ Please generate a top-tier Client Submission Package based on these details.`;
 });
 
 router.post('/match-evaluator', async (req, res) => {
+  const startedAt = Date.now();
   try {
     const { candidate, job, resumeText } = req.body;
     const prompt = `Perform a deep technical candidate evaluation comparing candidate background against client requisition.
@@ -98,9 +116,13 @@ Format the response strictly in Markdown with sections:
 ### Recruiter Screening Call Script (4 Probing Questions to ask Candidate on call)`;
 
     const result = await aiService.generate({ prompt, toolId: 'match' });
+    if (!result.cached) {
+      recordAiUsage({ ...usageContext(req), type: 'action', toolId: 'match', provider: result.provider, model: result.model, success: true, durationMs: Date.now() - startedAt, totalTokens: result.totalTokens });
+    }
     return res.json(result);
   } catch (err) {
     const status = err.status || 500;
+    recordAiUsage({ ...usageContext(req), type: 'action', toolId: 'match', success: false, durationMs: Date.now() - startedAt, error: err.message });
     return res.status(status).json({
       success: false,
       error: err.message || 'AI Match Evaluation failed.',
@@ -116,22 +138,8 @@ router.post('/parse-resume', async (req, res) => {
       return res.status(400).json({ success: false, error: 'No resume text provided.' });
     }
 
-    const prompt = `Parse the following raw resume text and extract candidate profile details into raw JSON:\n\n${resumeText}`;
-    const result = await aiService.generate({ prompt, toolId: 'resume_parser' });
-
-    let rawText = (result.text || '').trim();
-    if (rawText.startsWith('```json')) {
-      rawText = rawText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-    } else if (rawText.startsWith('```')) {
-      rawText = rawText.replace(/^```\s*/, '').replace(/\s*```$/, '');
-    }
-
-    try {
-      const parsedProfile = JSON.parse(rawText);
-      return res.json({ success: true, profile: parsedProfile });
-    } catch {
-      return res.json({ success: false, error: 'AI response was not valid JSON.', rawText: result.text });
-    }
+    const profile = await parseResumeText(resumeText, usageContext(req));
+    return res.json({ success: true, profile });
   } catch (err) {
     const status = err.status || 500;
     return res.status(status).json({
@@ -141,67 +149,30 @@ router.post('/parse-resume', async (req, res) => {
   }
 });
 
-function sanitizeExtractedText(text) {
-  if (!text) return '';
-  let cleaned = text
-    .replace(/%PDF-[\d\.]+/gi, '')
-    .replace(/<<[\s\S]*?>>/g, ' ')
-    .replace(/\b\d+\s+\d+\s+R\b/gi, ' ')
-    .replace(/\b\d+\s+\d+\s+obj\b/gi, ' ')
-    .replace(/\bendobj\b/gi, ' ')
-    .replace(/\bstream[\s\S]*?endstream\b/gi, ' ')
-    .replace(/\[\s*\d+(\s+\d+)*\s*\]/g, ' ')
-    .replace(/\d+\[[\d\s]+\]/g, ' ')
-    .replace(/\/[\w\d]+\b/g, ' ')
-    .replace(/[^\x09\x0A\x0D\x20-\x7E\u00A0-\u024F]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return cleaned;
-}
+// File-based resume parsing (upload + local text extraction + AI field
+// parsing) now lives at POST /api/upload/resume, see upload.routes.js. That
+// route reuses parseResumeText() above plus documentTextService's local
+// pdf-parse/mammoth/html-to-text extraction, which gives every file format
+// the full Gemini -> Groq -> OpenRouter -> Mistral fallback chain instead of
+// being hard-coupled to Gemini's file-vision input like this route used to be.
 
-router.post('/parse-resume-file', async (req, res) => {
+// Playful mascot dialogue for the top-bar pixel bots (see promptService's
+// `bot_lines` config). Fixed prompt text + a 24h cache TTL (well past
+// aiService's normal 15-min default) means this only actually calls Gemini
+// once a day at most, regardless of how often the client polls — this is
+// flavor text, not something that needs to be fresh minute-to-minute, so
+// there's no reason to spend tokens on it more often than that. Never tied
+// to real user/candidate data, so a failure here just means the client
+// falls back to its (large) static line pool.
+const BOT_LINES_MAX_LEN = 60; // must fit the topbar speech bubble on one line
+const BOT_LINES_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+router.get('/bot-lines', async (_req, res) => {
   try {
-    const { fileBase64, fileName } = req.body;
-    if (!fileBase64) {
-      return res.status(400).json({ success: false, error: 'No file data provided.' });
-    }
-
-    let cleanBase64 = fileBase64;
-    if (cleanBase64.includes(',')) {
-      cleanBase64 = cleanBase64.split(',')[1];
-    }
-    cleanBase64 = cleanBase64.trim();
-    const nameLower = (fileName || '').toLowerCase();
-    let mimeType = 'application/pdf';
-    if (nameLower.endsWith('.docx')) mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-    else if (nameLower.endsWith('.doc')) mimeType = 'application/msword';
-    else if (nameLower.endsWith('.txt')) mimeType = 'text/plain';
-
-    const prompt = `You are a Senior Talent Acquisition AI Resume Reader.
-Read the attached candidate resume document file completely.
-Extract the full clean, human-readable plain text of the resume (without any binary formatting artifacts, stream noise, or code).
-Also parse candidate profile details.
-
-Output ONLY a valid raw JSON object with keys:
-"clean_resume_text": "full clean readable plain text of the resume here...",
-"first_name": "First Name",
-"last_name": "Last Name",
-"email": "Email Address",
-"phone": "Phone Number",
-"location": "City, State",
-"job_title": "Primary Target Role / Job Title",
-"experience": 5 (number in years),
-"work_auth": "Work Visa status",
-"rate": "Hourly/Annual pay expectation",
-"skills": ["Skill1", "Skill2", "Skill3"]`;
-
     const result = await aiService.generate({
-      prompt,
-      fileInlineData: {
-        mimeType,
-        data: cleanBase64
-      },
-      toolId: 'resume_parser'
+      prompt: 'Generate a fresh batch of playful mascot dialogue now.',
+      toolId: 'bot_lines',
+      cacheTtlMs: BOT_LINES_CACHE_TTL_MS,
     });
 
     let rawText = (result.text || '').trim();
@@ -211,27 +182,24 @@ Output ONLY a valid raw JSON object with keys:
       rawText = rawText.replace(/^```\s*/, '').replace(/\s*```$/, '');
     }
 
-    let parsedProfile = {};
-    try {
-      parsedProfile = JSON.parse(rawText);
-    } catch {
-      /* ignore JSON parse error */
-    }
+    const parsed = JSON.parse(rawText);
+    const isShortLine = (l) => typeof l === 'string' && l.trim() && l.length <= BOT_LINES_MAX_LEN;
+    const candidateLines = Array.isArray(parsed.candidateLines)
+      ? parsed.candidateLines.filter(isShortLine).slice(0, 12)
+      : [];
+    const robotLines = Array.isArray(parsed.robotLines)
+      ? parsed.robotLines.filter(isShortLine).slice(0, 12)
+      : [];
+    const bicker = Array.isArray(parsed.bicker)
+      ? parsed.bicker
+        .filter(b => b && isShortLine(b.candidate) && isShortLine(b.robot) && isShortLine(b.comeback))
+        .slice(0, 8)
+      : [];
 
-    const extractedText = parsedProfile.clean_resume_text || '';
-
-    return res.json({
-      success: true,
-      extractedText: sanitizeExtractedText(extractedText),
-      profile: parsedProfile
-    });
+    return res.json({ success: true, candidateLines, robotLines, bicker });
   } catch (err) {
     const status = err.status || 500;
-    return res.status(status).json({
-      success: false,
-      error: err.message || 'File parsing failed.',
-      code: err.code || `HTTP_${status}`
-    });
+    return res.status(status).json({ success: false, error: err.message || 'Bot line generation failed.' });
   }
 });
 
@@ -239,16 +207,22 @@ Output ONLY a valid raw JSON object with keys:
 // (Summarize/Rewrite/Improve/Compare/Explain/Score/Analyze/Recommend/
 // Draft/Translate/Extract), so no page has to hand-build its own prompt.
 router.post('/action', async (req, res) => {
+  const startedAt = Date.now();
+  const { action, content, context } = req.body || {};
+  const toolId = toolIdForAction(action);
   try {
-    const { action, content, context } = req.body || {};
     if (!content || !String(content).trim()) {
       return res.status(400).json({ success: false, error: 'Content is required.' });
     }
     const prompt = buildActionPrompt(action, content, context);
-    const result = await aiService.generate({ prompt, toolId: toolIdForAction(action) });
+    const result = await aiService.generate({ prompt, toolId });
+    if (!result.cached) {
+      recordAiUsage({ ...usageContext(req), type: 'action', toolId, provider: result.provider, model: result.model, success: true, durationMs: Date.now() - startedAt, totalTokens: result.totalTokens });
+    }
     return res.json(result);
   } catch (err) {
     const status = err.status || 500;
+    recordAiUsage({ ...usageContext(req), type: 'action', toolId, success: false, durationMs: Date.now() - startedAt, error: err.message });
     return res.status(status).json({
       success: false,
       error: err.message || 'AI action failed. Please try again.',
@@ -261,13 +235,16 @@ router.post('/action', async (req, res) => {
 // the Action Framework, purpose-built tools like Market Salary & Demand) —
 // tokens render as they arrive instead of the UI going silent until the
 // whole response is done. `buildRequest(req)` validates the body and
-// returns { prompt, toolId }; it may throw an Error with a `.status` to
-// short-circuit with a normal JSON error response before SSE headers go out.
+// returns { prompt, toolId, type }; it may throw an Error with a `.status`
+// to short-circuit with a normal JSON error response before SSE headers go
+// out. No token counts here — this app's SSE parsing doesn't capture a
+// usage field from the streamed response, unlike the non-streaming routes.
 function streamingRoute(buildRequest) {
   return async (req, res) => {
-    let prompt, toolId;
+    const startedAt = Date.now();
+    let prompt, toolId, type;
     try {
-      ({ prompt, toolId } = buildRequest(req));
+      ({ prompt, toolId, type } = buildRequest(req));
     } catch (err) {
       return res.status(err.status || 400).json({ success: false, error: err.message });
     }
@@ -289,12 +266,14 @@ function streamingRoute(buildRequest) {
         onDelta: (text) => send({ delta: text }),
       });
       send({ done: true, provider: result.provider, model: result.model });
+      recordAiUsage({ ...usageContext(req), type, toolId, provider: result.provider, model: result.model, success: true, durationMs: Date.now() - startedAt });
       res.end();
     } catch (err) {
       if (err.name === 'AbortError') {
         res.end();
         return;
       }
+      recordAiUsage({ ...usageContext(req), type, toolId, success: false, durationMs: Date.now() - startedAt, error: err.message });
       send({ error: err.message || 'AI request failed. Please try again.', code: err.code || 'STREAM_ERROR' });
       res.end();
     }
@@ -313,7 +292,7 @@ router.post('/copilot/stream', streamingRoute((req) => {
     ? `\n\nRECENT CONVERSATION:\n${history.slice(-8).map(m => `${m.role === 'user' ? 'Recruiter' : 'Copilot'}: ${m.content}`).join('\n')}`
     : '';
   const contextBlock = context ? `\n\nWORKSPACE CONTEXT:\n${context}` : '';
-  return { prompt: `${String(message).trim()}${historyBlock}${contextBlock}`, toolId: 'copilot_chat' };
+  return { prompt: `${String(message).trim()}${historyBlock}${contextBlock}`, toolId: 'copilot_chat', type: 'chat' };
 }));
 
 // Streaming twin of POST /action — same prompt building, incremental output.
@@ -324,7 +303,7 @@ router.post('/action/stream', streamingRoute((req) => {
     err.status = 400;
     throw err;
   }
-  return { prompt: buildActionPrompt(action, content, context), toolId: toolIdForAction(action) };
+  return { prompt: buildActionPrompt(action, content, context), toolId: toolIdForAction(action), type: 'action' };
 }));
 
 // Streaming twin of POST /generate — for purpose-built tools (e.g. Market
@@ -336,7 +315,7 @@ router.post('/generate/stream', streamingRoute((req) => {
     err.status = 400;
     throw err;
   }
-  return { prompt, toolId };
+  return { prompt, toolId, type: 'action' };
 }));
 
 export default router;

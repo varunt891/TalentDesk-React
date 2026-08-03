@@ -147,11 +147,8 @@ export default function Login() {
             </Button>
           </form>
 
-          <p className="text-center text-[13px] text-text3 mt-6">
-            Don't have an account?{' '}
-            <Link to="/signup" className="text-accent font-semibold hover:underline">
-              Create one
-            </Link>
+          <p className="text-center text-[12px] text-text3 mt-6 leading-relaxed">
+            Personnel onboarding is by invitation only. Contact your platform administrator or organization manager for access.
           </p>
         </div>
       </section>

@@ -119,11 +119,11 @@ pre,
   /* ===== DESIGN SYSTEM TOKENS (Phase 1) ===== */
   /* Z-index scale — reference via e.g. z-[var(--z-modal)] */
   --z-sticky: 10;
-  --z-dropdown: 1000;
+  --z-dropdown: 3000;
   --z-overlay: 2000;
   --z-modal: 2100;
-  --z-toast: 2200;
-  --z-tooltip: 2300;
+  --z-toast: 9999;
+  --z-tooltip: 10000;
 
   /* Motion */
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);

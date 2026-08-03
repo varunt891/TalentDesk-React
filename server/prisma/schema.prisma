@@ -23,7 +23,7 @@ model Organization {
   plan              String   @default("starter")
   subscription_plan String   @default("Growth")
   ai_credit_limit   Int      @default(1000)
-  candidate_limit   Int      @default(500)
+  candidate_limit   Int      @default(15000)
   is_active         Boolean  @default(true)
   created_at        DateTime @default(now())
   updated_at        DateTime @updatedAt
@@ -41,6 +41,7 @@ model Organization {
   activityLogs    ActivityLog[]
   tasks           Task[]
   notifications   Notification[]
+  aiUsageEvents   AiUsageEvent[]
 
   @@map("organizations")
 }
@@ -133,6 +134,9 @@ model Candidate {
   skills           Json?
   notes            String?
   resume_text      String?
+  resume_file_key  String?
+  resume_file_name String?
+  resume_file_size Int?
   followup_date    String?
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
@@ -328,4 +332,24 @@ model Notification {
   organization Organization? @relation(fields: [org_id], references: [id], onDelete: Cascade)
 
   @@map("notifications")
+}
+
+model AiUsageEvent {
+  id           String   @id @default(uuid()) @db.Uuid
+  org_id       String?  @db.Uuid
+  user_id      String?  @db.Uuid
+  user_name    String?
+  type         String
+  tool_id      String?
+  provider     String?
+  model        String?
+  success      Boolean  @default(true)
+  duration_ms  Int?
+  total_tokens Int?
+  error        String?
+  created_at   DateTime @default(now())
+
+  organization Organization? @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@map("ai_usage_events")
 }

@@ -1,23 +1,31 @@
-export class GroqService {
+export class OpenRouterService {
   async generateStream({ prompt, toolConfig, onDelta, signal }) {
-    const key = (process.env.GROQ_API_KEY || '').trim();
+    const key = (process.env.OPENROUTER_API_KEY || '').trim();
     if (!key) {
-      const err = new Error('GROQ_API_KEY environment variable is not configured on the server.');
+      const err = new Error('OPENROUTER_API_KEY environment variable is not configured on the server.');
       err.status = 500;
-      err.code = 'CONFIG_MISSING_GROQ_KEY';
+      err.code = 'CONFIG_MISSING_OPENROUTER_KEY';
       throw err;
     }
 
-    const models = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+    const models = [
+      'google/gemini-2.0-flash-lite-preview-02-05:free',
+      'meta-llama/llama-3.3-70b-instruct:free',
+      'deepseek/deepseek-r1:free',
+      'qwen/qwen-2.5-72b-instruct:free',
+      'mistralai/mistral-7b-instruct:free'
+    ];
     let lastError = null;
 
     for (const model of models) {
       try {
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${key}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://talentdesk.app',
+            'X-Title': 'TalentDesk AI'
           },
           body: JSON.stringify({
             model,
@@ -34,9 +42,9 @@ export class GroqService {
 
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));
-          lastError = new Error(data?.error?.message || `Groq API returned status ${response.status}`);
+          lastError = new Error(data?.error?.message || `OpenRouter API returned status ${response.status}`);
           lastError.status = response.status;
-          console.warn(`[Groq Stream ${model}] Status:${response.status} -> ${lastError.message}`);
+          console.warn(`[OpenRouter Stream ${model}] Status:${response.status} -> ${lastError.message}`);
           continue;
         }
 
@@ -64,43 +72,51 @@ export class GroqService {
                 if (onDelta) onDelta(content);
               }
             } catch {
-              // Partial JSON chunk — will be completed in next read
+              // Partial JSON chunk — skip, next read will complete it.
             }
           }
         }
 
         if (fullText) {
-          return { provider: 'groq', model, text: fullText };
+          return { provider: 'openrouter', model, text: fullText };
         }
       } catch (err) {
         if (err.name === 'AbortError') throw err;
         lastError = err;
-        console.error(`[Groq Stream Error ${model}]`, err.message);
+        console.error(`[OpenRouter Stream Error ${model}]`, err.message);
       }
     }
 
-    throw lastError || new Error('All Groq API model attempts failed.');
+    throw lastError || new Error('All OpenRouter API model attempts failed.');
   }
 
   async generate({ prompt, toolConfig }) {
-    const key = (process.env.GROQ_API_KEY || '').trim();
+    const key = (process.env.OPENROUTER_API_KEY || '').trim();
     if (!key) {
-      const err = new Error('GROQ_API_KEY environment variable is not configured on the server.');
+      const err = new Error('OPENROUTER_API_KEY environment variable is not configured on the server.');
       err.status = 500;
-      err.code = 'CONFIG_MISSING_GROQ_KEY';
+      err.code = 'CONFIG_MISSING_OPENROUTER_KEY';
       throw err;
     }
 
-    const models = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+    const models = [
+      'google/gemini-2.0-flash-lite-preview-02-05:free',
+      'meta-llama/llama-3.3-70b-instruct:free',
+      'deepseek/deepseek-r1:free',
+      'qwen/qwen-2.5-72b-instruct:free',
+      'mistralai/mistral-7b-instruct:free'
+    ];
     let lastError = null;
 
     for (const model of models) {
       try {
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${key}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://talentdesk.app',
+            'X-Title': 'TalentDesk AI'
           },
           body: JSON.stringify({
             model,
@@ -116,16 +132,16 @@ export class GroqService {
         const data = await response.json();
 
         if (!response.ok) {
-          lastError = new Error(data?.error?.message || `Groq API returned status ${response.status}`);
+          lastError = new Error(data?.error?.message || `OpenRouter API returned status ${response.status}`);
           lastError.status = response.status;
-          console.warn(`[Groq ${model}] Status:${response.status} -> ${lastError.message}`);
+          console.warn(`[OpenRouter ${model}] Status:${response.status} -> ${lastError.message}`);
           continue;
         }
 
         const text = data?.choices?.[0]?.message?.content?.trim();
         if (text) {
           return {
-            provider: 'groq',
+            provider: 'openrouter',
             model,
             grounded: false,
             sources: [],
@@ -135,12 +151,12 @@ export class GroqService {
         }
       } catch (err) {
         lastError = err;
-        console.error(`[Groq Error ${model}]`, err.message);
+        console.error(`[OpenRouter Error ${model}]`, err.message);
       }
     }
 
-    throw lastError || new Error('All Groq API model attempts failed.');
+    throw lastError || new Error('All OpenRouter API model attempts failed.');
   }
 }
 
-export const groqService = new GroqService();
+export const openRouterService = new OpenRouterService();

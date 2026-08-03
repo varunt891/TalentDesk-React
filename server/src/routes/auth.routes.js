@@ -91,7 +91,7 @@ router.post('/signup', async (req, res, next) => {
           industry: company.industry || 'Staffing & Recruiting',
           subscription_plan: 'Growth',
           ai_credit_limit: 1000,
-          candidate_limit: 500,
+          candidate_limit: 15000,
         },
       })
       userRole = 'OWNER'

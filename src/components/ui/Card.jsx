@@ -21,14 +21,15 @@ export function Card({ as: As = 'div', padding = 'md', hoverable = false, classN
 export function CardHeader({ title, subtitle, action, className = '' }) {
   return (
     <div className={cn('flex items-start justify-between gap-3 mb-3.5', className)}>
-      <div className="min-w-0">
-        <h3 className="text-[13px] font-bold text-text tracking-tight truncate">{title}</h3>
+      <div className="min-w-0 flex-1">
+        <h3 className="text-[13px] font-bold text-text tracking-tight">{title}</h3>
         {subtitle && <p className="text-xs text-text3 mt-1 leading-relaxed">{subtitle}</p>}
       </div>
       {action && <div className="shrink-0">{action}</div>}
     </div>
   )
 }
+
 
 const TREND_TONE = { up: 'text-green', down: 'text-red', flat: 'text-text3' }
 

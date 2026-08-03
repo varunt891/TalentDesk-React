@@ -7,6 +7,7 @@ import dataRoutes from './routes/data.routes.js'
 import adminRoutes from './routes/admin.routes.js'
 import aiRoutes from './routes/ai.routes.js'
 import organizationRoutes from './routes/organization.routes.js'
+import uploadRoutes from './routes/upload.routes.js'
 
 if (!process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET is required')
@@ -64,6 +65,7 @@ app.use('/api/data', dataRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/ai', aiRoutes)
 app.use('/api/organization', organizationRoutes)
+app.use('/api/upload', uploadRoutes)
 
 // Fallback redirect for direct browser requests to /signup on backend port
 app.get('/signup', (req, res) => {

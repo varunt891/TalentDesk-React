@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { requireAdmin, requireAuth } from '../auth.js'
 import { prisma } from '../prisma.js'
+import { storageService } from '../services/storageService.js'
 
 const router = Router()
 
@@ -290,20 +291,25 @@ router.post('/:table', async (req, res, next) => {
       return requireAdmin(req, res, () => { })
     }
 
+    const model = prisma[config.model]
+    const rows = Array.isArray(req.body) ? req.body : [req.body]
+
     if (table === 'candidates') {
       const orgId = req.organizationId || req.profile?.org_id
       if (orgId) {
         const org = await prisma.organization.findUnique({ where: { id: orgId } })
-        const count = await prisma.candidate.count({ where: { org_id: orgId } })
-        const limit = org?.candidate_limit || (org?.subscription_plan === 'Starter' ? 250 : org?.subscription_plan === 'Growth' ? 500 : 2500)
-        if (count >= limit) {
-          return res.status(403).json({ error: `Candidate limit reached (${count}/${limit} candidates) for your ${org?.subscription_plan || 'Starter'} plan. Please upgrade under Organization Settings.` })
+        const isEnterprise = (org?.subscription_plan || 'Growth') === 'Enterprise'
+        if (!isEnterprise) {
+          const count = await prisma.candidate.count({ where: { org_id: orgId } })
+          const limit = org?.candidate_limit || (org?.subscription_plan === 'Starter' ? 2500 : 15000)
+          if (count + rows.length > limit) {
+            const remaining = Math.max(limit - count, 0)
+            return res.status(403).json({ error: `Only ${remaining} of your ${rows.length} candidate${rows.length === 1 ? '' : 's'} fit under your ${org?.subscription_plan || 'Starter'} plan limit (${count}/${limit} used). Please upgrade under Organization Settings.` })
+          }
         }
       }
     }
 
-    const model = prisma[config.model]
-    const rows = Array.isArray(req.body) ? req.body : [req.body]
     const data = []
 
     for (const row of rows) {
@@ -335,6 +341,9 @@ router.put('/:table/:id', async (req, res, next) => {
       where: { id: req.params.id },
       data: withOwnership(req, table, req.body),
     })
+    if (table === 'candidates' && current.resume_file_key && current.resume_file_key !== data.resume_file_key) {
+      await storageService.deleteFile(current.resume_file_key)
+    }
     await logActivity(req, 'updated', table, data, { updates: req.body })
     res.json({ data: sanitize(table, [data]) })
   } catch (err) {
@@ -356,6 +365,9 @@ router.delete('/:table/:id', async (req, res, next) => {
     if (!current) return res.status(404).json({ error: 'Record not found' })
 
     await model.delete({ where: { id: req.params.id } })
+    if (table === 'candidates' && current.resume_file_key) {
+      await storageService.deleteFile(current.resume_file_key)
+    }
     await logActivity(req, 'deleted', table, current)
     res.json({ data: null })
   } catch (err) {

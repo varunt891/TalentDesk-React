@@ -10,6 +10,7 @@ import { cn } from '../ui/utils'
 import { fetchNotifications, markNotificationRead, markNotificationsRead } from '../../lib/admin/notifications'
 import { SETTINGS_TAB_FLAG } from '../../lib/admin/settingsNav'
 import { useTopBarInsights } from '../../lib/ai/topBarInsights'
+import { useAIBotLines } from '../../lib/ai/botLines'
 import PixelRobot from '../ui/PixelRobot'
 
 const ROLE_LABELS = {
@@ -89,6 +90,7 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
 
   const unread = notifications.filter(n => !n.read)
   const { robotInsights, applicantInsights } = useTopBarInsights({ unreadCount: unread.length, userName: displayName })
+  const { candidateLines: aiCandidateLines, robotLines: aiRobotLines, bicker: aiBicker } = useAIBotLines()
 
   const handleMarkAllRead = async () => {
     const ids = unread.map(n => n.id)
@@ -150,6 +152,9 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
               currentPage={currentPage}
               robotInsights={robotInsights}
               applicantInsights={applicantInsights}
+              aiCandidateLines={aiCandidateLines}
+              aiRobotLines={aiRobotLines}
+              aiBicker={aiBicker}
               onNavigate={onNavigate}
             />
           )}

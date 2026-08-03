@@ -42,7 +42,7 @@ export class GeminiService {
       throw err;
     }
 
-    const models = ['gemini-2.0-flash', 'gemini-flash-latest', 'gemini-flash-lite-latest'];
+    const models = ['gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-flash-latest'];
     let lastError = null;
 
     for (const model of models) {
@@ -73,7 +73,6 @@ export class GeminiService {
           apiError.code = errBody?.error?.status || `HTTP_${response.status}`;
           apiError.isRetryable = isRetryableGeminiError(apiError);
           console.warn(`[Gemini Stream ${model}] Status:${response.status} -> ${apiError.message}`);
-          if (!apiError.isRetryable) throw apiError;
           lastError = apiError;
           continue;
         }
@@ -120,7 +119,6 @@ export class GeminiService {
         return { provider: 'gemini', model, text: fullText };
       } catch (err) {
         if (err.name === 'AbortError') throw err; // caller-initiated cancel — propagate immediately, no fallback
-        if (err.isRetryable === false) throw err;
         err.isRetryable = isRetryableGeminiError(err);
         lastError = err;
         console.error(`[Gemini Stream Error ${model}]`, err.message);
@@ -146,7 +144,7 @@ export class GeminiService {
       throw err;
     }
 
-    const models = ['gemini-2.0-flash', 'gemini-flash-latest', 'gemini-flash-lite-latest'];
+    const models = ['gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-flash-latest'];
     let lastError = null;
 
     for (const model of models) {
@@ -207,11 +205,11 @@ export class GeminiService {
 
             console.warn(`[Gemini ${model}] Grounded:${useGrounding} Status:${response.status} -> ${apiError.message}`);
 
-            // Non-retryable error (e.g. 400 Bad Request, 401 Auth error) -> stop immediately
-            if (!apiError.isRetryable) {
-              throw apiError;
-            }
-
+            // One model failing — even for a "non-retryable" reason like a
+            // deprecated model name — says nothing about whether the next
+            // model in the list will work, so we always move on. Whether
+            // Gemini as a whole was retryable is decided from the final
+            // error once every model has been tried (see below).
             lastError = apiError;
             continue;
           }
@@ -245,7 +243,8 @@ export class GeminiService {
             model,
             grounded: useGrounding && sources.length > 0,
             sources,
-            text: `${text.trim()}${sourceBlock}`
+            text: `${text.trim()}${sourceBlock}`,
+            totalTokens: data?.usageMetadata?.totalTokenCount ?? null
           };
         } catch (err) {
           clearTimeout(timeoutId);
@@ -258,10 +257,6 @@ export class GeminiService {
             lastError = timeoutError;
             console.warn(`[Gemini Timeout] ${model}`);
             continue;
-          }
-
-          if (err.isRetryable === false) {
-            throw err;
           }
 
           err.isRetryable = isRetryableGeminiError(err);

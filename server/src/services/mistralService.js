@@ -1,19 +1,19 @@
-export class GroqService {
+export class MistralService {
   async generateStream({ prompt, toolConfig, onDelta, signal }) {
-    const key = (process.env.GROQ_API_KEY || '').trim();
+    const key = (process.env.MISTRAL_API_KEY || '').trim();
     if (!key) {
-      const err = new Error('GROQ_API_KEY environment variable is not configured on the server.');
+      const err = new Error('MISTRAL_API_KEY environment variable is not configured on the server.');
       err.status = 500;
-      err.code = 'CONFIG_MISSING_GROQ_KEY';
+      err.code = 'CONFIG_MISSING_MISTRAL_KEY';
       throw err;
     }
 
-    const models = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+    const models = ['mistral-small-latest', 'open-mistral-7b'];
     let lastError = null;
 
     for (const model of models) {
       try {
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${key}`,
@@ -34,9 +34,9 @@ export class GroqService {
 
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));
-          lastError = new Error(data?.error?.message || `Groq API returned status ${response.status}`);
+          lastError = new Error(data?.error?.message || `Mistral API returned status ${response.status}`);
           lastError.status = response.status;
-          console.warn(`[Groq Stream ${model}] Status:${response.status} -> ${lastError.message}`);
+          console.warn(`[Mistral Stream ${model}] Status:${response.status} -> ${lastError.message}`);
           continue;
         }
 
@@ -70,33 +70,33 @@ export class GroqService {
         }
 
         if (fullText) {
-          return { provider: 'groq', model, text: fullText };
+          return { provider: 'mistral', model, text: fullText };
         }
       } catch (err) {
         if (err.name === 'AbortError') throw err;
         lastError = err;
-        console.error(`[Groq Stream Error ${model}]`, err.message);
+        console.error(`[Mistral Stream Error ${model}]`, err.message);
       }
     }
 
-    throw lastError || new Error('All Groq API model attempts failed.');
+    throw lastError || new Error('All Mistral API model attempts failed.');
   }
 
   async generate({ prompt, toolConfig }) {
-    const key = (process.env.GROQ_API_KEY || '').trim();
+    const key = (process.env.MISTRAL_API_KEY || '').trim();
     if (!key) {
-      const err = new Error('GROQ_API_KEY environment variable is not configured on the server.');
+      const err = new Error('MISTRAL_API_KEY environment variable is not configured on the server.');
       err.status = 500;
-      err.code = 'CONFIG_MISSING_GROQ_KEY';
+      err.code = 'CONFIG_MISSING_MISTRAL_KEY';
       throw err;
     }
 
-    const models = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+    const models = ['mistral-small-latest', 'open-mistral-7b'];
     let lastError = null;
 
     for (const model of models) {
       try {
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${key}`,
@@ -116,16 +116,16 @@ export class GroqService {
         const data = await response.json();
 
         if (!response.ok) {
-          lastError = new Error(data?.error?.message || `Groq API returned status ${response.status}`);
+          lastError = new Error(data?.error?.message || `Mistral API returned status ${response.status}`);
           lastError.status = response.status;
-          console.warn(`[Groq ${model}] Status:${response.status} -> ${lastError.message}`);
+          console.warn(`[Mistral ${model}] Status:${response.status} -> ${lastError.message}`);
           continue;
         }
 
         const text = data?.choices?.[0]?.message?.content?.trim();
         if (text) {
           return {
-            provider: 'groq',
+            provider: 'mistral',
             model,
             grounded: false,
             sources: [],
@@ -135,12 +135,12 @@ export class GroqService {
         }
       } catch (err) {
         lastError = err;
-        console.error(`[Groq Error ${model}]`, err.message);
+        console.error(`[Mistral Error ${model}]`, err.message);
       }
     }
 
-    throw lastError || new Error('All Groq API model attempts failed.');
+    throw lastError || new Error('All Mistral API model attempts failed.');
   }
 }
 
-export const groqService = new GroqService();
+export const mistralService = new MistralService();

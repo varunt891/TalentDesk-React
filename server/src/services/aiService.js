@@ -2,14 +2,11 @@ import { cacheService } from './cacheService.js';
 import { getToolConfig } from './promptService.js';
 import { geminiService } from './geminiService.js';
 import { groqService } from './groqService.js';
+import { openRouterService } from './openRouterService.js';
+import { mistralService } from './mistralService.js';
 
 export class AIService {
-  // Streaming path for the Recruiter Copilot — bypasses the response cache
-  // (a streamed answer is context/history dependent, not a stable cache
-  // key) and does not fall back to Groq mid-stream: if Gemini fails before
-  // any tokens are sent we throw and let the caller offer Retry, rather
-  // than silently restarting the answer on a different provider after the
-  // user has already started reading.
+  // Streaming path for the Recruiter Copilot
   async generateStream({ prompt, toolId, onDelta, signal }) {
     if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
       const err = new Error('Prompt is required and must be a non-empty text string.');
@@ -32,11 +29,10 @@ export class AIService {
       return { success: true, provider: result.provider, model: result.model, text: result.text };
     } catch (geminiErr) {
       if (geminiErr.name === 'AbortError') throw geminiErr;
-      const durationMs = Date.now() - startTime;
       console.warn(`[AI Stream Fallback Triggered] Gemini stream failed (${geminiErr.message}). Attempting Groq fallback...`);
     }
 
-    // 2. Fallback Attempt: Groq Stream / Generate
+    // 2. Fallback 1: Groq Stream / Generate
     try {
       let groqResult;
       try {
@@ -54,17 +50,59 @@ export class AIService {
       return { success: true, provider: groqResult.provider, model: groqResult.model, text: groqResult.text };
     } catch (groqErr) {
       if (groqErr.name === 'AbortError') throw groqErr;
-      const durationMs = Date.now() - startTime;
-      console.error(`[AI METRICS] ${new Date().toISOString()} | tool:${activeToolId} | provider:groq | latency:${durationMs}ms | stream:failed | status:502 | error:${groqErr.message}`);
+      console.warn(`[AI Stream Fallback 2 Triggered] Groq failed (${groqErr.message}). Attempting OpenRouter fallback...`);
+    }
 
-      const combinedErr = new Error(`Both Gemini and Groq AI providers failed: ${groqErr.message}`);
+    // 3. Fallback 2: OpenRouter Stream / Generate
+    try {
+      let routerResult;
+      try {
+        routerResult = await openRouterService.generateStream({ prompt: cleanPrompt, toolConfig, onDelta, signal });
+      } catch (routerStreamErr) {
+        if (routerStreamErr.name === 'AbortError') throw routerStreamErr;
+        routerResult = await openRouterService.generate({ prompt: cleanPrompt, toolConfig });
+        if (routerResult?.text && onDelta) {
+          onDelta(routerResult.text);
+        }
+      }
+
+      const durationMs = Date.now() - startTime;
+      console.log(`[AI METRICS] ${new Date().toISOString()} | tool:${activeToolId} | provider:${routerResult.provider} | model:${routerResult.model} | latency:${durationMs}ms | stream:fallback2 | status:200`);
+      return { success: true, provider: routerResult.provider, model: routerResult.model, text: routerResult.text };
+    } catch (routerErr) {
+      if (routerErr.name === 'AbortError') throw routerErr;
+      console.warn(`[AI Stream Fallback 3 Triggered] OpenRouter failed (${routerErr.message}). Attempting Mistral fallback...`);
+    }
+
+    // 4. Fallback 3: Mistral Stream / Generate
+    try {
+      let mistralResult;
+      try {
+        mistralResult = await mistralService.generateStream({ prompt: cleanPrompt, toolConfig, onDelta, signal });
+      } catch (mistralStreamErr) {
+        if (mistralStreamErr.name === 'AbortError') throw mistralStreamErr;
+        mistralResult = await mistralService.generate({ prompt: cleanPrompt, toolConfig });
+        if (mistralResult?.text && onDelta) {
+          onDelta(mistralResult.text);
+        }
+      }
+
+      const durationMs = Date.now() - startTime;
+      console.log(`[AI METRICS] ${new Date().toISOString()} | tool:${activeToolId} | provider:${mistralResult.provider} | model:${mistralResult.model} | latency:${durationMs}ms | stream:fallback3 | status:200`);
+      return { success: true, provider: mistralResult.provider, model: mistralResult.model, text: mistralResult.text };
+    } catch (mistralErr) {
+      if (mistralErr.name === 'AbortError') throw mistralErr;
+      const durationMs = Date.now() - startTime;
+      console.error(`[AI METRICS] ${new Date().toISOString()} | tool:${activeToolId} | provider:mistral | latency:${durationMs}ms | stream:failed | status:502 | error:${mistralErr.message}`);
+
+      const combinedErr = new Error(`All AI providers (Gemini, Groq, OpenRouter, Mistral) failed: ${mistralErr.message}`);
       combinedErr.status = 502;
       combinedErr.code = 'ALL_PROVIDERS_FAILED';
       throw combinedErr;
     }
   }
 
-  async generate({ prompt, fileInlineData, toolId }) {
+  async generate({ prompt, fileInlineData, toolId, cacheTtlMs }) {
     if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
       const err = new Error('Prompt is required and must be a non-empty text string.');
       err.status = 400;
@@ -104,25 +142,24 @@ export class AIService {
         model: result.model,
         grounded: result.grounded,
         sources: result.sources || [],
-        text: result.text
+        text: result.text,
+        totalTokens: result.totalTokens ?? null
       };
 
-      cacheService.set(activeToolId, cleanPrompt, responsePayload);
-      return { ...responsePayload, cached: false };
+      cacheService.set(activeToolId, cleanPrompt, responsePayload, cacheTtlMs);
+      return { ...responsePayload, cached: false, durationMs };
     } catch (geminiError) {
-      // If Gemini error is NON-RETRYABLE (e.g. HTTP 400, Invalid Payload, Missing Gemini Key, Auth 401/403)
-      if (geminiError.isRetryable === false) {
-        const durationMs = Date.now() - startTime;
-        const status = geminiError.status || 400;
-        console.error(`[AI METRICS] ${new Date().toISOString()} | tool:${activeToolId} | provider:gemini | model:none | latency:${durationMs}ms | grounded:false | fallback:skipped | status:${status} | error:${geminiError.message}`);
-        
-        throw geminiError;
-      }
-
-      console.warn(`[AI Fallback Triggered] Gemini retryable error (${geminiError.message}). Attempting Groq fallback...`);
+      // Whatever went wrong with Gemini (missing key, deprecated model,
+      // quota exhausted, bad request) is specific to Gemini — it says
+      // nothing about whether Groq/OpenRouter/Mistral (independent
+      // services with their own keys) can handle this exact prompt, which
+      // was already validated above. So we always fall through rather than
+      // gating on isRetryable, which used to abort the whole request and
+      // skip every other configured provider.
+      console.warn(`[AI Fallback Triggered] Gemini failed (${geminiError.message}). Attempting Groq fallback...`);
     }
 
-    // 3. Fallback Provider: Groq
+    // 3. Fallback Provider 1: Groq
     try {
       const groqResult = await groqService.generate({ prompt: cleanPrompt, toolConfig });
       const durationMs = Date.now() - startTime;
@@ -135,17 +172,64 @@ export class AIService {
         model: groqResult.model,
         grounded: false,
         sources: [],
-        text: groqResult.text
+        text: groqResult.text,
+        totalTokens: groqResult.totalTokens ?? null
       };
 
-      cacheService.set(activeToolId, cleanPrompt, responsePayload);
-      return { ...responsePayload, cached: false };
+      cacheService.set(activeToolId, cleanPrompt, responsePayload, cacheTtlMs);
+      return { ...responsePayload, cached: false, durationMs };
     } catch (groqError) {
-      const durationMs = Date.now() - startTime;
-      const status = groqError.status || 502;
-      console.error(`[AI METRICS] ${new Date().toISOString()} | tool:${activeToolId} | provider:groq | model:none | latency:${durationMs}ms | grounded:false | fallback:failed | status:${status} | error:${groqError.message}`);
+      console.warn(`[AI Fallback 2 Triggered] Groq retryable error (${groqError.message}). Attempting OpenRouter fallback...`);
+    }
 
-      const combinedError = new Error(`Both Gemini and Groq AI providers failed: ${groqError.message}`);
+    // 4. Fallback Provider 2: OpenRouter
+    try {
+      const routerResult = await openRouterService.generate({ prompt: cleanPrompt, toolConfig });
+      const durationMs = Date.now() - startTime;
+
+      console.log(`[AI METRICS] ${new Date().toISOString()} | tool:${activeToolId} | provider:${routerResult.provider} | model:${routerResult.model} | latency:${durationMs}ms | grounded:false | fallback:true2 | status:200`);
+
+      const responsePayload = {
+        success: true,
+        provider: routerResult.provider,
+        model: routerResult.model,
+        grounded: false,
+        sources: [],
+        text: routerResult.text,
+        totalTokens: routerResult.totalTokens ?? null
+      };
+
+      cacheService.set(activeToolId, cleanPrompt, responsePayload, cacheTtlMs);
+      return { ...responsePayload, cached: false, durationMs };
+    } catch (routerError) {
+      console.warn(`[AI Fallback 3 Triggered] OpenRouter retryable error (${routerError.message}). Attempting Mistral fallback...`);
+    }
+
+    // 5. Fallback Provider 3: Mistral AI
+    try {
+      const mistralResult = await mistralService.generate({ prompt: cleanPrompt, toolConfig });
+      const durationMs = Date.now() - startTime;
+
+      console.log(`[AI METRICS] ${new Date().toISOString()} | tool:${activeToolId} | provider:${mistralResult.provider} | model:${mistralResult.model} | latency:${durationMs}ms | grounded:false | fallback:true3 | status:200`);
+
+      const responsePayload = {
+        success: true,
+        provider: mistralResult.provider,
+        model: mistralResult.model,
+        grounded: false,
+        sources: [],
+        text: mistralResult.text,
+        totalTokens: mistralResult.totalTokens ?? null
+      };
+
+      cacheService.set(activeToolId, cleanPrompt, responsePayload, cacheTtlMs);
+      return { ...responsePayload, cached: false, durationMs };
+    } catch (mistralError) {
+      const durationMs = Date.now() - startTime;
+      const status = mistralError.status || 502;
+      console.error(`[AI METRICS] ${new Date().toISOString()} | tool:${activeToolId} | provider:mistral | model:none | latency:${durationMs}ms | grounded:false | fallback:failed | status:${status} | error:${mistralError.message}`);
+
+      const combinedError = new Error(`All AI providers (Gemini, Groq, OpenRouter, Mistral) failed: ${mistralError.message}`);
       combinedError.status = 502;
       combinedError.code = 'ALL_PROVIDERS_FAILED';
       throw combinedError;

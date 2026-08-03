@@ -4,7 +4,7 @@ import { db } from '../lib/api'
 import { PageContainer } from '../components/layout/PageContainer'
 import {
   Button, Badge, StatusPill, Card, CardHeader, KPICard, PageHeader, Modal, Input, Select,
-  SearchableSelect, Textarea, FormField, Icon, Avatar, Menu, MenuTrigger, EmptyState, CollapsibleSection, cn,
+  SearchableSelect, Textarea, FormField, Icon, Avatar, Menu, MenuTrigger, EmptyState, CollapsibleSection, cn, useToast,
 } from '../components/ui'
 import { WorkspaceSearch, FilterWorkspace, EntityDrawer } from '../components/workspace'
 import { Drawer } from '../components/ui/Modal'
@@ -100,12 +100,18 @@ export default function TasksPage({ onNavigate }) {
 
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState(initialFilters)
-  const [showDetail, setShowDetail] = useState(null)
+  const [showDetailId, setShowDetailId] = useState(null)
   const [previewTab, setPreviewTab] = useState('overview')
-  const [toast, setToast] = useState(null)
-  const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000) }
+  const { toast: pushToast } = useToast()
+  // See Candidates.jsx for why this delegates to the shared toast instead of
+  // a locally-rendered fixed div: a page-nested toast can get trapped behind
+  // the floating Copilot launcher's stacking context; the shared one portals
+  // straight to document.body and doesn't have that problem.
+  const showToast = (msg, type = 'success') => pushToast({ tone: type === 'error' ? 'error' : 'success', title: msg })
 
   const [form, setForm] = useState(emptyForm)
+  const [formError, setFormError] = useState('')
+  const [formErrors, setFormErrors] = useState({})
   const [editingId, setEditingId] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -274,9 +280,18 @@ export default function TasksPage({ onNavigate }) {
     return items.filter(i => i.date).sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 8)
   }, [scopedTasks, commentsMap, tasks])
 
-  const openDrawer = (t, tab = 'overview') => { setShowDetail(t); setPreviewTab(tab) }
+  // Track only the id — deriving the task object from processedTasks below
+  // keeps the open drawer live as tasks state changes (progress, status).
+  const showDetail = useMemo(() => showDetailId ? (processedTasks.find(t => String(t.id) === String(showDetailId)) || null) : null, [showDetailId, processedTasks])
+  const openDrawer = (t, tab = 'overview') => { setShowDetailId(t.id); setPreviewTab(tab) }
 
-  const openCreate = () => { setForm({ ...emptyForm, assigned_to: !isManager ? (user?.id || '') : '' }); setEditingId(null); setShowForm(true) }
+  const openCreate = () => {
+    setForm({ ...emptyForm, assigned_to: !isManager ? (user?.id || '') : '' })
+    setEditingId(null)
+    setFormError('')
+    setFormErrors({})
+    setShowForm(true)
+  }
   const openEdit = (t) => {
     setForm({
       title: t.title || '', category: t.category || 'Custom', assigned_to: t.assigned_to || '',
@@ -284,14 +299,26 @@ export default function TasksPage({ onNavigate }) {
       target_value: t.target_value != null ? String(t.target_value) : '', req_id: t.req_id || '', description: t.description || '',
     })
     setEditingId(t.id)
+    setFormError('')
+    setFormErrors({})
     setShowForm(true)
-    setShowDetail(null)
+    setShowDetailId(null)
   }
 
   const handleSaveTask = async () => {
-    if (!form.title.trim()) return showToast('Task title is required', 'error')
-    if (!form.assigned_to) return showToast('Please assign this task to a recruiter', 'error')
+    const errs = {}
+    if (!form.title.trim()) errs.title = 'Task title is required'
+    if (!form.assigned_to) errs.assigned_to = 'Please assign this task to a recruiter'
+    if (Object.keys(errs).length > 0) {
+      setFormErrors(errs)
+      setFormError(errs.title || errs.assigned_to)
+      showToast(errs.title || errs.assigned_to, 'error')
+      return
+    }
+    setFormError('')
+    setFormErrors({})
     setSaving(true)
+
     const assignedProfile = profiles.find(p => p.id === form.assigned_to)
     const payload = {
       ...form,
@@ -301,11 +328,15 @@ export default function TasksPage({ onNavigate }) {
       assigned_by: user?.id || null,
       assigned_by_name: profile?.full_name || profile?.email || 'Manager',
     }
+
     if (editingId) {
       const { error } = await db.from('tasks').update(payload).eq('id', editingId)
       setSaving(false)
-      if (error) return showToast(error.message, 'error')
-      setTasks(prev => prev.map(t => t.id === editingId ? { ...t, ...payload } : t))
+      if (error) {
+        setFormError(error.message)
+        return showToast(error.message, 'error')
+      }
+      setTasks(prev => prev.map(t => String(t.id) === String(editingId) ? { ...t, ...payload } : t))
       if (payload.assigned_to && payload.assigned_to !== user?.id) {
         db.from('notifications').insert({ user_id: payload.assigned_to, title: '📝 Task Updated', message: `${payload.assigned_by_name} updated task: "${payload.title}"`, link: '/tasks' }).catch(() => {})
       }
@@ -314,23 +345,31 @@ export default function TasksPage({ onNavigate }) {
       const fullPayload = { ...payload, status: 'Pending', current_progress: 0 }
       const { data, error } = await db.from('tasks').insert(fullPayload)
       setSaving(false)
-      if (error) return showToast(error.message, 'error')
-      const created = Array.isArray(data) ? data[0] : data
+      if (error) {
+        setFormError(error.message)
+        return showToast(error.message, 'error')
+      }
+      const created = Array.isArray(data) ? data[0] : (data && data.id ? data : { ...fullPayload, id: Date.now() })
       if (created) setTasks(prev => [created, ...prev])
       if (fullPayload.assigned_to && fullPayload.assigned_to !== user?.id) {
         db.from('notifications').insert({ user_id: fullPayload.assigned_to, title: '🎯 New Task Assigned', message: `${fullPayload.assigned_by_name} assigned you a new task: "${fullPayload.title}"`, link: '/tasks' }).catch(() => {})
       }
-      showToast('Task created!')
+      showToast('✓ Task created successfully!')
     }
     setShowForm(false)
   }
 
   const handleStatusChange = async (taskId, newStatus) => {
-    const target = tasks.find(t => t.id === taskId)
+    const target = tasks.find(t => String(t.id) === String(taskId))
     if (!target) return
-    const updates = { status: newStatus, current_progress: newStatus === 'Completed' && target.target_value ? target.target_value : target.current_progress }
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t))
+    const targetVal = target.target_value ? parseInt(target.target_value, 10) : null
+    const updates = {
+      status: newStatus,
+      current_progress: newStatus === 'Completed' && targetVal ? targetVal : (target.current_progress || 0)
+    }
+    setTasks(prev => prev.map(t => String(t.id) === String(taskId) ? { ...t, ...updates } : t))
     await db.from('tasks').update(updates).eq('id', taskId)
+    showToast(`Status updated to "${newStatus}"!`)
     if (newStatus === 'Completed' && target.assigned_by && target.assigned_by !== user?.id) {
       db.from('notifications').insert({ user_id: target.assigned_by, title: '✅ Task Completed', message: `${target.assigned_to_name || 'A recruiter'} completed task: "${target.title}"`, link: '/tasks' }).catch(() => {})
     }
@@ -338,13 +377,20 @@ export default function TasksPage({ onNavigate }) {
   const toggleComplete = (t) => handleStatusChange(t.id, t.computedStatus === 'Completed' ? 'Pending' : 'Completed')
 
   const handleIncrementProgress = async (taskId, delta) => {
-    const target = tasks.find(t => t.id === taskId)
+    const target = tasks.find(t => String(t.id) === String(taskId))
     if (!target) return
-    const newProgress = Math.max(0, (target.current_progress || 0) + delta)
-    const isCompleted = target.target_value && newProgress >= target.target_value
-    const updates = { current_progress: newProgress, status: isCompleted ? 'Completed' : (newProgress > 0 ? 'In Progress' : target.status) }
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t))
+    const targetVal = target.target_value ? parseInt(target.target_value, 10) : 0
+    const rawProgress = (parseInt(target.current_progress, 10) || 0) + delta
+    const newProgress = targetVal > 0 ? Math.min(targetVal, Math.max(0, rawProgress)) : Math.max(0, rawProgress)
+    if (targetVal > 0 && (target.current_progress || 0) >= targetVal && delta > 0) {
+      return showToast('Target goal already reached!')
+    }
+    const isCompleted = targetVal > 0 && newProgress >= targetVal
+    const newStatus = isCompleted ? 'Completed' : (newProgress > 0 ? 'In Progress' : (target.status || 'Pending'))
+    const updates = { current_progress: newProgress, status: newStatus }
+    setTasks(prev => prev.map(t => String(t.id) === String(taskId) ? { ...t, ...updates } : t))
     await db.from('tasks').update(updates).eq('id', taskId)
+    showToast(`Progress: ${newProgress}${targetVal ? ` / ${targetVal}` : ''}`)
   }
 
   const setPriority = async (t, priority) => {
@@ -368,7 +414,7 @@ export default function TasksPage({ onNavigate }) {
     setTasks(prev => prev.filter(t => t.id !== deleteId))
     showToast('Task deleted', 'error')
     setDeleteId(null)
-    setShowDetail(null)
+    setShowDetailId(null)
   }
 
   const handleAddComment = async (e) => {
@@ -501,28 +547,28 @@ export default function TasksPage({ onNavigate }) {
         <div className="xl:col-span-2 flex flex-col gap-4 min-w-0">
           <CollapsibleSection title="Today's Focus" subtitle="Due today, not yet done" count={todayFocus.length} tone="accent" loading={loading}>
             {todayFocus.length === 0 ? <EmptyState icon="checkCircle" title="Nothing due today" description="You're clear — check Upcoming for what's next." /> : (
-              <div className="flex flex-col gap-2">{todayFocus.map(t => <TaskCard key={t.id} t={t} onOpen={() => openDrawer(t)} onToggleComplete={() => toggleComplete(t)} onContextMenu={(e) => openContextMenu(e, t)} actionsFor={actionsFor} jobs={jobs} />)}</div>
+              <div className="flex flex-col gap-2">{todayFocus.map(t => <TaskCard key={t.id} t={t} onOpen={() => openDrawer(t)} onToggleComplete={() => toggleComplete(t)} onContextMenu={(e) => openContextMenu(e, t)} actionsFor={actionsFor} jobs={jobs} onIncrementProgress={(delta) => handleIncrementProgress(t.id, delta)} />)}</div>
             )}
           </CollapsibleSection>
 
           <CollapsibleSection title="Overdue" subtitle="Past due date" count={overdueList.length} tone="red" loading={loading}>
             {overdueList.length === 0 ? <EmptyState icon="checkCircle" title="No overdue tasks" description="Great pace — nothing has slipped." /> : (
-              <div className="flex flex-col gap-2">{overdueList.map(t => <TaskCard key={t.id} t={t} onOpen={() => openDrawer(t)} onToggleComplete={() => toggleComplete(t)} onContextMenu={(e) => openContextMenu(e, t)} actionsFor={actionsFor} jobs={jobs} />)}</div>
+              <div className="flex flex-col gap-2">{overdueList.map(t => <TaskCard key={t.id} t={t} onOpen={() => openDrawer(t)} onToggleComplete={() => toggleComplete(t)} onContextMenu={(e) => openContextMenu(e, t)} actionsFor={actionsFor} jobs={jobs} onIncrementProgress={(delta) => handleIncrementProgress(t.id, delta)} />)}</div>
             )}
           </CollapsibleSection>
 
           <CollapsibleSection title="Upcoming" subtitle="Due after today" count={upcomingList.length + unscheduledList.length} tone="neutral" loading={loading} defaultOpen={false}>
             {upcomingList.length === 0 && unscheduledList.length === 0 ? <EmptyState icon="calendar" title="Nothing scheduled ahead" /> : (
               <div className="flex flex-col gap-2">
-                {upcomingList.map(t => <TaskCard key={t.id} t={t} onOpen={() => openDrawer(t)} onToggleComplete={() => toggleComplete(t)} onContextMenu={(e) => openContextMenu(e, t)} actionsFor={actionsFor} jobs={jobs} />)}
-                {unscheduledList.map(t => <TaskCard key={t.id} t={t} onOpen={() => openDrawer(t)} onToggleComplete={() => toggleComplete(t)} onContextMenu={(e) => openContextMenu(e, t)} actionsFor={actionsFor} jobs={jobs} />)}
+                {upcomingList.map(t => <TaskCard key={t.id} t={t} onOpen={() => openDrawer(t)} onToggleComplete={() => toggleComplete(t)} onContextMenu={(e) => openContextMenu(e, t)} actionsFor={actionsFor} jobs={jobs} onIncrementProgress={(delta) => handleIncrementProgress(t.id, delta)} />)}
+                {unscheduledList.map(t => <TaskCard key={t.id} t={t} onOpen={() => openDrawer(t)} onToggleComplete={() => toggleComplete(t)} onContextMenu={(e) => openContextMenu(e, t)} actionsFor={actionsFor} jobs={jobs} onIncrementProgress={(delta) => handleIncrementProgress(t.id, delta)} />)}
               </div>
             )}
           </CollapsibleSection>
 
           <CollapsibleSection title="Completed Today" subtitle="Recent wins" count={completedTodayList.length} tone="green" loading={loading} defaultOpen={false}>
             {completedTodayList.length === 0 ? <EmptyState icon="checkCircle" title="Nothing completed yet today" /> : (
-              <div className="flex flex-col gap-2">{completedTodayList.map(t => <TaskCard key={t.id} t={t} onOpen={() => openDrawer(t)} onToggleComplete={() => toggleComplete(t)} onContextMenu={(e) => openContextMenu(e, t)} actionsFor={actionsFor} jobs={jobs} />)}</div>
+              <div className="flex flex-col gap-2">{completedTodayList.map(t => <TaskCard key={t.id} t={t} onOpen={() => openDrawer(t)} onToggleComplete={() => toggleComplete(t)} onContextMenu={(e) => openContextMenu(e, t)} actionsFor={actionsFor} jobs={jobs} onIncrementProgress={(delta) => handleIncrementProgress(t.id, delta)} />)}</div>
             )}
           </CollapsibleSection>
         </div>
@@ -549,8 +595,8 @@ export default function TasksPage({ onNavigate }) {
                       <span>{relativeDue(t.due_date)}</span>
                     </div>
                     <div className="flex gap-1.5 mt-2">
-                      <Button size="sm" variant="secondary" onClick={() => handleIncrementProgress(t.id, 1)}>+1</Button>
-                      <Button size="sm" variant="secondary" onClick={() => handleIncrementProgress(t.id, 5)}>+5</Button>
+                      <Button size="sm" variant="secondary" disabled={Boolean(t.target_value && (t.current_progress || 0) >= t.target_value)} onClick={() => handleIncrementProgress(t.id, 1)}>+1</Button>
+                      <Button size="sm" variant="secondary" disabled={Boolean(t.target_value && (t.current_progress || 0) >= t.target_value)} onClick={() => handleIncrementProgress(t.id, 5)}>+5</Button>
                       <Button size="sm" variant="ghost" className="ml-auto" onClick={() => openDrawer(t)}>Details</Button>
                     </div>
                   </div>
@@ -604,7 +650,7 @@ export default function TasksPage({ onNavigate }) {
       {showDetail && (
         <EntityDrawer
           open={!!showDetail}
-          onClose={() => setShowDetail(null)}
+          onClose={() => setShowDetailId(null)}
           eyebrow={showDetail.category}
           title={showDetail.title}
           subtitle={showDetail.assigned_to_name ? `Assigned to ${showDetail.assigned_to_name}` : undefined}
@@ -614,10 +660,21 @@ export default function TasksPage({ onNavigate }) {
           activeTab={previewTab}
           onTabChange={setPreviewTab}
           actions={
-            <>
-              <Menu align="start" trigger={({ toggle }) => <Button variant="secondary" leftIcon="checkCircle" onClick={toggle}>Status</Button>} items={STATUSES.filter(s => s !== 'Overdue').map(s => ({ label: s, onClick: () => handleStatusChange(showDetail.id, s) }))} />
+            <div className="flex items-center gap-2">
+              <Menu
+                align="end"
+                trigger={({ toggle }) => (
+                  <Button variant="secondary" leftIcon="checkCircle" onClick={(e) => { e.stopPropagation(); toggle() }}>
+                    Status: {showDetail.computedStatus}
+                  </Button>
+                )}
+                items={STATUSES.filter(s => s !== 'Overdue').map(s => ({
+                  label: s,
+                  onClick: () => handleStatusChange(showDetail.id, s)
+                }))}
+              />
               <Button variant="secondary" leftIcon="edit" onClick={() => openEdit(showDetail)}>Edit</Button>
-            </>
+            </div>
           }
         >
           {previewTab === 'overview' && (
@@ -636,8 +693,8 @@ export default function TasksPage({ onNavigate }) {
                     <span>{relativeDue(showDetail.due_date)}</span>
                   </div>
                   <div className="flex gap-2">
-                    <Button size="sm" variant="secondary" onClick={() => handleIncrementProgress(showDetail.id, 1)}>+1</Button>
-                    <Button size="sm" variant="secondary" onClick={() => handleIncrementProgress(showDetail.id, 5)}>+5</Button>
+                    <Button size="sm" variant="secondary" disabled={Boolean(showDetail.target_value && (showDetail.current_progress || 0) >= showDetail.target_value)} onClick={() => handleIncrementProgress(showDetail.id, 1)}>+1</Button>
+                    <Button size="sm" variant="secondary" disabled={Boolean(showDetail.target_value && (showDetail.current_progress || 0) >= showDetail.target_value)} onClick={() => handleIncrementProgress(showDetail.id, 5)}>+5</Button>
                   </div>
                 </Card>
               )}
@@ -684,15 +741,62 @@ export default function TasksPage({ onNavigate }) {
         onClose={() => setShowForm(false)}
         title={editingId ? 'Edit Task' : 'New Task / Target'}
         size="lg"
-        footer={<><Button variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button><Button variant="primary" loading={saving} onClick={handleSaveTask}>{editingId ? 'Save Changes' : 'Create Task'}</Button></>}
+        footer={
+          <div className="flex items-center justify-between w-full">
+            {formError ? (
+              <span className="text-xs font-semibold text-red flex items-center gap-1.5 animate-in fade-in duration-200">
+                <Icon name="alertCircle" size={14} className="shrink-0" />
+                {formError}
+              </span>
+            ) : <span />}
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
+              <Button variant="primary" loading={saving} onClick={handleSaveTask}>
+                {editingId ? 'Save Changes' : 'Create Task'}
+              </Button>
+            </div>
+          </div>
+        }
       >
         <div className="flex flex-col gap-3.5">
-          <FormField label="Task Title" required><Input {...inp('title')} placeholder="e.g. Complete 15 phone screens for Senior DevOps req" /></FormField>
+          {formError && (
+            <div className="p-3 rounded-[var(--radius-md)] bg-red/10 border border-red/30 text-red text-xs font-semibold flex items-center gap-2 animate-in fade-in duration-200">
+              <Icon name="alertCircle" size={14} className="shrink-0" />
+              <span>{formError}</span>
+            </div>
+          )}
+
+          <FormField label="Task Title" required error={formErrors.title}>
+            <Input
+              value={form.title}
+              onChange={e => {
+                setForm(f => ({ ...f, title: e.target.value }))
+                if (formErrors.title) {
+                  setFormErrors(prev => ({ ...prev, title: '' }))
+                  if (!formErrors.assigned_to) setFormError('')
+                }
+              }}
+              placeholder="e.g. Complete 15 phone screens for Senior DevOps req"
+              className={formErrors.title ? 'border-red/60 focus:border-red ring-1 ring-red/30' : ''}
+            />
+          </FormField>
           <div className="grid sm:grid-cols-2 gap-3.5">
             <FormField label="Task Type"><Select value={form.category} onChange={v => setForm(f => ({ ...f, category: v }))} options={CATEGORIES.map(c => ({ value: c, label: c }))} /></FormField>
             <FormField label="Priority"><Select value={form.priority} onChange={v => setForm(f => ({ ...f, priority: v }))} options={PRIORITIES.map(p => ({ value: p, label: p }))} /></FormField>
-            <FormField label="Assign To" required>
-              <SearchableSelect options={profiles.map(p => ({ id: p.id, name: p.full_name || p.email, role: p.role, email: p.email }))} value={form.assigned_to || 'all'} onChange={v => setForm(f => ({ ...f, assigned_to: v === 'all' ? '' : v }))} allLabel="-- Select recruiter --" />
+            <FormField label="Assign To" required error={formErrors.assigned_to}>
+              <SearchableSelect
+                options={profiles.map(p => ({ id: p.id, name: p.full_name || p.email, role: p.role, email: p.email }))}
+                value={form.assigned_to || 'all'}
+                onChange={v => {
+                  const val = v === 'all' ? '' : v
+                  setForm(f => ({ ...f, assigned_to: val }))
+                  if (formErrors.assigned_to) {
+                    setFormErrors(prev => ({ ...prev, assigned_to: '' }))
+                    if (!formErrors.title) setFormError('')
+                  }
+                }}
+                allLabel="-- Select recruiter --"
+              />
             </FormField>
             <FormField label="Due Date"><Input {...inp('due_date')} type="date" /></FormField>
             <FormField label="Target Value (optional)"><Input {...inp('target_value')} type="number" min="1" placeholder="e.g. 10 calls/submissions" /></FormField>
@@ -722,17 +826,12 @@ export default function TasksPage({ onNavigate }) {
         <p className="text-sm text-text3">This cannot be undone.</p>
       </Modal>
 
-      {toast && (
-        <div style={{ position: 'fixed', bottom: '24px', right: '24px', background: toast.type === 'error' ? 'var(--red)' : 'var(--green)', color: '#fff', padding: '12px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', zIndex: 9999, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
-          {toast.msg}
-        </div>
-      )}
     </PageContainer>
   )
 }
 
 
-function TaskCard({ t, onOpen, onToggleComplete, onContextMenu, actionsFor, jobs }) {
+function TaskCard({ t, onOpen, onToggleComplete, onContextMenu, actionsFor, jobs, onIncrementProgress }) {
   const job = t.req_id ? jobs.find(j => j.id === t.req_id) : null
   const isOverdue = t.computedStatus === 'Overdue'
   return (
@@ -762,8 +861,18 @@ function TaskCard({ t, onOpen, onToggleComplete, onContextMenu, actionsFor, jobs
         {t.description && <p className="text-[11px] text-text3 mt-0.5 line-clamp-2">{t.description}</p>}
 
         {t.isTarget && (
-          <div className="h-1 bg-surface3 rounded-full overflow-hidden mt-2 max-w-[220px]">
-            <div className="h-full rounded-full bg-accent" style={{ width: `${t.progressPct}%` }} />
+          <div className="mt-2.5 p-2 rounded-[var(--radius-sm)] bg-surface3/40 border border-border/50 max-w-sm">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-text2 mb-1">
+              <span>Target Progress: <strong className="text-text">{t.current_progress || 0} / {t.target_value}</strong></span>
+              <span className="text-accent font-bold">{t.progressPct}%</span>
+            </div>
+            <div className="h-1.5 bg-surface3 rounded-full overflow-hidden mb-2">
+              <div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${t.progressPct}%` }} />
+            </div>
+            <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+              <Button size="xs" variant="secondary" disabled={Boolean(t.target_value && (t.current_progress || 0) >= t.target_value)} onClick={(e) => { e.stopPropagation(); onIncrementProgress?.(1) }}>+1 Progress</Button>
+              <Button size="xs" variant="secondary" disabled={Boolean(t.target_value && (t.current_progress || 0) >= t.target_value)} onClick={(e) => { e.stopPropagation(); onIncrementProgress?.(5) }}>+5 Progress</Button>
+            </div>
           </div>
         )}
 

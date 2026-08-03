@@ -68,6 +68,25 @@ export function useCandidates(options = {}) {
     return { data: createdItem, error: null }
   }
 
+  const addCandidates = async (rows) => {
+    const payload = rows.map(row => ({
+      ...cleanDates(row),
+      user_id: user.id,
+      org_id: profile?.org_id
+    }))
+    const { data, error } = await db
+      .from('candidates')
+      .insert(payload)
+      .select()
+    if (error) {
+      console.error('[addCandidates] Error:', error)
+      return { data: null, error }
+    }
+    const createdItems = Array.isArray(data) ? data : [data]
+    setCandidates(prev => [...createdItems, ...prev])
+    return { data: createdItems, error: null }
+  }
+
   const updateCandidate = async (id, updates) => {
     const payload = cleanDates(updates)
     const { data, error } = await db
@@ -92,5 +111,5 @@ export function useCandidates(options = {}) {
     return { error }
   }
 
-  return { candidates, loading, addCandidate, updateCandidate, deleteCandidate, refetch: fetch }
+  return { candidates, loading, addCandidate, addCandidates, updateCandidate, deleteCandidate, refetch: fetch }
 }

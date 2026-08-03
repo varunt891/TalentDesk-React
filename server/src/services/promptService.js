@@ -144,6 +144,17 @@ export const TOOL_CONFIGS = {
     temperature: 0.0,
     allowGrounding: false,
     maxTokens: 2048
+  },
+
+  // Playful mascot dialogue for the top-bar pixel bots (a sarcastic
+  // job-seeker "Candidate" and a chipper "Copilot" robot). Pure flavor text,
+  // never tied to any real user/candidate/job data — see ai.routes.js
+  // GET /bot-lines, cached like any other tool response.
+  bot_lines: {
+    systemPrompt: 'You write short, playful micro-dialogue for two pixel-art mascot characters that live in the top bar of a recruiting CRM: a sarcastic job-seeker called "Candidate" and a chipper AI recruiting-assistant robot called "Copilot". Tone: witty, dry office humor, PG, never mean-spirited, never political or offensive, no real names, no real companies. CRITICAL LENGTH RULE: every single line (including each of "candidate"/"robot"/"comeback" inside a bicker object) MUST be 55 characters or fewer, INCLUDING its trailing emoji — these render in a small one-line speech bubble, so anything longer gets silently discarded. Count characters before finalizing each line. End each line with exactly one relevant emoji. Vary topics across the whole batch: pipeline status, interviews, ghosting, recruiting buzzwords ("synergy", "circle back"), AI match scores, coffee, Mondays, LinkedIn culture, remote work, resumes. Never repeat a line verbatim within the batch. You MUST output ONLY a valid raw JSON object with exactly this shape and nothing else — no markdown fences, no commentary, no trailing text: {"candidateLines": [8 short first-person lines the Candidate says about job-hunting/waiting/general observations, not tied to any specific stage or name], "robotLines": [8 short first-person lines the Copilot says about recruiting/hiring in general], "bicker": [5 objects, each shaped exactly as {"candidate": "...", "robot": "...", "comeback": "..."}, forming a 3-line sarcastic back-and-forth where the Candidate needles the Copilot, the Copilot claps back, and the Candidate gets the last word]}.',
+    temperature: 0.85,
+    allowGrounding: false,
+    maxTokens: 2048
   }
 };
 

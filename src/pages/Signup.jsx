@@ -18,44 +18,38 @@ export default function Signup() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const inviteToken = searchParams.get('invite_token')
+  // If no inviteToken is present, platform personnel/members cannot self-register without an invitation
+  if (!inviteToken) {
+    return (
+      <main className="relative min-h-dvh w-full bg-bg text-text overflow-hidden flex items-center justify-center p-6">
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+          <div className="absolute -top-40 -left-32 w-[560px] h-[560px] rounded-full opacity-[0.12] blur-[120px]" style={{ background: 'var(--accent)' }} />
+          <div className="absolute -bottom-48 -right-32 w-[560px] h-[560px] rounded-full opacity-[0.10] blur-[120px]" style={{ background: 'var(--ai)' }} />
+        </div>
 
-  const [step, setStep] = useState(inviteToken ? 2 : 1)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [inviteDetails, setInviteDetails] = useState(null)
-
-  // Step 1: Company Profile Form
-  const [companyName, setCompanyName] = useState('')
-  const [website, setWebsite] = useState('')
-  const [domain, setDomain] = useState('')
-  const [industry, setIndustry] = useState('Staffing & Recruiting')
-
-  // Step 2: Account Credentials Form
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-
-  useEffect(() => {
-    if (inviteToken) {
-      organizationApi.verifyInvitation(inviteToken)
-        .then(res => {
-          if (res.data) {
-            setInviteDetails(res.data)
-            setEmail(res.data.email || '')
-          }
-        })
-        .catch(err => setError(err.message || 'Invalid invitation token'))
-    }
-  }, [inviteToken])
-
-  const handleStep1Next = (e) => {
-    e.preventDefault()
-    if (!companyName.trim()) {
-      setError('Company name is required')
-      return
-    }
-    setError('')
-    setStep(2)
+        <div className="bg-surface border border-border rounded-[var(--radius-lg)] shadow-[var(--shadow-lg)] p-8 w-full max-w-md text-center flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-accent/10 text-accent flex items-center justify-center">
+            <Icon name="mail" size={24} />
+          </div>
+          <div>
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-accent bg-accent/10 rounded-full px-2.5 py-1 mb-2">
+              Invitation Required
+            </span>
+            <h1 className="text-xl font-extrabold text-text tracking-tight">Personnel Onboarding</h1>
+          </div>
+          <p className="text-xs text-text3 leading-relaxed">
+            TalentDesk is an invite-only platform. Personnel and team members are onboarded strictly via direct invitation links issued by platform administrators or organization managers.
+          </p>
+          <div className="p-3 bg-surface2 border border-border rounded-[var(--radius-md)] text-[11px] text-text2 text-left w-full flex items-start gap-2">
+            <Icon name="lock" size={14} className="text-accent shrink-0 mt-0.5" />
+            <span>If you were invited, please open the exact invitation link sent to your email to complete registration.</span>
+          </div>
+          <Link to="/login" className="w-full mt-2">
+            <Button size="lg" className="w-full">Back to Sign In</Button>
+          </Link>
+        </div>
+      </main>
+    )
   }
 
   const handleFinalSubmit = async (e) => {

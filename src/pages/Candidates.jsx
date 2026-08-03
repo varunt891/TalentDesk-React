@@ -1,14 +1,15 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useCandidates } from '../hooks/useCandidates'
 import { useAuth } from '../context/AuthContext'
-import { db, apiRequest } from '../lib/api'
+import { db, apiRequest, apiUpload } from '../lib/api'
 import SubmissionPacketModal from '../components/SubmissionPacketModal'
 import AIMatchModal from '../components/AIMatchModal'
+import BulkResumeUploadModal from '../components/candidates/BulkResumeUploadModal'
 import * as XLSX from 'xlsx'
 import { PageContainer } from '../components/layout/PageContainer'
 import {
   Button, Input, Textarea, FormField, Select, Combobox, Badge, StatusPill, Card, CardHeader,
-  KPICard, PageHeader, Table, Modal, Switch, Icon, Avatar, Menu, MenuTrigger, EmptyState,
+  KPICard, PageHeader, Table, Modal, Switch, Icon, Avatar, Menu, MenuTrigger, EmptyState, useToast,
 } from '../components/ui'
 import { WorkspaceSearch, FilterWorkspace, EntityDrawer } from '../components/workspace'
 import { Drawer } from '../components/ui/Modal'
@@ -33,7 +34,8 @@ const emptyForm = {
   feedback_status: 'Awaiting', priority: 'Medium',
   interview_date: '', interview_type: '',
   fe_name: '', fe_extension: '', account_manager: '', recruiter_name: '',
-  skills: [], notes: '', followup_date: '', resume_text: ''
+  skills: [], notes: '', followup_date: '', resume_text: '',
+  resume_file_key: '', resume_file_name: '', resume_file_size: null
 }
 
 function fallbackExtractSkills(text = '') {
@@ -64,11 +66,12 @@ export default function Candidates() {
   const isSuperAdmin = profile?.role === 'superadmin' || profile?.role === 'SUPERADMIN'
   const isAdmin = isSuperAdmin || profile?.role === 'admin'
   const [allOrgsView, setAllOrgsView] = useState(false)
-  const { candidates, loading, addCandidate, updateCandidate, deleteCandidate } = useCandidates({ allOrgs: isSuperAdmin && allOrgsView })
+  const { candidates, loading, addCandidate, addCandidates, updateCandidate, deleteCandidate } = useCandidates({ allOrgs: isSuperAdmin && allOrgsView })
 
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({ status: [], fe: [], job: [], location: [], feedback: [], org: [], recruiter: [], priority: [] })
   const [showModal, setShowModal] = useState(false)
+  const [showBulkUpload, setShowBulkUpload] = useState(false)
   const [showDetail, setShowDetail] = useState(null)
   useAISetContext(showDetail ? {
     currentCandidate: `${showDetail.first_name || ''} ${showDetail.last_name || ''}`.trim(),
@@ -79,10 +82,15 @@ export default function Candidates() {
   const [aiMatchModal, setAiMatchModal] = useState({ isOpen: false, candidate: null, job: null })
   const [editingId, setEditingId] = useState(null)
 
-  const [toast, setToast] = useState(null)
+  const { toast: pushToast } = useToast()
+  // Thin adapter over the shared, portal-rendered toast (renders straight
+  // into document.body, so it can't get trapped behind another page
+  // element's stacking context — see the local hand-rolled toast this
+  // replaced, which rendered nested inside the page content and ended up
+  // stuck behind the floating Copilot launcher button on every page that
+  // still had its own copy).
   const showToast = (msg, type = 'success') => {
-    setToast({ msg, type })
-    setTimeout(() => setToast(null), 3000)
+    pushToast({ tone: type === 'error' ? 'error' : 'success', title: msg })
   }
 
   const openPacketForCandidate = (cand) => {
@@ -122,6 +130,9 @@ export default function Candidates() {
   const [skillInput, setSkillInput] = useState('')
   const [extractingSkills, setExtractingSkills] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [formErrors, setFormErrors] = useState({})
+  const firstNameRef = useRef(null)
+  const jobIdRef = useRef(null)
   const [deleteId, setDeleteId] = useState(null)
   const [selected, setSelected] = useState([])
   const pageRef = useRef(null)
@@ -272,7 +283,7 @@ export default function Candidates() {
   }
 
   // Form
-  const openAdd = () => { setForm(emptyForm); setEditingId(null); setSkillInput(''); setShowModal(true) }
+  const openAdd = () => { setForm(emptyForm); setEditingId(null); setSkillInput(''); setFormErrors({}); setShowModal(true) }
   const openEdit = (c) => {
     setForm({
       first_name: c.first_name || '', last_name: c.last_name || '', email: c.email || '',
@@ -289,7 +300,7 @@ export default function Candidates() {
       skills: ensureArray(c.skills), notes: c.notes || '', followup_date: c.followup_date || '',
       resume_text: c.resume_text || ''
     })
-    setEditingId(c.id); setSkillInput(''); setShowModal(true)
+    setEditingId(c.id); setSkillInput(''); setFormErrors({}); setShowModal(true)
   }
 
   const handleExtractSkillsAI = async () => {
@@ -392,53 +403,51 @@ export default function Candidates() {
     setExtractingSkills(true)
     showToast(`Parsing ${file.name}... Please wait`)
     try {
-      const reader = new FileReader()
-      reader.onload = async (event) => {
-        try {
-          const dataUrl = event.target?.result
-          if (typeof dataUrl === 'string') {
-            const base64 = dataUrl.split(',')[1] || dataUrl
-            const res = await apiRequest('/ai/parse-resume-file', {
-              method: 'POST',
-              body: { fileBase64: base64, fileName: file.name }
-            })
-            if (res && res.success) {
-              const p = res.profile || {}
-              setForm(prev => ({
-                ...prev,
-                resume_text: res.extractedText || prev.resume_text,
-                first_name: p.first_name || prev.first_name,
-                last_name: p.last_name || prev.last_name,
-                email: p.email || prev.email,
-                phone: p.phone || prev.phone,
-                location: p.location || prev.location,
-                job_title: p.job_title || prev.job_title,
-                experience: p.experience !== undefined && p.experience !== null ? String(p.experience) : prev.experience,
-                work_auth: p.work_auth || prev.work_auth,
-                rate: p.rate || prev.rate,
-                skills: Array.isArray(p.skills) && p.skills.length > 0 ? Array.from(new Set([...(prev.skills || []), ...p.skills])) : prev.skills
-              }))
-              showToast(`⚡ Clean text & profile auto-filled from ${file.name}!`)
-            } else {
-              throw new Error(res.error || 'Failed to parse document text.')
-            }
-          }
-        } catch (err) {
-          showToast(err.message || 'File upload parsing failed', 'error')
-        } finally {
-          setExtractingSkills(false)
-        }
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await apiUpload('/upload/resume', formData)
+      if (res && res.success) {
+        const p = res.profile || {}
+        setForm(prev => ({
+          ...prev,
+          resume_text: res.extractedText || prev.resume_text,
+          resume_file_key: res.resume_file_key || prev.resume_file_key,
+          resume_file_name: res.resume_file_name || prev.resume_file_name,
+          resume_file_size: res.resume_file_size || prev.resume_file_size,
+          first_name: p.first_name || prev.first_name,
+          last_name: p.last_name || prev.last_name,
+          email: p.email || prev.email,
+          phone: p.phone || prev.phone,
+          location: p.location || prev.location,
+          job_title: p.job_title || prev.job_title,
+          experience: p.experience !== undefined && p.experience !== null ? String(p.experience) : prev.experience,
+          work_auth: p.work_auth || prev.work_auth,
+          rate: p.rate || prev.rate,
+          skills: Array.isArray(p.skills) && p.skills.length > 0 ? Array.from(new Set([...(prev.skills || []), ...p.skills])) : prev.skills
+        }))
+        showToast(res.resume_file_key ? `⚡ Resume saved & profile auto-filled from ${file.name}!` : `⚡ Text & profile auto-filled from ${file.name}!`)
+      } else {
+        throw new Error(res.error || 'Failed to parse document text.')
       }
-      reader.readAsDataURL(file)
     } catch (err) {
       showToast(err.message || 'File upload parsing failed', 'error')
+    } finally {
       setExtractingSkills(false)
     }
   }
 
   const handleSave = async () => {
-    if (!form.first_name || !form.last_name) return showToast('First and last name required', 'error')
-    if (!form.job_id) return showToast('Job ID required', 'error')
+    const errors = {}
+    if (!form.first_name) errors.first_name = 'First name is required'
+    if (!form.job_id) errors.job_id = 'Job ID is required'
+    if (Object.keys(errors).length) {
+      setFormErrors(errors)
+      showToast(Object.values(errors).join(' · '), 'error')
+      const target = errors.first_name ? firstNameRef.current : jobIdRef.current
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return
+    }
+    setFormErrors({})
     setSaving(true)
     if (editingId) {
       const { error } = await updateCandidate(editingId, form)
@@ -452,6 +461,23 @@ export default function Candidates() {
     setSaving(false)
   }
 
+  const [downloadingResume, setDownloadingResume] = useState(false)
+  const handleDownloadResume = async (candidateId) => {
+    setDownloadingResume(true)
+    try {
+      const res = await apiRequest(`/upload/resume-url/${candidateId}`)
+      if (res?.success && res.url) {
+        window.open(res.url, '_blank', 'noopener')
+      } else {
+        throw new Error(res?.error || 'Could not generate a download link.')
+      }
+    } catch (err) {
+      showToast(err.message || 'Failed to download resume', 'error')
+    } finally {
+      setDownloadingResume(false)
+    }
+  }
+
   const addSkill = (e) => {
     if (e.key === 'Enter' && skillInput.trim()) {
       e.preventDefault()
@@ -461,7 +487,13 @@ export default function Candidates() {
     }
   }
 
-  const inp = (field) => ({ value: form[field], onChange: e => setForm(f => ({ ...f, [field]: e.target.value })) })
+  const inp = (field) => ({
+    value: form[field],
+    onChange: e => {
+      setForm(f => ({ ...f, [field]: e.target.value }))
+      if (formErrors[field]) setFormErrors(errs => { const next = { ...errs }; delete next[field]; return next })
+    },
+  })
 
   const candidateStats = [
     { label: 'Total Candidates', value: candidates.length, helper: `${filtered.length} shown`, tone: 'accent', icon: 'users' },
@@ -481,7 +513,18 @@ export default function Candidates() {
           <span className="min-w-0">
             <span className="flex items-center gap-1">
               <strong className="text-[12.5px] text-text font-semibold truncate">{c.first_name} {c.last_name}</strong>
-              {c.resume_text && <Icon name="edit" size={10} className="text-text3/60 shrink-0" aria-label="Resume on file" />}
+              {c.resume_text && <Icon name="edit" size={10} className="text-text3/60 shrink-0" aria-label="Resume text on file" />}
+              {c.resume_file_name && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleDownloadResume(c.id) }}
+                  className="text-text3/60 hover:text-accent shrink-0 focus-ring rounded-sm"
+                  title={`Download ${c.resume_file_name}`}
+                  aria-label={`Download resume file for ${c.first_name}`}
+                >
+                  <Icon name="download" size={10} />
+                </button>
+              )}
             </span>
             <small className="block text-[11px] text-text3 truncate leading-tight">{c.work_auth || c.email || 'n/a'}</small>
           </span>
@@ -532,6 +575,7 @@ export default function Candidates() {
           <>
             {isSuperAdmin && <Switch checked={allOrgsView} onChange={setAllOrgsView} label="All orgs" />}
             <Button variant="secondary" leftIcon="download" onClick={exportAll}>Export XLSX</Button>
+            <Button variant="secondary" leftIcon="inbox" onClick={() => setShowBulkUpload(true)}>Bulk Upload</Button>
             <Button variant="primary" leftIcon="plus" onClick={openAdd}>Add Candidate</Button>
           </>
         }
@@ -743,6 +787,25 @@ export default function Candidates() {
                   <p className="text-sm text-text2 leading-relaxed">{showDetail.notes || 'No notes yet.'}</p>
                   {showDetail.followup_date && <p className="text-xs text-text3 mt-2">Follow-up date: <b className="text-text2">{showDetail.followup_date}</b></p>}
                 </Card>
+                {showDetail.resume_file_name && (
+                  <Card>
+                    <CardHeader
+                      title="Resume File"
+                      action={
+                        <Button
+                          size="xs"
+                          variant="secondary"
+                          leftIcon="download"
+                          loading={downloadingResume}
+                          onClick={() => handleDownloadResume(showDetail.id)}
+                        >
+                          Download
+                        </Button>
+                      }
+                    />
+                    <p className="text-sm text-text2 truncate">{showDetail.resume_file_name}</p>
+                  </Card>
+                )}
                 {showDetail.resume_text && (
                   <Card>
                     <CardHeader
@@ -824,10 +887,40 @@ export default function Candidates() {
       >
         <div className="flex flex-col gap-5">
           <div>
+            <FormSectionTitle>Resume &amp; AI Profile Parser</FormSectionTitle>
+            <Card className="bg-surface2 border-accent/30 shadow-xs">
+              <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wide text-accent">Candidate Resume Text or File</label>
+                  <div className="text-xs text-text3 mt-0.5">Paste resume text or upload a file — AI will auto-fill name, email, phone, location, title &amp; skills!</div>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <label className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[var(--radius-sm)] border border-border bg-surface3 text-text text-xs font-semibold cursor-pointer hover:bg-surface transition-colors">
+                    <Icon name="download" size={12} /> Upload File
+                    <input type="file" accept=".txt,.pdf,.doc,.docx" onChange={handleResumeFileUpload} className="hidden" />
+                  </label>
+                  <Button type="button" size="sm" variant="secondary" onClick={handleExtractSkillsAI} disabled={extractingSkills || !form.resume_text?.trim()}>
+                    Extract Skills Only
+                  </Button>
+                  <Button type="button" size="sm" variant="ai" leftIcon="sparkles" loading={extractingSkills} onClick={handleAutoFillProfileAI} disabled={!form.resume_text?.trim()}>
+                    AI Auto-Fill Full Profile
+                  </Button>
+                </div>
+              </div>
+              <Textarea
+                {...inp('resume_text')}
+                placeholder="Paste full raw candidate resume text here (e.g. summary, contact, skills, experience)... Or upload a resume file above and click 'AI Auto-Fill Full Profile'!"
+                rows={5}
+                className="font-mono text-xs"
+              />
+            </Card>
+          </div>
+
+          <div>
             <FormSectionTitle>Personal Info</FormSectionTitle>
             <div className="grid sm:grid-cols-2 gap-3.5">
-              <FormField label="First Name" required><Input {...inp('first_name')} placeholder="John" /></FormField>
-              <FormField label="Last Name" required><Input {...inp('last_name')} placeholder="Smith" /></FormField>
+              <FormField label="First Name" required error={formErrors.first_name}><Input ref={firstNameRef} {...inp('first_name')} error={!!formErrors.first_name} placeholder="John" /></FormField>
+              <FormField label="Last Name"><Input {...inp('last_name')} placeholder="Smith" /></FormField>
               <FormField label="Email"><Input {...inp('email')} type="email" placeholder="john@email.com" /></FormField>
               <FormField label="Phone"><Input {...inp('phone')} placeholder="+1 555 000 0000" /></FormField>
               <FormField label="Location" required><Combobox value={form.location} onChange={v => setForm(f => ({ ...f, location: v }))} options={locationOptions} placeholder="City, State" /></FormField>
@@ -841,7 +934,7 @@ export default function Candidates() {
             <FormSectionTitle>Submission Details</FormSectionTitle>
             <div className="grid sm:grid-cols-2 gap-3.5">
               <FormField label="Submission Date" required><Input {...inp('submission_date')} type="date" /></FormField>
-              <FormField label="Job ID" required><Input {...inp('job_id')} placeholder="JOB-001" /></FormField>
+              <FormField label="Job ID" required error={formErrors.job_id}><Input ref={jobIdRef} {...inp('job_id')} error={!!formErrors.job_id} placeholder="JOB-001" /></FormField>
               <FormField label="Job Title" required><Combobox value={form.job_title} onChange={v => setForm(f => ({ ...f, job_title: v }))} options={jobTitleOptions} placeholder="Software Engineer" /></FormField>
               <FormField label="Client"><Input {...inp('client')} placeholder="Acme Corp" /></FormField>
               <FormField label="Bill Rate"><Input {...inp('rate')} placeholder="$85/hr" /></FormField>
@@ -869,36 +962,6 @@ export default function Candidates() {
               <FormField label="Account Manager"><Input {...inp('account_manager')} placeholder="Mike R." /></FormField>
               <FormField label="Recruiter"><Combobox value={form.recruiter_name} onChange={v => setForm(f => ({ ...f, recruiter_name: v }))} options={recruiterOptions} placeholder="Your name" /></FormField>
             </div>
-          </div>
-
-          <div>
-            <FormSectionTitle>Resume &amp; AI Profile Parser</FormSectionTitle>
-            <Card className="bg-surface2">
-              <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wide text-accent">Candidate Resume Text or File</label>
-                  <div className="text-xs text-text3 mt-0.5">Paste resume text or upload a file — AI will auto-fill name, email, phone, location, title &amp; skills!</div>
-                </div>
-                <div className="flex gap-2 flex-wrap">
-                  <label className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[var(--radius-sm)] border border-border bg-surface3 text-text text-xs font-semibold cursor-pointer">
-                    <Icon name="download" size={12} /> Upload File
-                    <input type="file" accept=".txt,.pdf,.doc,.docx" onChange={handleResumeFileUpload} className="hidden" />
-                  </label>
-                  <Button type="button" size="sm" variant="secondary" onClick={handleExtractSkillsAI} disabled={extractingSkills || !form.resume_text?.trim()}>
-                    Extract Skills Only
-                  </Button>
-                  <Button type="button" size="sm" variant="ai" leftIcon="sparkles" loading={extractingSkills} onClick={handleAutoFillProfileAI} disabled={!form.resume_text?.trim()}>
-                    AI Auto-Fill Full Profile
-                  </Button>
-                </div>
-              </div>
-              <Textarea
-                {...inp('resume_text')}
-                placeholder="Paste full raw candidate resume text here (e.g. summary, contact, skills, experience)... Or upload a resume file above and click 'AI Auto-Fill Full Profile'!"
-                rows={5}
-                className="font-mono text-xs"
-              />
-            </Card>
           </div>
 
           <div>
@@ -970,6 +1033,14 @@ export default function Candidates() {
         onOpenSubmissionPacket={(cand, job) => openPacketForCandidate(cand, job)}
       />
 
+      {/* Bulk Resume Upload Modal */}
+      <BulkResumeUploadModal
+        isOpen={showBulkUpload}
+        onClose={() => setShowBulkUpload(false)}
+        addCandidates={addCandidates}
+        showToast={showToast}
+      />
+
       {/* Field Full View Overlay Modal */}
       <Modal
         open={!!expandedFieldModal}
@@ -1004,9 +1075,6 @@ export default function Candidates() {
           </div>
         )}
       </Modal>
-
-      {/* Toast */}
-      {toast && <div style={{ position: 'fixed', bottom: '24px', right: '24px', background: toast.type === 'error' ? 'var(--red)' : 'var(--green)', color: '#fff', padding: '12px 20px', borderRadius: '10px', fontSize: '13px', fontWeight: '600', zIndex: 9999, boxShadow: '0 4px 20px rgba(0,0,0,0.4)', fontFamily: 'DM Sans, sans-serif' }}>{toast.msg}</div>}
     </PageContainer>
   )
 }

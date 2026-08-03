@@ -4,9 +4,10 @@ import { useAuth } from '../context/AuthContext'
 import { PageContainer } from '../components/layout/PageContainer'
 import {
   Button, Card, CardHeader, KPICard, PageHeader, Tabs, EmptyState, Select, Input, FormField,
-  Badge, Avatar, Table, cn, SearchBar, Icon, Switch,
+  Badge, Avatar, Table, cn, SearchBar, Icon, Switch, useToast,
 } from '../components/ui'
-import { StatusBadge, InfoBanner, ProfileCard } from '../components/admin'
+import { StatusBadge, InfoBanner, ProfileCard, AIUsageSection, SuperadminAIUsageSection } from '../components/admin'
+
 
 const TABS = ['Overview', 'Org Chart', 'Members', 'Access', 'Company']
 const ROLES = ['employee', 'recruiter', 'account_manager', 'recruitment_manager', 'operations_manager', 'manager', 'admin', 'superadmin']
@@ -32,7 +33,6 @@ export default function Admin() {
   const [org, setOrg] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState(null)
   const [search, setSearch] = useState('')
   const [memberFilters, setMemberFilters] = useState({ department: 'All', role: 'All' })
   const [invite, setInvite] = useState({ email: '', role: 'recruiter', team: '', manager_id: '', department: 'Recruiting' })
@@ -51,13 +51,16 @@ export default function Admin() {
   const [platformOp, setPlatformOp] = useState(null) // which danger op is confirming
   const [platformConfirmText, setPlatformConfirmText] = useState('')
   const [platformTargetOrgId, setPlatformTargetOrgId] = useState('')
-  const [newOrgForm, setNewOrgForm] = useState({ name: '', slug: '', email_domain: '' })
+  const [newOrgForm, setNewOrgForm] = useState({ name: '', slug: '', email_domain: '', owner_name: '', owner_email: '' })
   const [creatingOrg, setCreatingOrg] = useState(false)
+  const [createdOrgInviteUrl, setCreatedOrgInviteUrl] = useState('')
 
-  const showToast = (msg, type = 'success') => {
-    setToast({ msg, type })
-    setTimeout(() => setToast(null), 3200)
-  }
+  const { toast: pushToast } = useToast()
+  // See Candidates.jsx for why this delegates to the shared toast instead of
+  // a locally-rendered fixed div: a page-nested toast can get trapped behind
+  // the floating Copilot launcher's stacking context; the shared one portals
+  // straight to document.body and doesn't have that problem.
+  const showToast = (msg, type = 'success') => pushToast({ tone: type === 'error' ? 'error' : 'success', title: msg })
 
   const fetchAdminData = useCallback(async () => {
     const activeOrgId = selectedOrgId || orgId
@@ -347,15 +350,21 @@ export default function Admin() {
     if (!newOrgForm.name.trim()) return showToast('Org name is required', 'error')
     setCreatingOrg(true)
     try {
-      const { data, error } = await db.from('organizations').insert({
+      const res = await organizationApi.onboardOrg({
         name: newOrgForm.name.trim(),
-        slug: newOrgForm.slug.trim() || newOrgForm.name.toLowerCase().replace(/\s+/g, '-'),
-        email_domain: newOrgForm.email_domain.trim() || null,
+        slug: newOrgForm.slug.trim() || undefined,
+        domain: newOrgForm.email_domain.trim() || undefined,
+        owner_name: newOrgForm.owner_name?.trim() || undefined,
+        owner_email: newOrgForm.owner_email?.trim() || undefined,
       })
-      if (error) throw error
-      const created = Array.isArray(data) ? data[0] : data
-      if (created) setAllOrgs(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
-      setNewOrgForm({ name: '', slug: '', email_domain: '' })
+      const created = res?.data
+      if (created) {
+        setAllOrgs(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
+      }
+      if (res?.invite_url) {
+        setCreatedOrgInviteUrl(res.invite_url)
+      }
+      setNewOrgForm({ name: '', slug: '', email_domain: '', owner_name: '', owner_email: '' })
       showToast(`Organization "${newOrgForm.name.trim()}" created successfully`)
     } catch (err) {
       showToast(err.message || 'Create org failed', 'error')
@@ -447,31 +456,12 @@ export default function Admin() {
 
       {/* Superadmin Org Switcher Bar */}
       {isSuperAdmin && allOrgs.length > 1 && (
-        <Card padding="sm" className="mt-5 flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-text3 shrink-0">
-            <Icon name="building" size={12} />
-            <span>Platform Organizations</span>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {allOrgs.map(o => {
-              const isActive = (selectedOrgId || orgId) === o.id
-              return (
-                <button
-                  key={o.id}
-                  onClick={() => setSelectedOrgId(o.id)}
-                  type="button"
-                  className={cn(
-                    'inline-flex items-center gap-1.5 px-2.5 h-7 rounded-full text-xs font-semibold border transition-colors duration-[var(--duration-fast)]',
-                    isActive ? 'bg-accent/12 text-accent border-accent/30' : 'bg-surface2 text-text2 border-border hover:bg-surface3'
-                  )}
-                >
-                  <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', isActive ? 'bg-accent' : 'bg-text3')} />
-                  <span>{o.name}</span>
-                </button>
-              )
-            })}
-          </div>
-        </Card>
+        <PlatformOrgSwitcher
+          allOrgs={allOrgs}
+          selectedOrgId={selectedOrgId}
+          orgId={orgId}
+          onSelectOrg={setSelectedOrgId}
+        />
       )}
 
       {/* Identical Uniform KPI Command Cards */}
@@ -579,6 +569,8 @@ export default function Admin() {
               onChange={setOrgForm}
               onSave={saveOrgSettings}
               saving={saving}
+              org={org}
+              members={users}
             />
           )}
           {activeTab === 'Platform' && isSuperAdmin && (
@@ -589,6 +581,9 @@ export default function Admin() {
               onNewOrgFormChange={setNewOrgForm}
               onCreateOrg={handleCreateOrg}
               creatingOrg={creatingOrg}
+              createdOrgInviteUrl={createdOrgInviteUrl}
+              onDismissInviteUrl={() => setCreatedOrgInviteUrl('')}
+              onToast={showToast}
               platformOp={platformOp}
               platformTargetOrgId={platformTargetOrgId}
               platformConfirmText={platformConfirmText}
@@ -602,18 +597,6 @@ export default function Admin() {
         </main>
       )}
 
-      {/* Toast Notifications */}
-      {toast && (
-        <div
-          className={cn(
-            'fixed bottom-4 right-4 flex items-start gap-2.5 w-[min(360px,calc(100vw-2rem))] bg-surface border border-border rounded-[var(--radius-md)] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-lg)] p-3 animate-[toast-in_var(--duration-base)_var(--ease-standard)]'
-          )}
-          style={{ zIndex: 'var(--z-toast)' }}
-        >
-          <Icon name={toast.type === 'error' ? 'xCircle' : 'checkCircle'} size={16} className={cn('shrink-0 mt-0.5', toast.type === 'error' ? 'text-red' : 'text-green')} />
-          <p className="text-sm font-semibold text-text min-w-0 flex-1">{toast.msg}</p>
-        </div>
-      )}
     </PageContainer>
   )
 }
@@ -1206,49 +1189,53 @@ function PermissionsTab({ onUpdateUser, saving, users }) {
 }
 
 /* Company / Settings Tab Component */
-function OrgSettingsTab({ form, onChange, onSave, saving }) {
+function OrgSettingsTab({ form, onChange, onSave, saving, org, members }) {
   return (
-    <Card>
-      <CardHeader title="Organization Governance Settings" />
-      <p className="text-xs text-text3 leading-relaxed mb-4">
-        Configure multi-tenant subdomain routing, enterprise email domain verification, branding, and default timezones.
-      </p>
-      <div className="grid sm:grid-cols-2 gap-4">
-        <FormField label="Company Name">
-          <Input value={form.name} onChange={e => onChange({ ...form, name: e.target.value })} />
-        </FormField>
-        <FormField label="Workspace Slug">
-          <Input value={form.slug} onChange={e => onChange({ ...form, slug: e.target.value })} />
-        </FormField>
-        <FormField label="Subdomain Prefix">
-          <Input value={form.subdomain} onChange={e => onChange({ ...form, subdomain: e.target.value.toLowerCase() })} placeholder="e.g. acme" />
-        </FormField>
-        <FormField label="Allowed Email Domain">
-          <Input value={form.email_domain} onChange={e => onChange({ ...form, email_domain: e.target.value.toLowerCase() })} placeholder="e.g. company.com" />
-        </FormField>
-        <FormField label="Primary Brand Accent Color">
-          <div className="flex items-center gap-2">
-            <Input type="color" value={form.primary_color} onChange={e => onChange({ ...form, primary_color: e.target.value })} className="w-11 h-9 p-1 shrink-0" />
-            <Input value={form.primary_color} onChange={e => onChange({ ...form, primary_color: e.target.value })} />
-          </div>
-        </FormField>
-        <FormField label="Default Timezone">
-          <Select
-            value={form.timezone}
-            onChange={v => onChange({ ...form, timezone: v })}
-            options={['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'Asia/Calcutta', 'UTC'].map(zone => ({ value: zone, label: zone }))}
-          />
-        </FormField>
-        <FormField label="Logo Image URL" className="sm:col-span-2">
-          <Input value={form.logo_url} onChange={e => onChange({ ...form, logo_url: e.target.value })} placeholder="https://..." />
-        </FormField>
-      </div>
-      <div className="flex justify-end mt-5">
-        <Button onClick={onSave} disabled={saving}>
-          {saving ? 'Saving Changes...' : 'Save Organization Settings'}
-        </Button>
-      </div>
-    </Card>
+    <div className="flex flex-col gap-6">
+      <Card>
+        <CardHeader title="Organization Governance Settings" />
+        <p className="text-xs text-text3 leading-relaxed mb-4">
+          Configure multi-tenant subdomain routing, enterprise email domain verification, branding, and default timezones.
+        </p>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <FormField label="Company Name">
+            <Input value={form.name} onChange={e => onChange({ ...form, name: e.target.value })} />
+          </FormField>
+          <FormField label="Workspace Slug">
+            <Input value={form.slug} onChange={e => onChange({ ...form, slug: e.target.value })} />
+          </FormField>
+          <FormField label="Subdomain Prefix">
+            <Input value={form.subdomain} onChange={e => onChange({ ...form, subdomain: e.target.value.toLowerCase() })} placeholder="e.g. acme" />
+          </FormField>
+          <FormField label="Allowed Email Domain">
+            <Input value={form.email_domain} onChange={e => onChange({ ...form, email_domain: e.target.value.toLowerCase() })} placeholder="e.g. company.com" />
+          </FormField>
+          <FormField label="Primary Brand Accent Color">
+            <div className="flex items-center gap-2">
+              <Input type="color" value={form.primary_color} onChange={e => onChange({ ...form, primary_color: e.target.value })} className="w-11 h-9 p-1 shrink-0" />
+              <Input value={form.primary_color} onChange={e => onChange({ ...form, primary_color: e.target.value })} />
+            </div>
+          </FormField>
+          <FormField label="Default Timezone">
+            <Select
+              value={form.timezone}
+              onChange={v => onChange({ ...form, timezone: v })}
+              options={['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'Asia/Calcutta', 'UTC'].map(zone => ({ value: zone, label: zone }))}
+            />
+          </FormField>
+          <FormField label="Logo Image URL" className="sm:col-span-2">
+            <Input value={form.logo_url} onChange={e => onChange({ ...form, logo_url: e.target.value })} placeholder="https://..." />
+          </FormField>
+        </div>
+        <div className="flex justify-end mt-5">
+          <Button onClick={onSave} disabled={saving}>
+            {saving ? 'Saving Changes...' : 'Save Organization Settings'}
+          </Button>
+        </div>
+      </Card>
+
+      <AIUsageSection org={org} orgId={org?.id} />
+    </div>
   )
 }
 
@@ -1320,6 +1307,7 @@ function initials(value = '') {
    ======================================================== */
 function PlatformTab({
   allOrgs, orgId, newOrgForm, onNewOrgFormChange, onCreateOrg, creatingOrg,
+  createdOrgInviteUrl, onDismissInviteUrl, onToast,
   platformOp, platformTargetOrgId, platformConfirmText,
   onSetPlatformOp, onPlatformConfirmTextChange, onExecuteDanger, onSwitchMyOrg, saving,
 }) {
@@ -1330,7 +1318,7 @@ function PlatformTab({
       icon: '🗑️',
       color: 'red',
       description: 'Permanently removes the organization and all associated settings. This cannot be undone.',
-      warning: 'Members and candidates of this org may become orphaned. Remove them first.',
+      warning: 'Automatically cascade-deletes all candidates, jobs, invitations & unlinks members.',
       btnLabel: 'Delete Organization',
     },
     {
@@ -1360,7 +1348,11 @@ function PlatformTab({
   return (
     <div className="flex flex-col gap-6">
 
+      {/* ── Section 0: Real Superadmin Platform AI Usage Dashboard ── */}
+      <SuperadminAIUsageSection />
+
       {/* ── Section 1: Platform Overview ── */}
+
       <Card>
         <CardHeader title="Platform Organization Overview" action={<Badge tone="accent" size="sm">{allOrgs.length} Organizations</Badge>} />
         <Table
@@ -1399,10 +1391,10 @@ function PlatformTab({
         />
       </Card>
 
-      {/* ── Section 2: Create New Organization ── */}
+      {/* ── Section 2: Create & Onboard New Organization ── */}
       <Card>
-        <CardHeader title="Create New Organization" />
-        <div className="grid sm:grid-cols-3 gap-4">
+        <CardHeader title="Create & Onboard New Organization" subtitle="Provision workspace tenant & generate owner onboarding link" />
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <FormField label="Organization Name" required>
             <Input
               placeholder="e.g. Acme Corp"
@@ -1424,8 +1416,23 @@ function PlatformTab({
               onChange={e => onNewOrgFormChange({ ...newOrgForm, email_domain: e.target.value })}
             />
           </FormField>
+          <FormField label="Initial Owner Name" hint="Optional">
+            <Input
+              placeholder="e.g. Jane Doe"
+              value={newOrgForm.owner_name || ''}
+              onChange={e => onNewOrgFormChange({ ...newOrgForm, owner_name: e.target.value })}
+            />
+          </FormField>
+          <FormField label="Initial Owner Email" hint="Generates onboarding invite link">
+            <Input
+              type="email"
+              placeholder="owner@acmecorp.com"
+              value={newOrgForm.owner_email || ''}
+              onChange={e => onNewOrgFormChange({ ...newOrgForm, owner_email: e.target.value })}
+            />
+          </FormField>
         </div>
-        <div className="mt-4">
+        <div className="mt-4 flex items-center gap-3">
           <Button
             type="button"
             leftIcon="plus"
@@ -1433,9 +1440,38 @@ function PlatformTab({
             disabled={!newOrgForm.name.trim()}
             loading={creatingOrg}
           >
-            {creatingOrg ? 'Creating…' : 'Create Organization'}
+            {creatingOrg ? 'Creating…' : 'Create & Onboard Organization'}
           </Button>
         </div>
+
+        {createdOrgInviteUrl && (
+          <div className="mt-4 p-4 bg-accent/8 border border-accent/30 rounded-[var(--radius-md)] flex flex-col gap-2.5 animate-[fadeIn_0.2s_ease-out]">
+            <div className="flex items-center justify-between text-xs font-extrabold text-text uppercase tracking-wider">
+              <span className="flex items-center gap-1.5 text-accent"><Icon name="mail" size={14} /> Owner Onboarding Invitation Link Generated</span>
+              <button type="button" onClick={onDismissInviteUrl} className="text-text3 hover:text-text">
+                <Icon name="x" size={14} />
+              </button>
+            </div>
+            <p className="text-xs text-text2">Share this invite link with the initial company owner to complete registration:</p>
+            <div className="flex items-center gap-2">
+              <input
+                readOnly
+                value={createdOrgInviteUrl}
+                className="flex-1 h-8 px-3 text-xs bg-surface border border-border rounded-md text-accent font-mono"
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  navigator.clipboard.writeText(createdOrgInviteUrl)
+                  onToast('Copied invitation link to clipboard!')
+                }}
+              >
+                Copy Link
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* ── Section 3: Danger Zone ── */}
@@ -1512,5 +1548,112 @@ function PlatformTab({
         </div>
       </Card>
     </div>
+  )
+}
+
+/* Superadmin Platform Org Switcher Component */
+function PlatformOrgSwitcher({ allOrgs, selectedOrgId, orgId, onSelectOrg }) {
+  const [expanded, setExpanded] = useState(false)
+  const [filterText, setFilterText] = useState('')
+
+  const activeId = selectedOrgId || orgId
+  const LIMIT = 8
+
+  const filteredOrgs = useMemo(() => {
+    if (!filterText.trim()) return allOrgs
+    const q = filterText.toLowerCase().trim()
+    return allOrgs.filter(o => o.name.toLowerCase().includes(q))
+  }, [allOrgs, filterText])
+
+  const displayedOrgs = useMemo(() => {
+    if (expanded || filterText || filteredOrgs.length <= LIMIT) {
+      return filteredOrgs
+    }
+
+    const initial = filteredOrgs.slice(0, LIMIT)
+    const activeOrg = filteredOrgs.find(o => o.id === activeId)
+    if (activeOrg && !initial.some(o => o.id === activeId)) {
+      return [...initial.slice(0, LIMIT - 1), activeOrg]
+    }
+    return initial
+  }, [expanded, filterText, filteredOrgs, activeId, LIMIT])
+
+  const hiddenCount = filteredOrgs.length - displayedOrgs.length
+
+  return (
+    <Card padding="sm" className="mt-5 flex flex-col gap-2.5">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-text3">
+            <Icon name="building" size={12} />
+            <span>Platform Organizations</span>
+          </div>
+          <Badge tone="accent" size="sm">
+            {allOrgs.length}
+          </Badge>
+        </div>
+
+        <div className="flex items-center gap-2 ml-auto">
+          {(expanded || allOrgs.length > LIMIT) && (
+            <div className="relative w-40 sm:w-48">
+              <input
+                type="text"
+                value={filterText}
+                onChange={e => setFilterText(e.target.value)}
+                placeholder="Filter orgs..."
+                className="w-full h-7 pl-7 pr-6 text-xs bg-surface2 border border-border rounded-full text-text placeholder:text-text3 focus:outline-none focus:border-accent/50 transition-colors"
+              />
+              <Icon name="search" size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text3 pointer-events-none" />
+              {filterText && (
+                <button
+                  type="button"
+                  onClick={() => setFilterText('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-text3 hover:text-text"
+                >
+                  <Icon name="x" size={11} />
+                </button>
+              )}
+            </div>
+          )}
+
+          {allOrgs.length > LIMIT && !filterText && (
+            <button
+              type="button"
+              onClick={() => setExpanded(prev => !prev)}
+              className="inline-flex items-center gap-1 px-2.5 h-7 rounded-full text-xs font-semibold bg-surface2 text-accent border border-accent/25 hover:bg-accent/10 transition-colors shrink-0"
+            >
+              <span>{expanded ? 'Show Less' : `See More (${hiddenCount} more)`}</span>
+              <Icon name={expanded ? 'chevronUp' : 'chevronDown'} size={12} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+        {displayedOrgs.map(o => {
+          const isActive = activeId === o.id
+          return (
+            <button
+              key={o.id}
+              onClick={() => onSelectOrg(o.id)}
+              type="button"
+              className={cn(
+                'inline-flex items-center gap-1.5 px-2.5 h-7 rounded-full text-xs font-semibold border transition-all duration-[var(--duration-fast)]',
+                isActive
+                  ? 'bg-accent/15 text-accent border-accent/40 shadow-xs'
+                  : 'bg-surface2 text-text2 border-border hover:bg-surface3 hover:text-text'
+              )}
+            >
+              <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', isActive ? 'bg-accent animate-pulse' : 'bg-text3')} />
+              <span className="truncate max-w-[180px]">{o.name}</span>
+            </button>
+          )
+        })}
+
+        {displayedOrgs.length === 0 && (
+          <span className="text-xs text-text3 italic py-1">No organizations found matching &quot;{filterText}&quot;</span>
+        )}
+      </div>
+    </Card>
   )
 }
