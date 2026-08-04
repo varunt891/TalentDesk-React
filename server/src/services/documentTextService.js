@@ -2,9 +2,19 @@ import mammoth from 'mammoth';
 import { convert as htmlToText } from 'html-to-text';
 import { PDFParse } from 'pdf-parse';
 
-function extensionOf(fileName) {
+function extensionOf(fileName, mimeType) {
   const match = /\.([a-z0-9]+)$/i.exec(fileName || '');
-  return match ? match[1].toLowerCase() : '';
+  if (match) return match[1].toLowerCase();
+
+  if (mimeType) {
+    const mime = String(mimeType).toLowerCase();
+    if (mime.includes('pdf')) return 'pdf';
+    if (mime.includes('wordprocessingml') || mime.includes('docx')) return 'docx';
+    if (mime.includes('msword')) return 'doc';
+    if (mime.includes('text/plain')) return 'txt';
+    if (mime.includes('text/html')) return 'html';
+  }
+  return '';
 }
 
 // Strips leftover binary/stream noise that occasionally survives extraction on
@@ -25,8 +35,8 @@ function sanitizeExtractedText(text) {
     .trim();
 }
 
-export async function extractText({ buffer, fileName }) {
-  const ext = extensionOf(fileName);
+export async function extractText({ buffer, fileName, mimeType }) {
+  const ext = extensionOf(fileName, mimeType);
 
   if (ext === 'pdf') {
     const parser = new PDFParse({ data: buffer });

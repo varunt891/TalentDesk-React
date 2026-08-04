@@ -56,6 +56,17 @@ async function fetchWithColdStartRetry(url, init, timeoutMs = 60000) {
   }
 }
 
+function formatError(err) {
+  if (!err) return err
+  const msg = (err.message || '').toLowerCase()
+  if (msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('load failed')) {
+    const friendlyErr = new Error('Connection failed — server took too long to respond or mobile connection dropped. Please try again.')
+    friendlyErr.status = err.status || 0
+    return friendlyErr
+  }
+  return err
+}
+
 export async function apiRequest(path, options = {}) {
   const url = `${API_BASE}${path}`
   const token = getAuthToken()
@@ -87,8 +98,9 @@ export async function apiRequest(path, options = {}) {
 
     return payload
   } catch (err) {
-    console.error('[apiRequest] Exception on', path, ':', err.message)
-    throw err
+    const formatted = formatError(err)
+    console.error('[apiRequest] Exception on', path, ':', formatted.message)
+    throw formatted
   }
 }
 
@@ -100,8 +112,6 @@ export async function apiUpload(path, formData) {
   const token = getAuthToken()
 
   try {
-    // Use a longer timeout for uploads — AI resume parsing can take 30-60s
-    // when going through the full Gemini → Groq → OpenRouter → Mistral fallback chain.
     const response = await fetchWithColdStartRetry(url, {
       method: 'POST',
       credentials: 'include',
@@ -109,7 +119,7 @@ export async function apiUpload(path, formData) {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: formData,
-    }, 120000)
+    }, 60000)
 
     const payload = await response.json().catch(() => ({}))
 
@@ -123,8 +133,9 @@ export async function apiUpload(path, formData) {
 
     return payload
   } catch (err) {
-    console.error('[apiUpload] Exception on', path, ':', err.message)
-    throw err
+    const formatted = formatError(err)
+    console.error('[apiUpload] Exception on', path, ':', formatted.message)
+    throw formatted
   }
 }
 

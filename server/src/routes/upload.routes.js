@@ -55,21 +55,29 @@ async function processResumeFile(file, context) {
   };
 
   try {
-    result.extractedText = await extractText({ buffer: file.buffer, fileName: file.originalname });
+    result.extractedText = await extractText({ buffer: file.buffer, fileName: file.originalname, mimeType: file.mimetype });
   } catch (err) {
     result.error = err.message || 'Failed to read file.';
     return result;
   }
 
+  // Kick off storage upload concurrently with AI parsing to save latency
+  const storagePromise = storageService.uploadFile({
+    buffer: file.buffer,
+    fileName: file.originalname,
+    mimeType: file.mimetype,
+    orgId: context.orgId,
+  }).catch(err => {
+    console.warn('[upload.routes] Resume file storage upload failed, continuing with text only:', err.message);
+    return null;
+  });
+
   if (result.extractedText.trim()) {
     try {
-      // Race the AI parsing against a 10-second timeout so that a slow
-      // Gemini→Groq→OpenRouter→Mistral fallback chain (which can take 20-35s
-      // when providers are rate-limited) never pushes the total request time
-      // past Render's 30-second HTTP timeout, which kills the connection and
-      // surfaces as "Failed to fetch" on mobile browsers.
+      // Race the AI parsing against an 8-second timeout so slow AI fallback chains
+      // never push total request time past Render's 30s connection limit on mobile.
       const aiTimeout = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('AI parsing timed out after 10s — skipping, fields left blank for manual entry.')), 10000)
+        setTimeout(() => reject(new Error('AI parsing timed out after 8s — skipping, fields left blank for manual entry.')), 8000)
       );
       result.profile = await Promise.race([
         parseResumeText(result.extractedText, context),
@@ -80,18 +88,11 @@ async function processResumeFile(file, context) {
     }
   }
 
-  try {
-    const uploaded = await storageService.uploadFile({
-      buffer: file.buffer,
-      fileName: file.originalname,
-      mimeType: file.mimetype,
-      orgId: context.orgId,
-    });
+  const uploaded = await storagePromise;
+  if (uploaded) {
     result.resume_file_key = uploaded.key;
     result.resume_file_name = file.originalname;
     result.resume_file_size = uploaded.size;
-  } catch (err) {
-    console.warn('[upload.routes] Resume file storage upload failed, continuing with text only:', err.message);
   }
 
   result.success = true;

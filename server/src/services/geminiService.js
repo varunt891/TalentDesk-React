@@ -74,6 +74,10 @@ export class GeminiService {
           apiError.isRetryable = isRetryableGeminiError(apiError);
           console.warn(`[Gemini Stream ${model}] Status:${response.status} -> ${apiError.message}`);
           lastError = apiError;
+          if (response.status === 429 || (apiError.message || '').toLowerCase().includes('quota') || (apiError.message || '').toLowerCase().includes('resource_exhausted')) {
+            console.warn(`[Gemini Stream Quota Exceeded] Status 429 on ${model}. Fast-falling back to next AI provider.`);
+            break;
+          }
           continue;
         }
 
@@ -211,6 +215,10 @@ export class GeminiService {
             // Gemini as a whole was retryable is decided from the final
             // error once every model has been tried (see below).
             lastError = apiError;
+            if (response.status === 429 || (apiError.message || '').toLowerCase().includes('quota') || (apiError.message || '').toLowerCase().includes('resource_exhausted')) {
+              console.warn(`[Gemini Quota Exceeded] Status 429 on ${model}. Fast-falling back to next AI provider.`);
+              break;
+            }
             continue;
           }
 
