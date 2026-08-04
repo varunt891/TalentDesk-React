@@ -400,6 +400,10 @@ export default function Candidates() {
     const file = e.target.files?.[0]
     if (!file) return
     e.target.value = ''
+    if (file.size > 5 * 1024 * 1024) {
+      showToast(`${file.name} is over 5MB — please upload a smaller file`, 'error')
+      return
+    }
     setExtractingSkills(true)
     showToast(`Parsing ${file.name}... Please wait`)
     try {
