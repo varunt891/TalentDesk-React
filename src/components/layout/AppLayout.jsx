@@ -70,9 +70,9 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
     <div className="relative isolate flex h-dvh w-full max-w-[100vw] overflow-hidden bg-bg text-text">
       {/* Ambient atmosphere */}
       <div aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-        <div className="absolute -top-32 left-[16%] w-[640px] h-[640px] rounded-full opacity-[0.20] blur-[120px]" style={{ background: 'var(--accent)' }} />
-        <div className="absolute top-[15%] -right-44 w-[700px] h-[700px] rounded-full opacity-[0.18] blur-[130px]" style={{ background: 'var(--ai)' }} />
-        <div className="absolute -bottom-52 left-[6%] w-[580px] h-[580px] rounded-full opacity-[0.14] blur-[120px]" style={{ background: 'var(--accent2)' }} />
+        <div className="absolute -top-32 left-[16%] w-[640px] h-[640px] rounded-full opacity-[0.07] blur-[120px]" style={{ background: 'var(--accent)' }} />
+        <div className="absolute top-[15%] -right-44 w-[700px] h-[700px] rounded-full opacity-[0.06] blur-[130px]" style={{ background: 'var(--ai)' }} />
+        <div className="absolute -bottom-52 left-[6%] w-[580px] h-[580px] rounded-full opacity-[0.05] blur-[120px]" style={{ background: 'var(--accent2)' }} />
       </div>
 
       {sidebarOpen && (
