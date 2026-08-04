@@ -63,9 +63,20 @@ async function processResumeFile(file, context) {
 
   if (result.extractedText.trim()) {
     try {
-      result.profile = await parseResumeText(result.extractedText, context);
+      // Race the AI parsing against a 10-second timeout so that a slow
+      // Gemini→Groq→OpenRouter→Mistral fallback chain (which can take 20-35s
+      // when providers are rate-limited) never pushes the total request time
+      // past Render's 30-second HTTP timeout, which kills the connection and
+      // surfaces as "Failed to fetch" on mobile browsers.
+      const aiTimeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('AI parsing timed out after 10s — skipping, fields left blank for manual entry.')), 10000)
+      );
+      result.profile = await Promise.race([
+        parseResumeText(result.extractedText, context),
+        aiTimeout,
+      ]);
     } catch (err) {
-      console.warn('[upload.routes] AI profile parsing failed, keeping raw text only:', err.message);
+      console.warn('[upload.routes] AI profile parsing skipped:', err.message);
     }
   }
 

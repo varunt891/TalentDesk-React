@@ -37,11 +37,19 @@ function sleep(ms) {
 // just "the server is waking up."
 const COLD_START_RETRY_DELAYS_MS = [1500, 4000]
 
-async function fetchWithColdStartRetry(url, init) {
+async function fetchWithColdStartRetry(url, init, timeoutMs = 60000) {
   for (let attempt = 0; ; attempt++) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
-      return await fetch(url, init)
+      const response = await fetch(url, { ...init, signal: controller.signal })
+      clearTimeout(timer)
+      return response
     } catch (err) {
+      clearTimeout(timer)
+      if (err.name === 'AbortError') {
+        throw new Error('Request timed out — the server took too long to respond. Please try again.')
+      }
       if (attempt >= COLD_START_RETRY_DELAYS_MS.length) throw err
       await sleep(COLD_START_RETRY_DELAYS_MS[attempt])
     }
@@ -92,6 +100,8 @@ export async function apiUpload(path, formData) {
   const token = getAuthToken()
 
   try {
+    // Use a longer timeout for uploads — AI resume parsing can take 30-60s
+    // when going through the full Gemini → Groq → OpenRouter → Mistral fallback chain.
     const response = await fetchWithColdStartRetry(url, {
       method: 'POST',
       credentials: 'include',
@@ -99,7 +109,7 @@ export async function apiUpload(path, formData) {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: formData,
-    })
+    }, 120000)
 
     const payload = await response.json().catch(() => ({}))
 
