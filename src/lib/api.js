@@ -1,5 +1,6 @@
-let rawUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '')
-if (rawUrl.startsWith('http') && !rawUrl.endsWith('/api')) {
+const DEFAULT_PROD_API = 'https://talentdesk-react.onrender.com'
+let rawUrl = (import.meta.env.VITE_API_URL || (import.meta.env.PROD ? DEFAULT_PROD_API : '/api')).replace(/\/$/, '')
+if (!rawUrl.endsWith('/api')) {
   rawUrl = `${rawUrl}/api`
 }
 const API_BASE = rawUrl
@@ -27,22 +28,26 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-// The Render free-tier backend spins down after ~15min idle. The request
-// that wakes it back up can fail outright with a network-level "Failed to
-// fetch" (connection refused while the container boots) rather than just
-// being slow, even though a retry moments later succeeds fine. Retrying a
-// couple of times with backoff on network errors (never on real HTTP error
-// responses, which reject on response.ok below, not here) papers over that
-// cold-start window instead of surfacing a scary error for what is really
-// just "the server is waking up."
 const COLD_START_RETRY_DELAYS_MS = [1500, 4000]
+
+function cloneBody(body) {
+  if (typeof window !== 'undefined' && window.FormData && body instanceof window.FormData) {
+    const copy = new FormData()
+    for (const [key, value] of body.entries()) {
+      copy.append(key, value)
+    }
+    return copy
+  }
+  return body
+}
 
 async function fetchWithColdStartRetry(url, init, timeoutMs = 60000) {
   for (let attempt = 0; ; attempt++) {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
-      const response = await fetch(url, { ...init, signal: controller.signal })
+      const body = attempt === 0 ? init.body : cloneBody(init.body)
+      const response = await fetch(url, { ...init, body, signal: controller.signal })
       clearTimeout(timer)
       return response
     } catch (err) {

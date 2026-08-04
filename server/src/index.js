@@ -51,8 +51,8 @@ const corsOptions = {
     return callback(null, true) // Permissive CORS to prevent cross-origin fetch failures
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['*'],
 }
 
 app.use(cors(corsOptions))
