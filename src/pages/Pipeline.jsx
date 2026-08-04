@@ -566,7 +566,7 @@ export default function Pipeline() {
                 type="button"
                 onClick={() => handleInsightClick(insight)}
                 className={cn(
-                  'inline-flex items-center gap-1.5 h-6 pl-2 pr-2.5 rounded-full text-[11px] font-semibold border transition-colors duration-[var(--duration-fast)]',
+                  'inline-flex items-center gap-1.5 h-6 pl-2 pr-2.5 rounded-full text-[11px] font-semibold border transition-colors duration-[var(--duration-fast)] shrink-0 whitespace-nowrap',
                   insight.tone === 'red' ? 'bg-red/10 text-red border-red/25 hover:bg-red/15' :
                     insight.tone === 'yellow' ? 'bg-yellow/10 text-yellow border-yellow/25 hover:bg-yellow/15' :
                       insight.tone === 'green' ? 'bg-green/10 text-green border-green/25 hover:bg-green/15' :
@@ -668,7 +668,7 @@ export default function Pipeline() {
                     onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setOverStage(stage.id) }}
                     onDragLeave={() => setOverStage(null)}
                     onDrop={event => handleDrop(event, stage.id)}
-                    className="relative w-[45vw] lg:w-[358px] shrink-0 snap-start flex flex-col h-full min-h-0 rounded-[var(--radius-lg)] border shadow-xs overflow-hidden transition-[box-shadow,border-color,background-color] duration-[var(--duration-fast)]"
+                    className="relative w-[88vw] sm:w-[45vw] lg:w-[358px] shrink-0 snap-start flex flex-col h-full min-h-0 rounded-[var(--radius-lg)] border shadow-xs overflow-hidden transition-[box-shadow,border-color,background-color] duration-[var(--duration-fast)]"
                     style={{ background: isOver ? `${stage.color}10` : 'var(--surface)', borderColor: isOver ? stage.color : 'var(--border)' }}
                   >
                     <span aria-hidden="true" className="pointer-events-none absolute top-0 left-0 right-0 h-[3px] z-10" style={{ background: stage.color }} />
