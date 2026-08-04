@@ -14,7 +14,7 @@ function stripJsonFence(rawText) {
 // Shared by /api/ai/parse-resume and the resume upload routes (single +
 // bulk) so the prompt + JSON-fence-stripping logic, and the usage logging
 // for every resume-parsing call regardless of entry point, only live in one
-// place. Text-only (no file vision), so it gets the full Gemini -> Groq ->
+// place. Text-only (no file vision), so it gets the full Groq -> Gemini ->
 // OpenRouter -> Mistral fallback chain in aiService, unlike direct
 // file-based parsing.
 export async function parseResumeText(resumeText, context = {}) {

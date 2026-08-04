@@ -52,10 +52,17 @@ async function fetchWithColdStartRetry(url, init, timeoutMs = 60000) {
       return response
     } catch (err) {
       clearTimeout(timer)
-      if (err.name === 'AbortError') {
-        throw new Error('Request timed out — the server took too long to respond. Please try again.')
+      const isTimeout = err.name === 'AbortError'
+      if (attempt >= COLD_START_RETRY_DELAYS_MS.length) {
+        if (isTimeout) {
+          throw new Error('Request timed out — the server took too long to respond. Please try again.')
+        }
+        throw err
       }
-      if (attempt >= COLD_START_RETRY_DELAYS_MS.length) throw err
+      // A timed-out first attempt is usually just Render's free-tier instance
+      // waking up from spin-down (can take 50s+) — retrying rather than
+      // giving up immediately means the 2nd attempt hits an already-warm
+      // server instead of forcing the user to manually tap retry.
       await sleep(COLD_START_RETRY_DELAYS_MS[attempt])
     }
   }
