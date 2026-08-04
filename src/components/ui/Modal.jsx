@@ -81,11 +81,11 @@ export default function Modal({ open, onClose, title, subtitle, size = 'md', foo
 }
 
 const DRAWER_SIZES = {
-  sm:   'w-[300px]',
-  md:   'w-[360px]',
-  lg:   'w-[460px]',
-  xl:   'w-[560px]',
-  '2xl':'w-[720px]',
+  sm:   'w-[min(300px,100vw)]',
+  md:   'w-[min(360px,100vw)]',
+  lg:   'w-[min(460px,100vw)]',
+  xl:   'w-[min(560px,100vw)]',
+  '2xl':'w-[min(720px,100vw)]',
   full: 'w-[min(96vw,1200px)]',
 }
 

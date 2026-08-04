@@ -517,16 +517,16 @@ export default function Candidates() {
           <span className="min-w-0">
             <span className="flex items-center gap-1">
               <strong className="text-[12.5px] text-text font-semibold truncate">{c.first_name} {c.last_name}</strong>
-              {c.resume_text && <Icon name="edit" size={10} className="text-text3/60 shrink-0" aria-label="Resume text on file" />}
+              {c.resume_text && <Icon name="edit" size={13} className="text-text3/60 shrink-0" aria-label="Resume text on file" />}
               {c.resume_file_name && (
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); handleDownloadResume(c.id) }}
-                  className="text-text3/60 hover:text-accent shrink-0 focus-ring rounded-sm"
+                  className="text-text3/60 hover:text-accent shrink-0 focus-ring rounded-sm -my-1.5 p-1.5"
                   title={`Download ${c.resume_file_name}`}
                   aria-label={`Download resume file for ${c.first_name}`}
                 >
-                  <Icon name="download" size={10} />
+                  <Icon name="download" size={13} />
                 </button>
               )}
             </span>
@@ -682,6 +682,9 @@ export default function Candidates() {
             onTabChange={setPreviewTab}
             actions={
               <>
+                {showDetail.resume_file_name && (
+                  <Button variant="secondary" leftIcon="download" loading={downloadingResume} onClick={() => handleDownloadResume(showDetail.id)}>Download Resume</Button>
+                )}
                 <Button variant="secondary" leftIcon="sparkles" onClick={() => openAiMatchForCandidate(showDetail)}>Deep AI Fit</Button>
                 <Button variant="ai" leftIcon="arrowUpRight" onClick={() => openPacketForCandidate(showDetail)}>1-Click Packet</Button>
                 <Button variant="primary" onClick={() => { setShowDetail(null); openEdit(showDetail) }}>Edit</Button>
