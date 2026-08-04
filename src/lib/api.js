@@ -40,6 +40,29 @@ function sleep(ms) {
 
 const COLD_START_RETRY_DELAYS_MS = [1500, 4000]
 
+// Chrome keeps a live binding to the picked File on disk and aborts with
+// net::ERR_UPLOAD_FILE_CHANGED if the file's mtime/size shifts even slightly
+// between selection and the moment it actually streams the bytes — common on
+// Android when the picked file comes from a cloud-synced folder (Drive,
+// WhatsApp downloads, etc) that the OS touches in the background. Reading the
+// File into memory once up front and uploading a Blob instead means later
+// retries re-send in-memory bytes with no live filesystem binding to break.
+async function stabilizeFormData(formData) {
+  if (typeof window === 'undefined' || !window.FormData || !(formData instanceof window.FormData)) {
+    return formData
+  }
+  const stable = new FormData()
+  for (const [key, value] of formData.entries()) {
+    if (typeof File !== 'undefined' && value instanceof File) {
+      const buffer = await value.arrayBuffer()
+      stable.append(key, new Blob([buffer], { type: value.type }), value.name)
+    } else {
+      stable.append(key, value)
+    }
+  }
+  return stable
+}
+
 function cloneBody(body) {
   if (typeof window !== 'undefined' && window.FormData && body instanceof window.FormData) {
     const copy = new FormData()
@@ -134,13 +157,14 @@ export async function apiUpload(path, formData) {
   const token = getAuthToken()
 
   try {
+    const stableBody = await stabilizeFormData(formData)
     const response = await fetchWithColdStartRetry(url, {
       method: 'POST',
       credentials: 'include',
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: formData,
+      body: stableBody,
     }, 60000)
 
     const payload = await response.json().catch(() => ({}))
