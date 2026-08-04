@@ -23,12 +23,37 @@ export function setAuthToken(token) {
   }
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+// The Render free-tier backend spins down after ~15min idle. The request
+// that wakes it back up can fail outright with a network-level "Failed to
+// fetch" (connection refused while the container boots) rather than just
+// being slow, even though a retry moments later succeeds fine. Retrying a
+// couple of times with backoff on network errors (never on real HTTP error
+// responses, which reject on response.ok below, not here) papers over that
+// cold-start window instead of surfacing a scary error for what is really
+// just "the server is waking up."
+const COLD_START_RETRY_DELAYS_MS = [1500, 4000]
+
+async function fetchWithColdStartRetry(url, init) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetch(url, init)
+    } catch (err) {
+      if (attempt >= COLD_START_RETRY_DELAYS_MS.length) throw err
+      await sleep(COLD_START_RETRY_DELAYS_MS[attempt])
+    }
+  }
+}
+
 export async function apiRequest(path, options = {}) {
   const url = `${API_BASE}${path}`
   const token = getAuthToken()
 
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithColdStartRetry(url, {
       method: options.method || 'GET',
       credentials: 'include',
       headers: {
@@ -67,7 +92,7 @@ export async function apiUpload(path, formData) {
   const token = getAuthToken()
 
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithColdStartRetry(url, {
       method: 'POST',
       credentials: 'include',
       headers: {
