@@ -1,5 +1,15 @@
 const DEFAULT_PROD_API = 'https://talentdesk-react.onrender.com'
-let rawUrl = (import.meta.env.VITE_API_URL || (import.meta.env.PROD ? DEFAULT_PROD_API : '/api')).replace(/\/$/, '')
+// vercel.json proxies /api/* to the Render backend, so on the Vercel deployment
+// we stay same-origin (relative '/api') instead of calling onrender.com directly
+// from the browser. That matters on mobile: cross-site fetch() calls with
+// credentials get killed by mobile browsers' cross-site tracking protections
+// (Safari ITP, Samsung Internet, etc.) far more aggressively than desktop
+// browsers, which is why this only ever broke on phones, never laptops.
+const isProxiedHost = typeof window !== 'undefined' && /\.vercel\.app$/i.test(window.location.hostname)
+let rawUrl = (
+  import.meta.env.VITE_API_URL
+  || (import.meta.env.PROD ? (isProxiedHost ? '' : DEFAULT_PROD_API) : '/api')
+).replace(/\/$/, '')
 if (!rawUrl.endsWith('/api')) {
   rawUrl = `${rawUrl}/api`
 }
