@@ -1043,7 +1043,7 @@ function TreeNode({ user, allUsers, userStats, onAssignManager, query, level, ex
 
   return (
     <div className="flex flex-col">
-      <div className="flex items-center gap-2.5 py-2 border-b border-border/60" style={{ paddingLeft: level * 24 }}>
+      <div className="flex items-center gap-2.5 py-2 border-b border-border/60 flex-wrap" style={{ paddingLeft: level * 24 }}>
         {hasChildren ? (
           <button
             className="shrink-0 w-5 h-5 flex items-center justify-center text-text3 hover:text-text transition-colors"
@@ -1077,7 +1077,7 @@ function TreeNode({ user, allUsers, userStats, onAssignManager, query, level, ex
           <MetricStrip stats={stats} />
         </div>
 
-        <div className="shrink-0 w-48">
+        <div className="shrink-0 w-full sm:w-48">
           <Select
             size="sm"
             value={user.manager_id || ''}
