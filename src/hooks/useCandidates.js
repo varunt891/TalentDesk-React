@@ -49,7 +49,7 @@ export function useCandidates(options = {}) {
 
   const addCandidate = async (candidate) => {
     const payload = cleanDates(candidate)
-    const { data, error } = await db
+    const { data, error, collisions } = await db
       .from('candidates')
       .insert([{
         ...payload,
@@ -65,7 +65,7 @@ export function useCandidates(options = {}) {
     if (createdItem) {
       setCandidates(prev => [createdItem, ...prev])
     }
-    return { data: createdItem, error: null }
+    return { data: createdItem, error: null, collisions: collisions || [] }
   }
 
   const addCandidates = async (rows) => {
@@ -89,7 +89,7 @@ export function useCandidates(options = {}) {
 
   const updateCandidate = async (id, updates) => {
     const payload = cleanDates(updates)
-    const { data, error } = await db
+    const { data, error, collisions } = await db
       .from('candidates')
       .update(payload)
       .eq('id', id)
@@ -102,7 +102,7 @@ export function useCandidates(options = {}) {
     if (updatedItem) {
       setCandidates(prev => prev.map(c => c.id === id ? { ...c, ...updatedItem } : c))
     }
-    return { data: updatedItem, error: null }
+    return { data: updatedItem, error: null, collisions: collisions || [] }
   }
 
   const deleteCandidate = async (id) => {

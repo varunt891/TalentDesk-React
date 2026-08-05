@@ -42,6 +42,7 @@ model Organization {
   tasks           Task[]
   notifications   Notification[]
   aiUsageEvents   AiUsageEvent[]
+  submissionCollisions SubmissionCollision[]
 
   @@map("organizations")
 }
@@ -160,8 +161,21 @@ model Job {
   open_date   String?
   priority    String?
   fe          String?
+  assigned_to Json?
   skills      Json?
   description String?
+  notes       String?
+  contact_name       String?
+  optional_ref       String?
+  bill_rate          String?
+  pay_rate           String?
+  end_date           String?
+  submittal_due      String?
+  workers_comp_code  String?
+  openings           Int?
+  max_submittals     Int?
+  experience_level   String?
+  work_mode          String?
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 
@@ -352,4 +366,40 @@ model AiUsageEvent {
   organization Organization? @relation(fields: [org_id], references: [id], onDelete: Cascade)
 
   @@map("ai_usage_events")
+}
+
+model SubmissionCollision {
+  id                         String    @id @default(uuid()) @db.Uuid
+  org_id                     String?   @db.Uuid
+  type                       String    // 'hard' (same job_id) | 'soft' (same client, different job)
+  match_field                String    // 'email' | 'phone' | 'both'
+  status                     String    @default("open") // 'open' | 'dismissed' | 'confirmed'
+
+  candidate_id               String    @db.Uuid
+  candidate_name             String?
+  candidate_email            String?
+  candidate_phone            String?
+  job_id                     String?
+  job_title                  String?
+  client                     String?
+  submitting_user_id         String?   @db.Uuid
+  submitting_recruiter_name  String?
+
+  matched_candidate_id       String    @db.Uuid
+  matched_recruiter_id       String?   @db.Uuid
+  matched_recruiter_name     String?
+  matched_job_id             String?
+  matched_job_title          String?
+  matched_client             String?
+
+  resolved_by                String?   @db.Uuid
+  resolved_at                DateTime?
+  created_at                 DateTime  @default(now())
+
+  organization Organization? @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@index([org_id, status])
+  @@index([candidate_id])
+  @@index([matched_candidate_id])
+  @@map("submission_collisions")
 }

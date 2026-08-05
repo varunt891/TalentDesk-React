@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react'
 import { useCandidates } from '../hooks/useCandidates'
+import { useOpenCollisionIds } from '../hooks/useOpenCollisionIds'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../lib/api'
 import {
@@ -10,6 +11,7 @@ import { WorkspaceSearch, FilterWorkspace, EntityDrawer } from '../components/wo
 import { ensureArray, STATUS_TONE, computeScore } from '../lib/candidateHealth'
 import { computeJobHealth } from '../lib/jobHealth'
 import AIInsightCard from '../components/ai/AIInsightCard'
+import MarkdownView from '../components/MarkdownView'
 import { useAISetContext } from '../lib/ai/context'
 import { useAIGovernance } from '../lib/ai/governance'
 
@@ -76,6 +78,7 @@ export default function Pipeline() {
   const { settings: aiSettings } = useAIGovernance(orgId)
   const aiEnabled = aiSettings.workspaces.pipeline !== false
   const { candidates, loading, updateCandidate } = useCandidates()
+  const openCollisionIds = useOpenCollisionIds()
   const [draggingId, setDraggingId] = useState(null)
   const [overStage, setOverStage] = useState(null)
   const [collapsed, setCollapsed] = useState(readCollapsed)
@@ -167,6 +170,7 @@ export default function Pipeline() {
       upcomingCallback: cbs.some(cb => cb.date && cb.date >= today && cb.status !== 'Completed'),
       overdueFollowup: (fus.some(fu => fu.date && fu.date < today && fu.status !== 'Completed')) || Boolean(c.followup_date && c.followup_date < today),
       hasNotes: Boolean(c.notes && c.notes.trim()),
+      hasCollision: openCollisionIds.has(c.id),
     }
   }
 
@@ -785,6 +789,7 @@ export default function Pipeline() {
                             </div>
 
                             <div className="flex items-center gap-2 mt-1.5">
+                              {signals.hasCollision && <Icon name="alertCircle" size={11} className="text-red" aria-label="Possible duplicate submission" />}
                               {signals.hasNotes && <Icon name="edit" size={11} className="text-text3" aria-label="Has notes" />}
                               {signals.upcomingCallback && <Icon name="callbacks" size={11} className="text-accent" aria-label="Upcoming callback" />}
                               {c.interview_date && <Icon name="calendar" size={11} className="text-ai" aria-label="Interview scheduled" />}
@@ -931,7 +936,7 @@ export default function Pipeline() {
                 {showDetail.resume_text && (
                   <Card>
                     <CardHeader title="Resume Text" />
-                    <pre className="text-xs text-text2 leading-relaxed whitespace-pre-wrap font-sans max-h-60 overflow-y-auto">{showDetail.resume_text}</pre>
+                    <div className="text-xs text-text2 leading-relaxed max-h-60 overflow-y-auto"><MarkdownView content={showDetail.resume_text} /></div>
                   </Card>
                 )}
               </div>

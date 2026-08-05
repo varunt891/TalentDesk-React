@@ -15,6 +15,7 @@ const navItems = [
   { id: 'callbacks', icon: 'callbacks', label: 'Callbacks', section: 'Tools' },
   { id: 'followups', icon: 'followups', label: 'Follow-ups', section: 'Tools' },
   { id: 'resubmit', icon: 'resubmit', label: 'Re-submit Finder', section: 'Tools' },
+  { id: 'collisions', icon: 'alertCircle', label: 'Collisions', section: 'Tools' },
   { id: 'ai_center', icon: 'sparkles', label: 'AI Center', section: 'Tools' },
   { id: 'reports', icon: 'reports', label: 'Reports', section: 'Tools' },
   { id: 'postings', icon: 'postings', label: 'Job Postings', section: 'Tools' },

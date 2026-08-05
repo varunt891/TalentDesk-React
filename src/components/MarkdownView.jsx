@@ -14,8 +14,17 @@ export default function MarkdownView({ content }) {
   let keySeq = 0
   const nextKey = (prefix) => `${prefix}-${keySeq++}`
 
+  // Escaped first so raw user-typed/pasted HTML (e.g. `<script>`) can never
+  // reach dangerouslySetInnerHTML below — markdown syntax chars (*, `, [, ])
+  // aren't HTML-special, so escaping first doesn't interfere with the
+  // substitutions that follow.
+  const escapeHtml = (str) => str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
   const formatInline = (str) => {
-    return str
+    return escapeHtml(str)
       .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer" class="text-accent font-semibold hover:underline underline-offset-2">$1 ↗</a>')
       .replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-text">$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
@@ -27,18 +36,21 @@ export default function MarkdownView({ content }) {
   let codeBlockLines = null
   let codeBlockLang = ''
   let listItems = []
+  let listType = null // 'ul' | 'ol'
   let tableRows = []
 
   const flushList = () => {
     if (listItems.length > 0) {
+      const Tag = listType === 'ol' ? 'ol' : 'ul'
       elements.push(
-        <ul key={nextKey('ul')} className="list-disc pl-5 my-2.5 space-y-1.5 marker:text-text3">
+        <Tag key={nextKey(Tag)} className={Tag === 'ol' ? 'list-decimal pl-5 my-2.5 space-y-1.5 marker:text-text3' : 'list-disc pl-5 my-2.5 space-y-1.5 marker:text-text3'}>
           {listItems.map((li, idx) => (
             <li key={idx} className="text-[13.5px] leading-relaxed text-text2" dangerouslySetInnerHTML={{ __html: formatInline(li) }} />
           ))}
-        </ul>
+        </Tag>
       )
       listItems = []
+      listType = null
     }
   }
 
@@ -131,36 +143,42 @@ export default function MarkdownView({ content }) {
     // most-specific-first order makes that invariant obvious here).
     if (trimmed.startsWith('#### ')) {
       flushList()
-      elements.push(<h4 key={nextKey('h4')} className="text-[13.5px] font-bold text-text mt-4 mb-2">{trimmed.slice(5)}</h4>)
+      elements.push(<h4 key={nextKey('h4')} className="text-[13.5px] font-bold text-text mt-4 mb-2" dangerouslySetInnerHTML={{ __html: formatInline(trimmed.slice(5)) }} />)
       return
     }
     if (trimmed.startsWith('### ')) {
       flushList()
-      elements.push(<h3 key={nextKey('h3')} className="text-[15px] font-bold text-text mt-5 mb-2.5 flex items-center gap-2">{trimmed.slice(4)}</h3>)
+      elements.push(<h3 key={nextKey('h3')} className="text-[15px] font-bold text-text mt-5 mb-2.5 flex items-center gap-2" dangerouslySetInnerHTML={{ __html: formatInline(trimmed.slice(4)) }} />)
       return
     }
     if (trimmed.startsWith('## ')) {
       flushList()
       elements.push(
-        <h2 key={nextKey('h2')} className="text-[17px] font-extrabold text-text tracking-tight mt-6 mb-3 pb-2 border-b border-border">
-          {trimmed.slice(3)}
-        </h2>
+        <h2 key={nextKey('h2')} className="text-[17px] font-extrabold text-text tracking-tight mt-6 mb-3 pb-2 border-b border-border" dangerouslySetInnerHTML={{ __html: formatInline(trimmed.slice(3)) }} />
       )
       return
     }
     if (trimmed.startsWith('# ')) {
       flushList()
       elements.push(
-        <h1 key={nextKey('h1')} className="text-[19px] font-extrabold text-text tracking-tight mt-1 mb-3.5 pb-2.5 border-b border-border">
-          {trimmed.slice(2)}
-        </h1>
+        <h1 key={nextKey('h1')} className="text-[19px] font-extrabold text-text tracking-tight mt-1 mb-3.5 pb-2.5 border-b border-border" dangerouslySetInnerHTML={{ __html: formatInline(trimmed.slice(2)) }} />
       )
       return
     }
 
     // Bullets
     if (trimmed.startsWith('• ') || trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      if (listType === 'ol') flushList()
+      listType = 'ul'
       listItems.push(trimmed.replace(/^[•*-]\s*/, ''))
+      return
+    }
+
+    // Numbered lists (e.g. "1. ", "2. ")
+    if (/^\d+\.\s+/.test(trimmed)) {
+      if (listType === 'ul') flushList()
+      listType = 'ol'
+      listItems.push(trimmed.replace(/^\d+\.\s+/, ''))
       return
     }
 

@@ -2,16 +2,18 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { db } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useCandidates } from '../hooks/useCandidates'
+import { useJobForm } from '../hooks/useJobForm'
+import JobFormDrawer from '../components/jobs/JobFormDrawer'
+import { canManageJobAssignment } from '../lib/roles'
 import SubmissionPacketModal from '../components/SubmissionPacketModal'
 import AIMatchModal from '../components/AIMatchModal'
 import { PageContainer } from '../components/layout/PageContainer'
 import { computeJobHealth } from '../lib/jobHealth'
 import {
-  Button, Input, Textarea, FormField, Select, Combobox, Badge, StatusPill, Card, CardHeader,
+  Button, Badge, StatusPill, Card, CardHeader,
   KPICard, PageHeader, Table, Modal, Icon, Avatar, Menu, MenuTrigger, EmptyState, Switch, useToast,
 } from '../components/ui'
 import { WorkspaceSearch, FilterWorkspace, EntityDrawer } from '../components/workspace'
-import { Drawer } from '../components/ui/Modal'
 import AIInsightCard from '../components/ai/AIInsightCard'
 import { useAISetContext } from '../lib/ai/context'
 import { useAIGovernance } from '../lib/ai/governance'
@@ -114,15 +116,10 @@ export function getMatchingCandidates(job, candidates, aiScores = {}) {
   }).filter(item => item.isMatched).sort((a, b) => b.matchPercentage - a.matchPercentage)
 }
 
-const emptyForm = {
-  job_id: '', title: '', client: '', location: '', type: 'Contract',
-  status: 'Open', rate: '', open_date: new Date().toISOString().slice(0, 10),
-  priority: 'Medium', fe: '', skills: [], description: ''
-}
-
-export default function Jobs() {
+export default function Jobs({ onNavigate, openEditJobId } = {}) {
   const { user, organization, profile } = useAuth()
   const isSuperAdmin = profile?.role === 'superadmin' || profile?.role === 'SUPERADMIN'
+  const canManageAssignment = canManageJobAssignment(profile?.role)
   const [allOrgsView, setAllOrgsView] = useState(false)
   const { candidates } = useCandidates({ allOrgs: isSuperAdmin && allOrgsView })
   const orgId = organization?.id || profile?.org_id
@@ -134,14 +131,9 @@ export default function Jobs() {
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({ status: [], priority: [], type: [], recruiter: [], job: [], location: [] })
   const [selected, setSelected] = useState([])
-  const [showModal, setShowModal] = useState(false)
   const [showDetail, setShowDetail] = useState(null)
   useAISetContext(showDetail ? { currentJob: showDetail.title, jobClient: showDetail.client, jobStatus: showDetail.status } : null)
   const [previewTab, setPreviewTab] = useState('overview')
-  const [editingId, setEditingId] = useState(null)
-  const [form, setForm] = useState(emptyForm)
-  const [skillInput, setSkillInput] = useState('')
-  const [saving, setSaving] = useState(false)
   const [lastUpdatedJob, setLastUpdatedJob] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
   const [viewingCandidate, setViewingCandidate] = useState(null)
@@ -289,10 +281,23 @@ export default function Jobs() {
     pushToast({ tone: type === 'error' ? 'error' : 'success', title: msg })
   }
 
+  const jobForm = useJobForm({ jobs, fetchJobs, profile, user, orgId, userId, aiEnabled, openEditJobId })
+  const { openAdd, openEdit, profiles } = jobForm
+
+  // Recruiter display resolves the real assigned_to user ids to names first
+  // (falls back to the legacy free-text fe field for jobs created before
+  // assignment existed) — keeps the table/filter/KPI in sync with who's
+  // actually assigned instead of going stale the moment assigned_to takes over.
+  const resolveAssignees = useCallback((job) => {
+    const ids = Array.isArray(job.assigned_to) ? job.assigned_to : []
+    const names = ids.map(id => profiles.find(p => p.id === id)?.full_name).filter(Boolean)
+    if (names.length) return names
+    return job.fe ? [job.fe] : []
+  }, [profiles])
+
   const typeOptions = [...new Set(jobs.map(j => j.type).filter(Boolean))].sort()
-  const recruiterOptions = [...new Set(jobs.map(j => j.fe).filter(Boolean))].sort()
+  const recruiterOptions = [...new Set(jobs.flatMap(j => resolveAssignees(j)))].sort()
   const locationOptions = [...new Set(jobs.map(j => j.location).filter(Boolean))].sort()
-  const titleOptions = [...new Set(jobs.map(j => j.title).filter(Boolean))].sort()
   const jobIdToTitle = jobs.reduce((map, j) => {
     if (j.job_id && j.title && !map[j.job_id]) map[j.job_id] = j.title
     return map
@@ -307,7 +312,7 @@ export default function Jobs() {
     if (filters.status.length && !filters.status.includes(j.status)) return false
     if (filters.priority.length && !filters.priority.includes(j.priority)) return false
     if (filters.type.length && !filters.type.includes(j.type)) return false
-    if (filters.recruiter.length && !filters.recruiter.includes(j.fe)) return false
+    if (filters.recruiter.length && !resolveAssignees(j).some(name => filters.recruiter.includes(name))) return false
     if (filters.job?.length && !filters.job.includes(j.job_id) && !filters.job.includes(j.title)) return false
     if (filters.location?.length && !filters.location.includes(j.location)) return false
     return true
@@ -317,33 +322,7 @@ export default function Jobs() {
   useAISetContext({ workspace: 'Jobs', totalJobs: jobs.length, shownJobs: filtered.length, activeFilters: hasFilters ? filters : null, selectedCount: selected.length })
   const clearFilters = () => { setSearch(''); setFilters({ status: [], priority: [], type: [], recruiter: [], job: [], location: [] }) }
 
-  const openAdd = () => { setForm(emptyForm); setEditingId(null); setSkillInput(''); setShowModal(true) }
-  const openEdit = (j) => {
-    setForm({ job_id: j.job_id || '', title: j.title || '', client: j.client || '', location: j.location || '', type: j.type || 'Contract', status: j.status || 'Open', rate: j.rate || '', open_date: j.open_date || new Date().toISOString().slice(0, 10), priority: j.priority || 'Medium', fe: j.fe || '', skills: j.skills || [], description: j.description || '' })
-    setEditingId(j.id); setSkillInput(''); setShowModal(true)
-  }
-
-  const handleSave = async () => {
-    if (!form.title) return showToast('Job title required', 'error')
-    setSaving(true)
-    const nowIso = new Date().toISOString()
-    const payload = { ...form, open_date: form.open_date || null, user_id: user.id, updated_at: nowIso }
-    if (editingId) {
-      const { error } = await db.from('jobs').update(payload).eq('id', editingId)
-      if (error) showToast(error.message, 'error')
-      else {
-        showToast('Job updated!')
-        setLastUpdatedJob({ id: editingId, title: form.title, updated_at: nowIso })
-        fetchJobs()
-        setShowModal(false)
-      }
-    } else {
-      const { error } = await db.from('jobs').insert([payload])
-      if (error) showToast(error.message, 'error')
-      else { showToast('Job added!'); fetchJobs(); setShowModal(false) }
-    }
-    setSaving(false)
-  }
+  const openFullPage = (j) => onNavigate?.('job_detail', { jobId: j.id })
 
   const handleDelete = async () => {
     if (deleteId === 'bulk') {
@@ -356,16 +335,6 @@ export default function Jobs() {
     }
     fetchJobs(); setDeleteId(null)
   }
-
-  const addSkill = (e) => {
-    if (e.key === 'Enter' && skillInput.trim()) {
-      e.preventDefault()
-      if (!form.skills.includes(skillInput.trim())) setForm(f => ({ ...f, skills: [...f.skills, skillInput.trim()] }))
-      setSkillInput('')
-    }
-  }
-
-  const inp = (field) => ({ value: form[field], onChange: e => setForm(f => ({ ...f, [field]: e.target.value })) })
 
   // Job's own status vocabulary is small and specific — resolve StatusPill tone directly.
   const STATUS_TONE = { 'Open': 'green', 'Filled': 'accent', 'On Hold': 'yellow', 'Closed': 'red' }
@@ -458,7 +427,14 @@ export default function Jobs() {
     { key: 'type', header: 'Type', width: 110, hideable: true, className: 'text-[11.5px] text-text2' },
     { key: 'location', header: 'Location', width: 130, hideable: true, className: 'text-[11.5px] text-text2' },
     { key: 'rate', header: 'Rate', width: 100, hideable: true, className: 'text-[11.5px] font-semibold text-green tabular-nums' },
-    { key: 'fe', header: 'Recruiter', width: 130, className: 'text-[12px] text-text2', render: (j) => j.fe || <span className="text-text3 italic text-[11px]">Unassigned</span> },
+    {
+      key: 'fe', header: 'Recruiter', width: 130, className: 'text-[12px] text-text2',
+      render: (j) => {
+        const names = resolveAssignees(j)
+        if (!names.length) return <span className="text-text3 italic text-[11px]">Unassigned</span>
+        return <span className="truncate" title={names.join(', ')}>{names[0]}{names.length > 1 ? ` +${names.length - 1}` : ''}</span>
+      },
+    },
     {
       key: 'submittals',
       header: 'Candidates',
@@ -495,7 +471,7 @@ export default function Jobs() {
         actions={
           <>
             {isSuperAdmin && <Switch checked={allOrgsView} onChange={setAllOrgsView} label="All orgs" />}
-            <Button variant="primary" leftIcon="plus" onClick={openAdd}>New Job</Button>
+            {canManageAssignment && <Button variant="primary" leftIcon="plus" onClick={openAdd}>New Job</Button>}
           </>
         }
         search={<WorkspaceSearch value={search} onChange={setSearch} storageKey="td_jobs" placeholder="Search jobs, client, owner, or ID..." />}
@@ -554,7 +530,7 @@ export default function Jobs() {
         selectable
         selectedIds={selected}
         onSelectionChange={setSelected}
-        onRowClick={(j) => { setShowDetail(j); setPreviewTab('overview') }}
+        onRowClick={(j) => openFullPage(j)}
         emptyState={
           <EmptyState
             icon="jobs"
@@ -581,7 +557,8 @@ export default function Jobs() {
             align="end"
             trigger={(p) => <MenuTrigger {...p} />}
             items={[
-              { label: 'View details', icon: 'eye', onClick: () => { setShowDetail(j); setPreviewTab('overview') } },
+              { label: 'Open full job page', icon: 'arrowUpRight', onClick: () => openFullPage(j) },
+              { label: 'Quick preview', icon: 'eye', onClick: () => { setShowDetail(j); setPreviewTab('overview') } },
               { label: 'View pipeline / matches', icon: 'pipeline', onClick: () => { setShowDetail(j); setPreviewTab('pipeline') } },
               { label: 'Edit', icon: 'edit', onClick: () => openEdit(j) },
               'divider',
@@ -590,7 +567,8 @@ export default function Jobs() {
           />
         )}
         contextMenuItems={(j) => [
-          { label: 'View details', icon: 'eye', onClick: () => { setShowDetail(j); setPreviewTab('overview') } },
+          { label: 'Open full job page', icon: 'arrowUpRight', onClick: () => openFullPage(j) },
+          { label: 'Quick preview', icon: 'eye', onClick: () => { setShowDetail(j); setPreviewTab('overview') } },
           { label: 'View pipeline / matches', icon: 'pipeline', onClick: () => { setShowDetail(j); setPreviewTab('pipeline') } },
           { label: 'Edit', icon: 'edit', onClick: () => openEdit(j) },
           'divider',
@@ -598,65 +576,11 @@ export default function Jobs() {
         ]}
       />
 
-      <Drawer
-        open={showModal}
-        onClose={() => setShowModal(false)}
-        title={editingId ? 'Edit Job' : 'Add Job'}
-        size="lg"
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setShowModal(false)}>Cancel</Button>
-            <Button variant="primary" loading={saving} onClick={handleSave}>{editingId ? 'Update Job' : 'Save Job'}</Button>
-          </>
-        }
-      >
-        <div className="flex flex-col gap-5">
-          <div>
-            <FormSectionTitle>Basic Information</FormSectionTitle>
-            <div className="grid sm:grid-cols-2 gap-3.5">
-              <FormField label="Job Title" required><Combobox value={form.title} onChange={v => setForm(f => ({ ...f, title: v }))} options={titleOptions} placeholder="Senior Developer" /></FormField>
-              <FormField label="Reference ID"><Input {...inp('job_id')} placeholder="JOB-001" /></FormField>
-              <FormField label="Client"><Input {...inp('client')} placeholder="Acme Corp" /></FormField>
-              <FormField label="Status"><Select value={form.status} onChange={v => setForm(f => ({ ...f, status: v }))} options={['Open', 'Filled', 'On Hold', 'Closed'].map(o => ({ value: o, label: o }))} /></FormField>
-              <FormField label="Priority"><Select value={form.priority} onChange={v => setForm(f => ({ ...f, priority: v }))} options={['High', 'Medium', 'Low'].map(o => ({ value: o, label: o }))} /></FormField>
-              <FormField label="Employment Type"><Select value={form.type} onChange={v => setForm(f => ({ ...f, type: v }))} options={['Contract', 'Full-time', 'Contract-to-Hire', 'Part-time'].map(o => ({ value: o, label: o }))} /></FormField>
-              <FormField label="Recruiter"><Combobox value={form.fe} onChange={v => setForm(f => ({ ...f, fe: v }))} options={recruiterOptions} placeholder="Sarah K." /></FormField>
-            </div>
-          </div>
-
-          <div>
-            <FormSectionTitle>Location</FormSectionTitle>
-            <FormField label="Location"><Combobox value={form.location} onChange={v => setForm(f => ({ ...f, location: v }))} options={locationOptions} placeholder="New York, NY / Remote" /></FormField>
-          </div>
-
-          <div>
-            <FormSectionTitle>Compensation</FormSectionTitle>
-            <FormField label="Rate"><Input {...inp('rate')} placeholder="$80-100/hr" /></FormField>
-          </div>
-
-          <div>
-            <FormSectionTitle>Timeline</FormSectionTitle>
-            <FormField label="Open Date"><Input {...inp('open_date')} type="date" /></FormField>
-          </div>
-
-          <div>
-            <FormSectionTitle>Description &amp; Skills</FormSectionTitle>
-            <div className="flex flex-col gap-3.5">
-              <FormField label="Required Skills (press Enter to add)">
-                <div className="bg-surface2 border border-border rounded-[var(--radius-sm)] p-2 flex flex-wrap gap-1.5 min-h-[42px]">
-                  {form.skills.map(s => (
-                    <Badge key={s} tone="accent">
-                      {s} <button type="button" onClick={() => setForm(f => ({ ...f, skills: f.skills.filter(x => x !== s) }))} className="ml-1 opacity-70 hover:opacity-100">×</button>
-                    </Badge>
-                  ))}
-                  <input value={skillInput} onChange={e => setSkillInput(e.target.value)} onKeyDown={addSkill} placeholder="React, Python..." className="bg-transparent border-none outline-none text-text text-sm min-w-[120px] flex-1" />
-                </div>
-              </FormField>
-              <FormField label="Description"><Textarea {...inp('description')} rows={4} /></FormField>
-            </div>
-          </div>
-        </div>
-      </Drawer>
+      <JobFormDrawer
+        jobForm={jobForm}
+        showToast={showToast}
+        onSaved={(title) => setLastUpdatedJob({ title, updated_at: new Date().toISOString() })}
+      />
 
       {showDetail && (() => {
         const matches = getMatchingCandidates(showDetail, candidates, aiScores)
@@ -677,6 +601,7 @@ export default function Jobs() {
             onTabChange={setPreviewTab}
             actions={
               <>
+                <Button variant="ghost" leftIcon="arrowUpRight" onClick={() => { const job = showDetail; setShowDetail(null); openFullPage(job) }}>Full Page</Button>
                 <Button variant="secondary" onClick={() => { const job = showDetail; setShowDetail(null); openEdit(job) }}>Edit Job</Button>
                 <Button variant="danger" onClick={() => { setShowDetail(null); setDeleteId(showDetail.id) }}>Delete Job</Button>
               </>
@@ -700,7 +625,7 @@ export default function Jobs() {
                 </div>
 
                 <div className="grid sm:grid-cols-3 gap-3">
-                  {[['Location', showDetail.location], ['Type', showDetail.type], ['Rate', showDetail.rate], ['Priority', showDetail.priority], ['Recruiter', showDetail.fe], ['Open Date', showDetail.open_date]].map(([label, value]) => (
+                  {[['Location', showDetail.location], ['Type', showDetail.type], ['Rate', showDetail.rate], ['Priority', showDetail.priority], ['Recruiter', resolveAssignees(showDetail).join(', ')], ['Open Date', showDetail.open_date]].map(([label, value]) => (
                     <div key={label} className="bg-surface2 border border-border rounded-[var(--radius-sm)] p-3">
                       <div className="text-[11px] text-text3 uppercase tracking-wide mb-1">{label}</div>
                       <div className="text-sm text-text font-semibold">{value || '-'}</div>
@@ -772,7 +697,7 @@ export default function Jobs() {
                         </Button>
                       }
                     />
-                    <p className="text-sm text-text2 leading-relaxed whitespace-pre-wrap line-clamp-6">{showDetail.description}</p>
+                    <div className="text-sm text-text2 leading-relaxed line-clamp-6 overflow-hidden"><MarkdownView content={showDetail.description} /></div>
                   </Card>
                 )}
               </div>
@@ -1016,18 +941,12 @@ export default function Jobs() {
         }
       >
         {expandedFieldModal && (
-          <div className="p-4 rounded-xl bg-surface2 border border-border">
-            <pre className="text-sm text-text font-sans leading-relaxed whitespace-pre-wrap select-text">
-              {expandedFieldModal.content}
-            </pre>
+          <div className="p-4 rounded-xl bg-surface2 border border-border select-text">
+            <MarkdownView content={expandedFieldModal.content} />
           </div>
         )}
       </Modal>
     </PageContainer>
   )
-}
-
-function FormSectionTitle({ children }) {
-  return <h3 className="text-xs font-bold text-accent uppercase tracking-wide pb-2 mb-3.5 border-b border-border">{children}</h3>
 }
 

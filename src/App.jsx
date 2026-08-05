@@ -6,12 +6,14 @@ import Signup from './pages/Signup'
 import Dashboard from './pages/Dashboard'
 import Candidates from './pages/Candidates'
 import Jobs from './pages/Jobs'
+import JobDetail from './pages/JobDetail'
 import Pipeline from './pages/Pipeline'
 import Callbacks from './pages/Callbacks'
 import Followups from './pages/Followups'
 import Postings from './pages/Postings'
 import Directory from './pages/Directory'
 import Resubmit from './pages/Resubmit'
+import Collisions from './pages/Collisions'
 import Admin from './pages/Admin'
 import Reports from './pages/Reports'
 import AICenter from './pages/AICenter'
@@ -50,6 +52,11 @@ function ProtectedRoute({ children }) {
 
 function MainApp() {
   const [currentPage, setCurrentPage] = useState('dashboard')
+  const [navParams, setNavParams] = useState({})
+  const navigateTo = (page, params = {}) => {
+    setNavParams(params)
+    setCurrentPage(page)
+  }
   const [callbackAlert, setCallbackAlert] = useState(null)
   const [notifiedCallbacks, setNotifiedCallbacks] = useState(new Set())
   const { profile, user } = useAuth()
@@ -101,20 +108,22 @@ function MainApp() {
 
   const renderPage = () => {
     switch (currentPage) {
-      case 'dashboard': return <Dashboard onNavigate={setCurrentPage} />
-      case 'tasks': return <TasksPage user={profile || user} onNavigate={setCurrentPage} />
+      case 'dashboard': return <Dashboard onNavigate={navigateTo} />
+      case 'tasks': return <TasksPage user={profile || user} onNavigate={navigateTo} />
       case 'ai_center': return <AICenter />
       case 'candidates': return <Candidates />
-      case 'jobs': return <Jobs />
+      case 'jobs': return <Jobs onNavigate={navigateTo} openEditJobId={navParams.editJobId} />
+      case 'job_detail': return <JobDetail jobId={navParams.jobId} onNavigate={navigateTo} />
       case 'pipeline': return <Pipeline />
-      case 'callbacks': return <Callbacks onNavigate={setCurrentPage} />
-      case 'followups': return <Followups onNavigate={setCurrentPage} />
+      case 'callbacks': return <Callbacks onNavigate={navigateTo} />
+      case 'followups': return <Followups onNavigate={navigateTo} />
       case 'reports': return <Reports />
       case 'postings': return <Postings />
       case 'directory': return <Directory />
-      case 'resubmit': return <Resubmit onNavigate={setCurrentPage} />
-      case 'org_settings': return <OrgSettings onNavigate={setCurrentPage} />
-      case 'team_management': return <TeamManagement onNavigate={setCurrentPage} />
+      case 'resubmit': return <Resubmit onNavigate={navigateTo} />
+      case 'collisions': return <Collisions />
+      case 'org_settings': return <OrgSettings onNavigate={navigateTo} />
+      case 'team_management': return <TeamManagement onNavigate={navigateTo} />
       case 'admin': return ['admin', 'superadmin', 'owner', 'ADMIN', 'SUPERADMIN', 'OWNER'].includes(role) ? <Admin /> : <Navigate to="/" />
       default: return (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -128,7 +137,7 @@ function MainApp() {
 
   return (
     <AIContextProvider currentPage={currentPage}>
-      <AppLayout currentPage={currentPage} onNavigate={setCurrentPage}>
+      <AppLayout currentPage={currentPage} onNavigate={navigateTo}>
         {renderPage()}
       </AppLayout>
 

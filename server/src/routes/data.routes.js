@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { requireAdmin, requireAuth } from '../auth.js'
 import { prisma } from '../prisma.js'
 import { storageService } from '../services/storageService.js'
+import { detectAndRecordCollisions } from '../services/collisionService.js'
 
 const router = Router()
 
@@ -19,6 +20,7 @@ const tables = {
   user_invitations: { model: 'userInvitation', orgScoped: true, adminWrite: true, adminRead: true },
   admin_audit_log: { model: 'adminAuditLog', orgScoped: true, adminWrite: true, adminRead: true },
   activity_logs: { model: 'activityLog', orgScoped: true, readOnly: true },
+  submission_collisions: { model: 'submissionCollision', orgScoped: true, readOnly: true },
 }
 
 const publicFields = {
@@ -97,6 +99,15 @@ function isAMRole(profile) {
   return false
 }
 
+// req.profile.role / req.memberRole are always the UPPERCASE OrganizationMember
+// role (requireAuth overwrites profile.role with it) — unlike isRMRole/isAMRole
+// above, this compares uppercase-to-uppercase deliberately.
+const JOB_CREATE_ROLES = ['ACCOUNT_MANAGER', 'RECRUITMENT_MANAGER', 'OPERATIONS_MANAGER', 'MANAGER', 'ADMIN', 'SUPERADMIN', 'OWNER']
+function canManageJobAssignment(req) {
+  const role = (req.memberRole || req.profile?.role || '').toUpperCase()
+  return JOB_CREATE_ROLES.includes(role)
+}
+
 async function visibleOwnerIds(req) {
   const role = (req.memberRole || req.profile?.role || '').toLowerCase()
   if (['admin', 'superadmin', 'owner'].includes(role)) return null
@@ -136,8 +147,32 @@ async function buildWhere(req, table, config) {
   }
 
   if (ownedTables.includes(table)) {
-    const ownerIds = await visibleOwnerIds(req)
-    if (ownerIds) where.user_id = { in: ownerIds }
+    // Narrow, deliberate exception: recruiters sharing one job requisition need
+    // to see each other's submissions to it (this is exactly the scenario the
+    // collision-detection feature exists to catch), and need to be able to open
+    // the shared Job Detail page / look a job up by its exact Job ID even when
+    // someone else created it — but only when the request is already scoped to
+    // one specific job_id/candidates job_id/job row id, never as a blanket
+    // org-wide dump. Requesting all_owners without one of those filters has no effect.
+    const jobIdFilter = filters.find(f => f.op === 'eq' && f.column === 'job_id')?.value
+    const jobRowIdFilter = filters.find(f => f.op === 'eq' && f.column === 'id')?.value
+    const wantsAllOwners = (req.query.all_owners === 'true' || req.query.all_owners === '1') && (
+      (table === 'candidates' && Boolean(jobIdFilter)) ||
+      (table === 'jobs' && Boolean(jobIdFilter || jobRowIdFilter))
+    )
+    if (!wantsAllOwners) {
+      const ownerIds = await visibleOwnerIds(req)
+      if (ownerIds) {
+        // Jobs are visible if you created them OR you're one of its assignees —
+        // a plain owner-only check would hide a recruiter's own assigned jobs,
+        // since only account_manager+ roles create jobs going forward.
+        if (table === 'jobs') {
+          where.OR = [{ user_id: { in: ownerIds } }, { assigned_to: { array_contains: req.user.id } }]
+        } else {
+          where.user_id = { in: ownerIds }
+        }
+      }
+    }
   }
 
   if (table === 'tasks') {
@@ -179,7 +214,13 @@ async function scopedRowWhere(req, table, config, id) {
 
   if (ownedTables.includes(table)) {
     const ownerIds = await visibleOwnerIds(req)
-    if (ownerIds) where.user_id = { in: ownerIds }
+    if (ownerIds) {
+      if (table === 'jobs') {
+        where.OR = [{ user_id: { in: ownerIds } }, { assigned_to: { array_contains: req.user.id } }]
+      } else {
+        where.user_id = { in: ownerIds }
+      }
+    }
   }
 
   return where
@@ -243,6 +284,50 @@ async function logActivity(req, action, table, row, details = {}) {
 
 router.use(requireAuth)
 
+router.patch('/submission_collisions/:id/resolve', async (req, res, next) => {
+  try {
+    const { status } = req.body
+    if (!['dismissed', 'confirmed'].includes(status)) {
+      return res.status(400).json({ error: 'status must be "dismissed" or "confirmed"' })
+    }
+    const orgId = req.organizationId || req.profile?.org_id
+    const current = await prisma.submissionCollision.findFirst({ where: { id: req.params.id, org_id: orgId } })
+    if (!current) return res.status(404).json({ error: 'Record not found' })
+
+    const updated = await prisma.submissionCollision.update({
+      where: { id: req.params.id },
+      data: { status, resolved_by: req.user.id, resolved_at: new Date() },
+    })
+    res.json({ data: updated })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// Job Remarks are deliberately org-wide collaborative notes (unlike the rest
+// of a job's fields, which stay owner-scoped like every other job edit) — a
+// recruiter working someone else's shared requisition still needs to be able
+// to leave/read remarks on it. Narrow and purpose-built rather than loosening
+// the generic PUT /jobs/:id owner-scoping, which would open up full editing
+// of a colleague's job (title/status/rate) — a bigger policy change than "let
+// the team leave notes on a shared req."
+router.patch('/jobs/:id/remarks', async (req, res, next) => {
+  try {
+    const orgId = req.organizationId || req.profile?.org_id
+    const current = await prisma.job.findFirst({ where: { id: req.params.id, org_id: orgId } })
+    if (!current) return res.status(404).json({ error: 'Record not found' })
+
+    const updated = await prisma.job.update({
+      where: { id: req.params.id },
+      data: { notes: req.body.notes ?? null },
+    })
+    await logActivity(req, 'updated', 'jobs', updated, { updates: { notes: '(remarks updated)' } })
+    res.json({ data: updated })
+  } catch (err) {
+    next(err)
+  }
+})
+
 router.get('/:table', async (req, res, next) => {
   try {
     const table = req.params.table
@@ -290,6 +375,9 @@ router.post('/:table', async (req, res, next) => {
     if (config.adminWrite && !['admin', 'superadmin'].includes(req.profile.role)) {
       return requireAdmin(req, res, () => { })
     }
+    if (table === 'jobs' && !canManageJobAssignment(req)) {
+      return res.status(403).json({ error: 'Only account managers and above can create job requisitions.' })
+    }
 
     const model = prisma[config.model]
     const rows = Array.isArray(req.body) ? req.body : [req.body]
@@ -311,14 +399,19 @@ router.post('/:table', async (req, res, next) => {
     }
 
     const data = []
+    const collisions = []
 
     for (const row of rows) {
       const created = await model.create({ data: withOwnership(req, table, row) })
       await logActivity(req, 'created', table, created)
       data.push(created)
+      if (table === 'candidates') {
+        const found = await detectAndRecordCollisions({ req, candidate: created, excludeId: created.id })
+        collisions.push(...found)
+      }
     }
 
-    res.status(201).json({ data: sanitize(table, data) })
+    res.status(201).json({ data: sanitize(table, data), collisions })
   } catch (err) {
     next(err)
   }
@@ -333,6 +426,10 @@ router.put('/:table/:id', async (req, res, next) => {
       return requireAdmin(req, res, () => { })
     }
 
+    if (table === 'jobs' && !canManageJobAssignment(req)) {
+      delete req.body.assigned_to
+    }
+
     const model = prisma[config.model]
     const current = await model.findFirst({ where: await scopedRowWhere(req, table, config, req.params.id) })
     if (!current) return res.status(404).json({ error: 'Record not found' })
@@ -345,7 +442,12 @@ router.put('/:table/:id', async (req, res, next) => {
       await storageService.deleteFile(current.resume_file_key)
     }
     await logActivity(req, 'updated', table, data, { updates: req.body })
-    res.json({ data: sanitize(table, [data]) })
+
+    let collisions = []
+    if (table === 'candidates') {
+      collisions = await detectAndRecordCollisions({ req, candidate: data, excludeId: data.id })
+    }
+    res.json({ data: sanitize(table, [data]), collisions })
   } catch (err) {
     next(err)
   }

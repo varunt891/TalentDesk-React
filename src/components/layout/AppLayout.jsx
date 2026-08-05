@@ -61,8 +61,8 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
     if (mainRef.current) mainRef.current.scrollTop = 0
   }, [currentPage])
 
-  const handleNavigate = (page) => {
-    onNavigate(page)
+  const handleNavigate = (page, params) => {
+    onNavigate(page, params)
     setSidebarOpen(false)
   }
 

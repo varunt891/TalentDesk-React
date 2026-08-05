@@ -361,7 +361,7 @@ class QueryBuilder {
       body: this.payload,
     })
     const data = this.singleMode ? response.data?.[0] ?? null : response.data
-    return { data, error: null }
+    return { ...response, data, error: null }
   }
 
   then(resolve, reject) {

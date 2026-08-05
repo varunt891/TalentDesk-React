@@ -5,15 +5,20 @@ import { db, apiRequest, apiUpload } from '../lib/api'
 import SubmissionPacketModal from '../components/SubmissionPacketModal'
 import AIMatchModal from '../components/AIMatchModal'
 import BulkResumeUploadModal from '../components/candidates/BulkResumeUploadModal'
+import CollisionWarning from '../components/candidates/CollisionWarning'
+import { findLocalCollisionMatches } from '../lib/collisions'
+import { useOpenCollisionIds } from '../hooks/useOpenCollisionIds'
 import * as XLSX from 'xlsx'
 import { PageContainer } from '../components/layout/PageContainer'
 import {
   Button, Input, Textarea, FormField, Select, Combobox, Badge, StatusPill, Card, CardHeader,
   KPICard, PageHeader, Table, Modal, Switch, Icon, Avatar, Menu, MenuTrigger, EmptyState, useToast,
+  MarkdownEditor,
 } from '../components/ui'
 import { WorkspaceSearch, FilterWorkspace, EntityDrawer } from '../components/workspace'
 import { Drawer } from '../components/ui/Modal'
 import { ensureArray, STATUS_TONE, computeScore } from '../lib/candidateHealth'
+import { fallbackExtractSkills } from '../lib/skillExtraction'
 import AIInsightCard from '../components/ai/AIInsightCard'
 import { useAISetContext } from '../lib/ai/context'
 import { useAIGovernance } from '../lib/ai/governance'
@@ -36,25 +41,6 @@ const emptyForm = {
   fe_name: '', fe_extension: '', account_manager: '', recruiter_name: '',
   skills: [], notes: '', followup_date: '', resume_text: '',
   resume_file_key: '', resume_file_name: '', resume_file_size: null
-}
-
-function fallbackExtractSkills(text = '') {
-  if (!text) return []
-  const dictionary = [
-    'React', 'React Native', 'Node.js', 'Express', 'TypeScript', 'JavaScript', 'Python', 'Django', 'Flask', 'FastAPI',
-    'Java', 'Spring Boot', 'C++', 'C#', '.NET', 'Go', 'Golang', 'Rust', 'PHP', 'Ruby', 'Rails', 'SQL', 'PostgreSQL',
-    'MySQL', 'MongoDB', 'Redis', 'GraphQL', 'REST API', 'AWS', 'Azure', 'GCP', 'Docker', 'Kubernetes', 'CI/CD',
-    'Git', 'DevOps', 'Microservices', 'HTML5', 'CSS3', 'Tailwind CSS', 'Sass', 'Figma', 'System Design', 'Agile',
-    'Scrum', 'Jira', 'Unit Testing', 'Jest', 'Cypress', 'Machine Learning', 'Data Analysis', 'Tableau', 'Power BI',
-    'Communication', 'Leadership', 'Problem Solving', 'Teamwork'
-  ]
-  const lower = text.toLowerCase()
-  const matches = dictionary.filter(skill => {
-    const escaped = skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const regex = new RegExp(`\\b${escaped}\\b`, 'i')
-    return regex.test(lower)
-  })
-  return matches.slice(0, 10)
 }
 
 export default function Candidates() {
@@ -440,6 +426,12 @@ export default function Candidates() {
     }
   }
 
+  const collisionMatches = useMemo(
+    () => findLocalCollisionMatches(candidates, form, editingId),
+    [candidates, form.email, form.phone, form.job_id, form.client, editingId]
+  )
+  const openCollisionIds = useOpenCollisionIds()
+
   const handleSave = async () => {
     const errors = {}
     if (!form.first_name) errors.first_name = 'First name is required'
@@ -453,14 +445,23 @@ export default function Candidates() {
     }
     setFormErrors({})
     setSaving(true)
+    const warnCollisions = (collisions) => {
+      if (!collisions?.length) return
+      pushToast({
+        tone: 'warning',
+        title: `Saved, but ${collisions.length} possible duplicate${collisions.length > 1 ? 's' : ''} detected`,
+        description: 'See the Collisions page to review.',
+        duration: 7000,
+      })
+    }
     if (editingId) {
-      const { error } = await updateCandidate(editingId, form)
+      const { error, collisions } = await updateCandidate(editingId, form)
       if (error) showToast(error.message, 'error')
-      else { showToast('Candidate updated!'); setShowModal(false) }
+      else { showToast('Candidate updated!'); warnCollisions(collisions); setShowModal(false) }
     } else {
-      const { error } = await addCandidate(form)
+      const { error, collisions } = await addCandidate(form)
       if (error) showToast(error.message, 'error')
-      else { showToast('Candidate added!'); setShowModal(false) }
+      else { showToast('Candidate added!'); warnCollisions(collisions); setShowModal(false) }
     }
     setSaving(false)
   }
@@ -517,6 +518,7 @@ export default function Candidates() {
           <span className="min-w-0">
             <span className="flex items-center gap-1">
               <strong className="text-[12.5px] text-text font-semibold truncate">{c.first_name} {c.last_name}</strong>
+              {openCollisionIds.has(c.id) && <Icon name="alertCircle" size={13} className="text-red shrink-0" aria-label="Possible duplicate submission" />}
               {c.resume_text && <Icon name="edit" size={13} className="text-text3/60 shrink-0" aria-label="Resume text on file" />}
               {c.resume_file_name && (
                 <button
@@ -832,7 +834,7 @@ export default function Candidates() {
                         </Button>
                       }
                     />
-                    <pre className="text-xs text-text2 leading-relaxed whitespace-pre-wrap font-sans max-h-60 overflow-y-auto">{showDetail.resume_text}</pre>
+                    <div className="text-xs text-text2 leading-relaxed max-h-60 overflow-y-auto"><MarkdownView content={showDetail.resume_text} /></div>
                   </Card>
                 )}
               </div>
@@ -914,11 +916,10 @@ export default function Candidates() {
                   </Button>
                 </div>
               </div>
-              <Textarea
+              <MarkdownEditor
                 {...inp('resume_text')}
                 placeholder="Paste full raw candidate resume text here (e.g. summary, contact, skills, experience)... Or upload a resume file above and click 'AI Auto-Fill Full Profile'!"
                 rows={5}
-                className="font-mono text-xs"
               />
             </Card>
           </div>
@@ -936,6 +937,8 @@ export default function Candidates() {
               <FormField label="LinkedIn"><Input {...inp('linkedin')} placeholder="linkedin.com/in/..." /></FormField>
             </div>
           </div>
+
+          <CollisionWarning matches={collisionMatches} />
 
           <div>
             <FormSectionTitle>Submission Details</FormSectionTitle>
@@ -1075,10 +1078,8 @@ export default function Candidates() {
         }
       >
         {expandedFieldModal && (
-          <div className="p-4 rounded-xl bg-surface2 border border-border">
-            <pre className="text-sm text-text font-sans leading-relaxed whitespace-pre-wrap select-text">
-              {expandedFieldModal.content}
-            </pre>
+          <div className="p-4 rounded-xl bg-surface2 border border-border select-text">
+            <MarkdownView content={expandedFieldModal.content} />
           </div>
         )}
       </Modal>

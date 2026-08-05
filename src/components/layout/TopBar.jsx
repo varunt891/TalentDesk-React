@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import { db } from '../../lib/api'
 import { Icon } from '../ui/icons'
 import Avatar from '../ui/Avatar'
 import Menu from '../ui/Menu'
@@ -25,13 +26,17 @@ function roleLabel(role) {
   return ROLE_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
 }
 
+// `page` values match the `currentPage` switch cases in App.jsx's
+// renderPage() — this app navigates via internal state, not the URL, so
+// most of these are NOT real router paths. Only `styleguide` (below) has an
+// actual react-router route and uses `path` + navigate() instead.
 const COMMAND_ITEMS = [
-  { id: 'candidates', title: 'Candidates Directory', category: 'Pages', path: '/candidates', icon: 'users' },
-  { id: 'jobs', title: 'Job Openings & Requisitions', category: 'Pages', path: '/jobs', icon: 'jobs' },
-  { id: 'pipeline', title: 'Recruitment Pipeline Board', category: 'Pages', path: '/pipeline', icon: 'pipeline' },
-  { id: 'reports', title: 'Analytics & Reports', category: 'Pages', path: '/reports', icon: 'reports' },
-  { id: 'ai-center', title: 'AI Match & Copilot Center', category: 'Pages', path: '/ai-center', icon: 'sparkles' },
-  { id: 'settings', title: 'Workspace & Team Settings', category: 'Pages', path: '/settings', icon: 'admin' },
+  { id: 'candidates', title: 'Candidates Directory', category: 'Pages', page: 'candidates', icon: 'users' },
+  { id: 'jobs', title: 'Job Openings & Requisitions', category: 'Pages', page: 'jobs', icon: 'jobs' },
+  { id: 'pipeline', title: 'Recruitment Pipeline Board', category: 'Pages', page: 'pipeline', icon: 'pipeline' },
+  { id: 'reports', title: 'Analytics & Reports', category: 'Pages', page: 'reports', icon: 'reports' },
+  { id: 'ai-center', title: 'AI Match & Copilot Center', category: 'Pages', page: 'ai_center', icon: 'sparkles' },
+  { id: 'settings', title: 'Workspace & Team Settings', category: 'Pages', page: 'org_settings', icon: 'admin' },
   { id: 'styleguide', title: 'Component Style Guide', category: 'Design', path: '/style-guide', icon: 'edit' },
 ]
 
@@ -50,6 +55,36 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
   const [searchQuery, setSearchQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
   const [profileModalOpen, setProfileModalOpen] = useState(false)
+  const [searchJobs, setSearchJobs] = useState([])
+  const [searchCandidates, setSearchCandidates] = useState([])
+  const [exactJobMatch, setExactJobMatch] = useState(null)
+
+  // Lazy-loaded the first time the palette opens, not on every keystroke —
+  // real jobs/candidates search alongside the static page shortcuts below.
+  // These two fetches are owner-scoped like the Jobs/Candidates list pages —
+  // fuzzy title/client search only surfaces jobs you can already see there.
+  useEffect(() => {
+    if (!searchOpen) return
+    db.from('jobs').select('*').then(({ data }) => setSearchJobs(data || [])).catch(() => {})
+    db.from('candidates').select('*').then(({ data }) => setSearchCandidates(data || [])).catch(() => {})
+  }, [searchOpen])
+
+  // Exact Job ID lookup — deliberately org-wide (bypasses owner-scoping via
+  // all_owners, narrowly allowed server-side only for an exact job_id/id
+  // match) so typing a colleague's Job ID finds it even if you didn't create
+  // it. This is on top of, not instead of, the owner-scoped fuzzy search above.
+  useEffect(() => {
+    const query = searchQuery.trim()
+    if (!searchOpen || query.length < 3) {
+      setExactJobMatch(null)
+      return
+    }
+    let cancelled = false
+    db.from('jobs').select('*').eq('job_id', query).param('all_owners', 'true').then(({ data }) => {
+      if (!cancelled) setExactJobMatch((data && data[0]) || null)
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [searchQuery, searchOpen])
 
   const loadNotifications = useCallback(async () => {
     if (!userId) return
@@ -99,10 +134,18 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
     setNotifications(prev => prev.map(n => ({ ...n, read: true })))
   }
 
+  const NOTIFICATION_LINK_PAGES = { '/collisions': 'collisions', '/tasks': 'tasks' }
+
   const handleNotificationClick = async (n) => {
-    if (n.read) return
-    await markNotificationRead(n.id)
-    setNotifications(prev => prev.map(x => (x.id === n.id ? { ...x, read: true } : x)))
+    if (!n.read) {
+      await markNotificationRead(n.id)
+      setNotifications(prev => prev.map(x => (x.id === n.id ? { ...x, read: true } : x)))
+    }
+    const page = NOTIFICATION_LINK_PAGES[n.link]
+    if (page) {
+      setNotifOpen(false)
+      onNavigate?.(page)
+    }
   }
 
   const openNotificationSettings = () => {
@@ -116,15 +159,61 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
     navigate('/login', { replace: true })
   }
 
-  const filteredCommands = COMMAND_ITEMS.filter(item =>
-    item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.category.toLowerCase().includes(searchQuery.toLowerCase())
+  const q = searchQuery.trim().toLowerCase()
+
+  const fuzzyJobResults = q ? searchJobs.filter(j =>
+    (j.job_id || '').toLowerCase().includes(q) ||
+    (j.title || '').toLowerCase().includes(q) ||
+    (j.client || '').toLowerCase().includes(q)
+  ) : []
+
+  // Exact Job ID match is org-wide (see the effect above) and always takes
+  // priority — surfaced first even if the fuzzy, owner-scoped list above
+  // doesn't already include it (e.g. a colleague's job).
+  const jobsForResults = exactJobMatch && !fuzzyJobResults.some(j => j.id === exactJobMatch.id)
+    ? [exactJobMatch, ...fuzzyJobResults]
+    : fuzzyJobResults
+
+  const jobResults = q ? jobsForResults.slice(0, 6).map(j => ({
+    id: `job-${j.id}`, title: j.title || 'Untitled role', subtitle: `${j.job_id || 'No ID'} · ${j.client || 'No client'}`,
+    category: 'Jobs', icon: 'jobs', page: 'job_detail', jobId: j.id,
+  })) : []
+
+  const candidateResults = q ? searchCandidates.filter(c =>
+    `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase().includes(q) ||
+    (c.email || '').toLowerCase().includes(q) ||
+    (c.job_id || '').toLowerCase().includes(q)
+  ).slice(0, 6).map(c => ({
+    id: `cand-${c.id}`, title: `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Unnamed candidate',
+    subtitle: c.job_title || c.email || '', category: 'Candidates', icon: 'users', page: 'candidates',
+  })) : []
+
+  const filteredStaticCommands = COMMAND_ITEMS.filter(item =>
+    item.title.toLowerCase().includes(q) || item.category.toLowerCase().includes(q)
   )
+
+  const filteredCommands = q ? [...jobResults, ...candidateResults, ...filteredStaticCommands] : COMMAND_ITEMS
+
+  useEffect(() => { setActiveIndex(0) }, [searchQuery])
 
   const handleRunCommand = (item) => {
     setSearchOpen(false)
     setSearchQuery('')
-    if (item.path) navigate(item.path)
+    if (item.page) onNavigate?.(item.page, item.jobId ? { jobId: item.jobId } : undefined)
+    else if (item.path) navigate(item.path)
+  }
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActiveIndex(i => Math.min(i + 1, filteredCommands.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveIndex(i => Math.max(i - 1, 0))
+    } else if (e.key === 'Enter' && filteredCommands[activeIndex]) {
+      e.preventDefault()
+      handleRunCommand(filteredCommands[activeIndex])
+    }
   }
 
   return (
@@ -284,6 +373,7 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
                 autoFocus
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
                 placeholder="Search candidates, jobs, settings..."
                 className="w-full bg-transparent text-sm font-medium text-text outline-none placeholder:text-text3"
               />
@@ -309,9 +399,12 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <Icon name={item.icon} size={15} className="shrink-0 text-text2" />
-                        <span className="truncate">{item.title}</span>
+                        <span className="min-w-0">
+                          <span className="truncate block">{item.title}</span>
+                          {item.subtitle && <span className="block text-[10.5px] text-text3 truncate font-normal">{item.subtitle}</span>}
+                        </span>
                       </div>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-surface2 text-text3 border border-border uppercase">
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-surface2 text-text3 border border-border uppercase shrink-0">
                         {item.category}
                       </span>
                     </button>

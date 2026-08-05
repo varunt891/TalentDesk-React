@@ -65,6 +65,18 @@ export const TOOL_CONFIGS = {
     allowGrounding: false,
     maxTokens: 2048
   },
+  job_description: {
+    systemPrompt: 'You are a professional technical recruiter and job-ad copywriter. Draft a clear, well-structured job description (150-250 words) covering key responsibilities and requirements for the given role. Use only the details provided (title, rate/salary, location, client, employment type) — do not invent a company name, benefits, or requirements that were not given.',
+    temperature: 0.5,
+    allowGrounding: false,
+    maxTokens: 1024
+  },
+  job_skills: {
+    systemPrompt: 'You are an expert technical recruiter. Analyze the provided job description and extract up to 10 top required technical and professional skills. You MUST output ONLY a valid raw JSON array of strings (for example: ["React", "Node.js", "AWS"]). Do not include markdown formatting, backticks, or explanatory text — return ONLY the JSON array.',
+    temperature: 0.1,
+    allowGrounding: false,
+    maxTokens: 1024
+  },
 
   // Recruiter Copilot — the shared, workspace-aware conversational assistant.
   // Distinct from `copilot` (AICenter's single-shot freeform tab) so that
