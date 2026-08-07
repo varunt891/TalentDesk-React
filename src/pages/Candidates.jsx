@@ -5,6 +5,7 @@ import { db, apiRequest, apiUpload } from '../lib/api'
 import SubmissionPacketModal from '../components/SubmissionPacketModal'
 import AIMatchModal from '../components/AIMatchModal'
 import BulkResumeUploadModal from '../components/candidates/BulkResumeUploadModal'
+import CandidateFormDrawer from '../components/candidates/CandidateFormDrawer'
 import CollisionWarning from '../components/candidates/CollisionWarning'
 import { findLocalCollisionMatches } from '../lib/collisions'
 import { useOpenCollisionIds } from '../hooks/useOpenCollisionIds'
@@ -43,7 +44,7 @@ const emptyForm = {
   resume_file_key: '', resume_file_name: '', resume_file_size: null
 }
 
-export default function Candidates() {
+export default function Candidates({ onNavigate, openEditCandidateId }) {
   const { profile, organization, user } = useAuth()
   const orgId = organization?.id || profile?.org_id
   const userId = user?.id
@@ -289,6 +290,16 @@ export default function Candidates() {
     setEditingId(c.id); setSkillInput(''); setFormErrors({}); setShowModal(true)
   }
 
+  // Auto-open edit drawer when navigated back from CandidateDetail with an edit ID
+  // Must be placed after openEdit is declared to avoid temporal dead zone.
+  useEffect(() => {
+    if (openEditCandidateId && candidates.length > 0) {
+      const target = candidates.find(c => c.id === openEditCandidateId)
+      if (target) openEdit(target)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openEditCandidateId, candidates.length])
+
   const handleExtractSkillsAI = async () => {
     if (!form.resume_text || !form.resume_text.trim()) {
       return showToast('Please paste resume text first', 'error')
@@ -365,13 +376,12 @@ export default function Candidates() {
           email: p.email || prev.email,
           phone: p.phone || prev.phone,
           location: p.location || prev.location,
-          job_title: p.job_title || prev.job_title,
           experience: p.experience !== undefined && p.experience !== null ? String(p.experience) : prev.experience,
           work_auth: p.work_auth || prev.work_auth,
           rate: p.rate || prev.rate,
           skills: Array.isArray(p.skills) && p.skills.length > 0 ? Array.from(new Set([...(prev.skills || []), ...p.skills])) : prev.skills
         }))
-        showToast('⚡ AI Auto-Filled candidate name, email, location, title & skills!')
+        showToast('⚡ AI Auto-Filled candidate name, email, location & skills!')
       } else {
         throw new Error(res.error || 'Could not parse profile details.')
       }
@@ -409,7 +419,6 @@ export default function Candidates() {
           email: p.email || prev.email,
           phone: p.phone || prev.phone,
           location: p.location || prev.location,
-          job_title: p.job_title || prev.job_title,
           experience: p.experience !== undefined && p.experience !== null ? String(p.experience) : prev.experience,
           work_auth: p.work_auth || prev.work_auth,
           rate: p.rate || prev.rate,
@@ -618,7 +627,7 @@ export default function Candidates() {
         selectable
         selectedIds={selected}
         onSelectionChange={setSelected}
-        onRowClick={(c) => { setShowDetail(c); setPreviewTab('overview') }}
+        onRowClick={(c) => onNavigate ? onNavigate('candidate_detail', { candidateId: c.id }) : (() => { setShowDetail(c); setPreviewTab('overview') })()}
         emptyState={
           <EmptyState
             icon="users"
@@ -645,7 +654,7 @@ export default function Candidates() {
             align="end"
             trigger={(p) => <MenuTrigger {...p} />}
             items={[
-              { label: 'View details', icon: 'eye', onClick: () => { setShowDetail(c); setPreviewTab('overview') } },
+              { label: 'View details', icon: 'eye', onClick: () => onNavigate ? onNavigate('candidate_detail', { candidateId: c.id }) : (() => { setShowDetail(c); setPreviewTab('overview') })() },
               { label: 'Edit', icon: 'edit', onClick: () => openEdit(c) },
               { label: 'Deep AI Fit', icon: 'sparkles', onClick: () => openAiMatchForCandidate(c) },
               { label: '1-Click Packet', icon: 'arrowUpRight', onClick: () => openPacketForCandidate(c) },
@@ -655,7 +664,7 @@ export default function Candidates() {
           />
         )}
         contextMenuItems={(c) => [
-          { label: 'View details', icon: 'eye', onClick: () => { setShowDetail(c); setPreviewTab('overview') } },
+          { label: 'View details', icon: 'eye', onClick: () => onNavigate ? onNavigate('candidate_detail', { candidateId: c.id }) : (() => { setShowDetail(c); setPreviewTab('overview') })() },
           { label: 'Edit', icon: 'edit', onClick: () => openEdit(c) },
           { label: 'Deep AI Fit', icon: 'sparkles', onClick: () => openAiMatchForCandidate(c) },
           { label: '1-Click Packet', icon: 'arrowUpRight', onClick: () => openPacketForCandidate(c) },
@@ -695,7 +704,7 @@ export default function Candidates() {
           >
             {previewTab === 'overview' && (
               <div className="flex flex-col gap-4">
-                <Card className="bg-gradient-to-br from-accent/8 to-ai/8 border-accent/25">
+                <Card className="bg-surface2 border-border">
                   <div className="flex items-center justify-between mb-4">
                     <span className="text-xs font-bold text-accent uppercase tracking-wide">Candidate Score</span>
                     <Badge tone={sc.total >= 80 ? 'green' : sc.total >= 60 ? 'accent' : sc.total >= 40 ? 'yellow' : 'red'}>{sc.gradeLabel}</Badge>
@@ -881,118 +890,23 @@ export default function Candidates() {
         )
       })()}
 
-      {/* Add/edit drawer */}
-      <Drawer
+      {/* Add/edit drawer — shared component used by CandidateDetail too */}
+      <CandidateFormDrawer
         open={showModal}
         onClose={() => setShowModal(false)}
-        title={editingId ? 'Edit Candidate' : 'Add Candidate'}
-        size="lg"
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setShowModal(false)}>Cancel</Button>
-            <Button variant="primary" loading={saving} onClick={handleSave}>{editingId ? 'Update Candidate' : 'Save Candidate'}</Button>
-          </>
-        }
-      >
-        <div className="flex flex-col gap-5">
-          <div>
-            <FormSectionTitle>Resume &amp; AI Profile Parser</FormSectionTitle>
-            <Card className="bg-surface2 border-accent/30 shadow-xs">
-              <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wide text-accent">Candidate Resume Text or File</label>
-                  <div className="text-xs text-text3 mt-0.5">Paste resume text or upload a file — AI will auto-fill name, email, phone, location, title &amp; skills!</div>
-                </div>
-                <div className="flex gap-2 flex-wrap">
-                  <label className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[var(--radius-sm)] border border-border bg-surface3 text-text text-xs font-semibold cursor-pointer hover:bg-surface transition-colors">
-                    <Icon name="download" size={12} /> Upload File
-                    <input type="file" accept=".txt,.pdf,.doc,.docx" onChange={handleResumeFileUpload} className="hidden" />
-                  </label>
-                  <Button type="button" size="sm" variant="secondary" onClick={handleExtractSkillsAI} disabled={extractingSkills || !form.resume_text?.trim()}>
-                    Extract Skills Only
-                  </Button>
-                  <Button type="button" size="sm" variant="ai" leftIcon="sparkles" loading={extractingSkills} onClick={handleAutoFillProfileAI} disabled={!form.resume_text?.trim()}>
-                    AI Auto-Fill Full Profile
-                  </Button>
-                </div>
-              </div>
-              <MarkdownEditor
-                {...inp('resume_text')}
-                placeholder="Paste full raw candidate resume text here (e.g. summary, contact, skills, experience)... Or upload a resume file above and click 'AI Auto-Fill Full Profile'!"
-                rows={5}
-              />
-            </Card>
-          </div>
-
-          <div>
-            <FormSectionTitle>Personal Info</FormSectionTitle>
-            <div className="grid sm:grid-cols-2 gap-3.5">
-              <FormField label="First Name" required error={formErrors.first_name}><Input ref={firstNameRef} {...inp('first_name')} error={!!formErrors.first_name} placeholder="John" /></FormField>
-              <FormField label="Last Name"><Input {...inp('last_name')} placeholder="Smith" /></FormField>
-              <FormField label="Email"><Input {...inp('email')} type="email" placeholder="john@email.com" /></FormField>
-              <FormField label="Phone"><Input {...inp('phone')} placeholder="+1 555 000 0000" /></FormField>
-              <FormField label="Location" required><Combobox value={form.location} onChange={v => setForm(f => ({ ...f, location: v }))} options={locationOptions} placeholder="City, State" /></FormField>
-              <FormField label="Work Auth"><Select value={form.work_auth} onChange={v => setForm(f => ({ ...f, work_auth: v }))} options={WORK_AUTHS.map(o => ({ value: o, label: o }))} /></FormField>
-              <FormField label="Experience (yrs)"><Input {...inp('experience')} type="number" placeholder="5" /></FormField>
-              <FormField label="LinkedIn"><Input {...inp('linkedin')} placeholder="linkedin.com/in/..." /></FormField>
-            </div>
-          </div>
-
-          <CollisionWarning matches={collisionMatches} />
-
-          <div>
-            <FormSectionTitle>Submission Details</FormSectionTitle>
-            <div className="grid sm:grid-cols-2 gap-3.5">
-              <FormField label="Submission Date" required><Input {...inp('submission_date')} type="date" /></FormField>
-              <FormField label="Job ID" required error={formErrors.job_id}><Input ref={jobIdRef} {...inp('job_id')} error={!!formErrors.job_id} placeholder="JOB-001" /></FormField>
-              <FormField label="Job Title" required><Combobox value={form.job_title} onChange={v => setForm(f => ({ ...f, job_title: v }))} options={jobTitleOptions} placeholder="Software Engineer" /></FormField>
-              <FormField label="Client"><Input {...inp('client')} placeholder="Acme Corp" /></FormField>
-              <FormField label="Bill Rate"><Input {...inp('rate')} placeholder="$85/hr" /></FormField>
-              <FormField label="Relocation"><Select value={form.relocation} onChange={v => setForm(f => ({ ...f, relocation: v }))} options={['Yes', 'No', 'Negotiable'].map(o => ({ value: o, label: o }))} /></FormField>
-            </div>
-          </div>
-
-          <div>
-            <FormSectionTitle>Status Tracking</FormSectionTitle>
-            <div className="grid sm:grid-cols-2 gap-3.5">
-              <FormField label="Internal Status"><Select value={form.internal_status} onChange={v => setForm(f => ({ ...f, internal_status: v }))} options={STATUSES.map(s => ({ value: s, label: s }))} /></FormField>
-              <FormField label="External Status"><Select value={form.external_status} onChange={v => setForm(f => ({ ...f, external_status: v }))} options={STATUSES.map(s => ({ value: s, label: s }))} /></FormField>
-              <FormField label="Feedback Status"><Select value={form.feedback_status} onChange={v => setForm(f => ({ ...f, feedback_status: v }))} options={FEEDBACK.map(o => ({ value: o, label: o }))} /></FormField>
-              <FormField label="Priority"><Select value={form.priority} onChange={v => setForm(f => ({ ...f, priority: v }))} options={['High', 'Medium', 'Low'].map(o => ({ value: o, label: o }))} /></FormField>
-              <FormField label="Interview Date"><Input {...inp('interview_date')} type="date" /></FormField>
-              <FormField label="Interview Type"><Select value={form.interview_type} onChange={v => setForm(f => ({ ...f, interview_type: v }))} options={['Phone Screen', 'Video Call', 'On-site', 'Panel', 'Technical'].map(o => ({ value: o, label: o }))} placeholder="Select type..." /></FormField>
-            </div>
-          </div>
-
-          <div>
-            <FormSectionTitle>Front End / Ownership</FormSectionTitle>
-            <div className="grid sm:grid-cols-2 gap-3.5">
-              <FormField label="FE Name" required><Combobox value={form.fe_name} onChange={v => setForm(f => ({ ...f, fe_name: v }))} options={feOptions} placeholder="Sarah K." /></FormField>
-              <FormField label="Extension"><Input {...inp('fe_extension')} placeholder="x204" /></FormField>
-              <FormField label="Account Manager"><Input {...inp('account_manager')} placeholder="Mike R." /></FormField>
-              <FormField label="Recruiter"><Combobox value={form.recruiter_name} onChange={v => setForm(f => ({ ...f, recruiter_name: v }))} options={recruiterOptions} placeholder="Your name" /></FormField>
-            </div>
-          </div>
-
-          <div>
-            <FormSectionTitle>Skills &amp; Notes</FormSectionTitle>
-            <div className="flex flex-col gap-3.5">
-              <FormField label="Skills (press Enter to add)">
-                <div className="bg-surface2 border border-border rounded-[var(--radius-sm)] p-2 flex flex-wrap gap-1.5 min-h-[42px] cursor-text" onClick={() => document.getElementById('skill-inp')?.focus()}>
-                  {ensureArray(form.skills).map(s => (
-                    <Badge key={s} tone="accent">
-                      {s} <button type="button" onClick={(e) => { e.stopPropagation(); setForm(f => ({ ...f, skills: ensureArray(f.skills).filter(x => x !== s) })) }} className="ml-1 opacity-70 hover:opacity-100">×</button>
-                    </Badge>
-                  ))}
-                  <input id="skill-inp" value={skillInput} onChange={e => setSkillInput(e.target.value)} onKeyDown={addSkill} placeholder={ensureArray(form.skills).length ? '' : 'Type a skill and press Enter...'} className="bg-transparent border-none outline-none text-text text-sm min-w-[160px] flex-1" />
-                </div>
-              </FormField>
-              <FormField label="Notes"><Textarea {...inp('notes')} placeholder="Internal notes..." rows={3} /></FormField>
-              <FormField label="Follow-up Date"><Input {...inp('followup_date')} type="date" /></FormField>
-            </div>
-          </div>
-        </div>
-      </Drawer>
+        candidateData={editingId ? candidates.find(c => c.id === editingId) || null : null}
+        candidates={candidates}
+        onSaved={async (savedData) => {
+          if (editingId) {
+            // updateCandidate already applied the optimistic update;
+            // re-fetch is handled by the hook on next render.
+            updateCandidate(editingId, savedData)
+          } else {
+            addCandidate(savedData)
+          }
+        }}
+        showToast={showToast}
+      />
 
       {/* Delete confirm */}
       <Modal

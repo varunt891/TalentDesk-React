@@ -1603,8 +1603,7 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
     <PageContainer>
       {/* EXECUTIVE HEADER */}
       <header
-        className="relative overflow-hidden flex flex-col gap-4 mb-7 rounded-[var(--radius-lg)] border border-border p-5 lg:flex-row lg:items-center lg:justify-between"
-        style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent) 7%, var(--surface)), var(--surface) 60%)' }}
+        className="relative overflow-hidden flex flex-col gap-4 mb-7 rounded-[var(--radius-lg)] border border-border p-5 lg:flex-row lg:items-center lg:justify-between bg-surface"
       >
         <span aria-hidden="true" className="pointer-events-none absolute -top-16 -right-16 w-56 h-56 rounded-full opacity-[0.16] blur-[70px]" style={{ background: 'var(--ai)' }} />
 
@@ -1672,7 +1671,7 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
               onClick={() => onNavigate && onNavigate(item.page)}
               className="group relative overflow-hidden text-left rounded-[var(--radius-lg)] p-4 transition-all duration-[var(--duration-fast)] ease-[var(--ease-standard)] hover:-translate-y-0.5 hover:shadow-[0_16px_32px_-12px_var(--glow)]"
               style={{
-                background: `linear-gradient(160deg, color-mix(in srgb, var(--${item.tone}) 14%, var(--surface)), var(--surface) 65%)`,
+                background: 'var(--surface)',
                 boxShadow: `inset 0 0 0 1px color-mix(in srgb, var(--${item.tone}) 22%, var(--border))`,
                 '--glow': `color-mix(in srgb, var(--${item.tone}) 45%, transparent)`,
               }}
@@ -1729,12 +1728,11 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
                 <span>{item.helper}</span>
               </div>
 
-              {/* Sleek Modern Real-Time Accent Line (replacing graph wave SVG) */}
+              {/* Sleek Modern Real-Time Accent Line */}
               <div
                 className="absolute left-0 right-0 bottom-0 h-[3px] transition-all duration-300 group-hover:h-[4px]"
                 style={{
-                  background: `linear-gradient(90deg, color-mix(in srgb, var(--${item.tone}) 70%, transparent), var(--${item.tone}))`,
-                  boxShadow: `0 0 10px color-mix(in srgb, var(--${item.tone}) 50%, transparent)`
+                  background: `var(--${item.tone})`,
                 }}
               />
             </button>
@@ -1766,8 +1764,7 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
 
       {/* AI INTELLIGENCE — briefing / opportunity / risk / recommendation, not a chatbot */}
       <div
-        className="mb-8 rounded-[var(--radius-lg)] border border-ai/20 shadow-sm p-4"
-        style={{ background: 'linear-gradient(160deg, color-mix(in srgb, var(--ai) 6%, var(--surface)), var(--surface) 55%)' }}
+        className="mb-8 rounded-[var(--radius-lg)] border border-border shadow-sm p-4 bg-surface"
       >
         <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
           <div className="flex items-center gap-2.5">

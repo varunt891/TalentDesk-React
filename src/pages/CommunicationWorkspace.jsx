@@ -1027,7 +1027,7 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
           >
             {candidatePreviewTab === 'overview' && (
               <div className="flex flex-col gap-4">
-                <Card className="bg-gradient-to-br from-accent/8 to-ai/8 border-accent/25">
+                <Card className="bg-surface2 border-border">
                   <div className="flex items-center justify-between mb-4">
                     <span className="text-xs font-bold text-accent uppercase tracking-wide">Candidate Score</span>
                     <Badge tone={sc.total >= 80 ? 'green' : sc.total >= 60 ? 'accent' : sc.total >= 40 ? 'yellow' : 'red'}>{sc.gradeLabel}</Badge>

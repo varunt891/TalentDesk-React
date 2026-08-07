@@ -680,7 +680,7 @@ export default function TasksPage({ onNavigate }) {
           {previewTab === 'overview' && (
             <div className="flex flex-col gap-4">
               {showDetail.isTarget && (
-                <Card className="bg-gradient-to-br from-accent/8 to-ai/8 border-accent/25">
+                <Card className="bg-surface2 border-border">
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-xs font-bold text-accent uppercase tracking-wide">Target Progress</span>
                     <Badge tone="accent">{showDetail.progressPct}%</Badge>

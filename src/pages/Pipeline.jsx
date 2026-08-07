@@ -703,8 +703,7 @@ export default function Pipeline() {
                     {/* Cards */}
                     <div
                       data-pipeline-card-list
-                      className="flex-1 min-h-0 overflow-y-auto p-2.5 flex flex-col gap-2.5"
-                      style={{ background: `linear-gradient(180deg, ${stage.color}0f, var(--surface-sunken) 220px)` }}
+                      className="flex-1 min-h-0 overflow-y-auto p-2.5 flex flex-col gap-2.5 bg-surface-sunken"
                     >
                       {stats.cards.length === 0 ? (
                         <div
@@ -736,14 +735,13 @@ export default function Pipeline() {
                             onContextMenu={(e) => openContextMenu(e, c)}
                             onKeyDown={(e) => { if (e.key === 'Enter') openDrawer(c) }}
                             className={cn(
-                              'group relative border rounded-[var(--radius-md)] shadow-xs p-3.5 cursor-grab active:cursor-grabbing transition-all duration-[var(--duration-fast)] hover:-translate-y-0.5 hover:border-[var(--stage-color)] hover:shadow-[0_10px_24px_-12px_var(--stage-glow)]',
+                              'group relative border rounded-[var(--radius-md)] shadow-xs p-3.5 cursor-grab active:cursor-grabbing transition-all duration-[var(--duration-fast)] hover:-translate-y-0.5 hover:border-[var(--stage-color)] hover:shadow-[0_10px_24px_-12px_var(--stage-glow)] bg-surface',
                               draggingId === c.id ? 'opacity-40 scale-[0.98]' : 'opacity-100',
                               isFocused && 'ring-2 ring-accent',
                               isSpotlit && 'ring-2 ring-yellow animate-pulse'
                             )}
                             style={{
                               borderColor: `${stage.color}2a`,
-                              background: `linear-gradient(165deg, ${stage.color}22, var(--surface) 55%)`,
                               '--stage-color': stage.color,
                               '--stage-glow': `${stage.color}55`,
                             }}
@@ -863,7 +861,7 @@ export default function Pipeline() {
           >
             {previewTab === 'overview' && (
               <div className="flex flex-col gap-4">
-                <Card className="bg-gradient-to-br from-accent/8 to-ai/8 border-accent/25">
+                <Card className="bg-surface2 border-border">
                   <div className="flex items-center justify-between mb-4">
                     <span className="text-xs font-bold text-accent uppercase tracking-wide">Candidate Score</span>
                     <Badge tone={sc.total >= 80 ? 'green' : sc.total >= 60 ? 'accent' : sc.total >= 40 ? 'yellow' : 'red'}>{sc.gradeLabel}</Badge>

@@ -43,7 +43,7 @@ export function KPICard({ label, value, icon, trend, trendValue, tone = 'accent'
         className
       )}
       style={{
-        background: `linear-gradient(160deg, color-mix(in srgb, var(--${tone}) 13%, var(--surface)), var(--surface) 65%)`,
+        background: 'var(--surface)',
         borderColor: `color-mix(in srgb, var(--${tone}) 22%, var(--border))`,
         '--glow': `color-mix(in srgb, var(--${tone}) 40%, transparent)`,
       }}
@@ -84,7 +84,7 @@ export function KPICard({ label, value, icon, trend, trendValue, tone = 'accent'
       <div
         className="absolute left-0 right-0 bottom-0 h-[2px] opacity-70 transition-all duration-300 group-hover:h-[3px] group-hover:opacity-100"
         style={{
-          background: `linear-gradient(90deg, transparent, var(--${tone}), transparent)`,
+          background: `var(--${tone})`,
         }}
       />
     </Card>

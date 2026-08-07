@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard'
 import Candidates from './pages/Candidates'
 import Jobs from './pages/Jobs'
 import JobDetail from './pages/JobDetail'
+import CandidateDetail from './pages/CandidateDetail'
 import Pipeline from './pages/Pipeline'
 import Callbacks from './pages/Callbacks'
 import Followups from './pages/Followups'
@@ -111,9 +112,10 @@ function MainApp() {
       case 'dashboard': return <Dashboard onNavigate={navigateTo} />
       case 'tasks': return <TasksPage user={profile || user} onNavigate={navigateTo} />
       case 'ai_center': return <AICenter />
-      case 'candidates': return <Candidates />
+      case 'candidates': return <Candidates onNavigate={navigateTo} openEditCandidateId={navParams.editCandidateId} />
       case 'jobs': return <Jobs onNavigate={navigateTo} openEditJobId={navParams.editJobId} />
       case 'job_detail': return <JobDetail jobId={navParams.jobId} onNavigate={navigateTo} />
+      case 'candidate_detail': return <CandidateDetail candidateId={navParams.candidateId} onNavigate={navigateTo} />
       case 'pipeline': return <Pipeline />
       case 'callbacks': return <Callbacks onNavigate={navigateTo} />
       case 'followups': return <Followups onNavigate={navigateTo} />
