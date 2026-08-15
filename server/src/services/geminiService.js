@@ -1,3 +1,15 @@
+import { getConfiguredModels } from './modelConfig.js';
+
+const getGeminiModels = () => getConfiguredModels({
+  primaryEnv: 'GEMINI_MODEL',
+  fallbackEnv: 'GEMINI_FALLBACK_MODELS',
+  defaults: [
+    'gemini-3.5-flash-lite',
+    'gemini-3.5-flash',
+    'gemini-flash-latest'
+  ]
+});
+
 export function isRetryableGeminiError(error) {
   if (!error) return false;
   if (error.name === 'AbortError' || error.isTimeout) return true;
@@ -42,7 +54,7 @@ export class GeminiService {
       throw err;
     }
 
-    const models = ['gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-flash-latest'];
+    const models = getGeminiModels();
     let lastError = null;
 
     for (const model of models) {
@@ -148,7 +160,7 @@ export class GeminiService {
       throw err;
     }
 
-    const models = ['gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-flash-latest'];
+    const models = getGeminiModels();
     let lastError = null;
 
     for (const model of models) {

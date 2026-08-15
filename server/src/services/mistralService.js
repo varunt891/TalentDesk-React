@@ -1,3 +1,14 @@
+import { getConfiguredModels } from './modelConfig.js';
+
+const getMistralModels = () => getConfiguredModels({
+  primaryEnv: 'MISTRAL_MODEL',
+  fallbackEnv: 'MISTRAL_FALLBACK_MODELS',
+  defaults: [
+    'mistral-small-latest',
+    'ministral-8b-latest'
+  ]
+});
+
 export class MistralService {
   async generateStream({ prompt, toolConfig, onDelta, signal }) {
     const key = (process.env.MISTRAL_API_KEY || '').trim();
@@ -8,7 +19,7 @@ export class MistralService {
       throw err;
     }
 
-    const models = ['mistral-small-latest', 'open-mistral-7b'];
+    const models = getMistralModels();
     let lastError = null;
 
     for (const model of models) {
@@ -91,7 +102,7 @@ export class MistralService {
       throw err;
     }
 
-    const models = ['mistral-small-latest', 'open-mistral-7b'];
+    const models = getMistralModels();
     let lastError = null;
 
     for (const model of models) {

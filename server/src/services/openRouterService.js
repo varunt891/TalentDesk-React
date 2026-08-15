@@ -1,3 +1,17 @@
+import { getConfiguredModels } from './modelConfig.js';
+
+const getOpenRouterModels = () => getConfiguredModels({
+  primaryEnv: 'OPENROUTER_MODEL',
+  fallbackEnv: 'OPENROUTER_FALLBACK_MODELS',
+  defaults: [
+    'openai/gpt-oss-120b',
+    'google/gemini-3.5-flash-lite',
+    'deepseek/deepseek-r1',
+    'qwen/qwen-2.5-72b-instruct',
+    'mistralai/mistral-small-3.2-24b-instruct'
+  ]
+});
+
 export class OpenRouterService {
   async generateStream({ prompt, toolConfig, onDelta, signal }) {
     const key = (process.env.OPENROUTER_API_KEY || '').trim();
@@ -8,13 +22,7 @@ export class OpenRouterService {
       throw err;
     }
 
-    const models = [
-      'google/gemini-2.0-flash-lite-preview-02-05:free',
-      'meta-llama/llama-3.3-70b-instruct:free',
-      'deepseek/deepseek-r1:free',
-      'qwen/qwen-2.5-72b-instruct:free',
-      'mistralai/mistral-7b-instruct:free'
-    ];
+    const models = getOpenRouterModels();
     let lastError = null;
 
     for (const model of models) {
@@ -99,13 +107,7 @@ export class OpenRouterService {
       throw err;
     }
 
-    const models = [
-      'google/gemini-2.0-flash-lite-preview-02-05:free',
-      'meta-llama/llama-3.3-70b-instruct:free',
-      'deepseek/deepseek-r1:free',
-      'qwen/qwen-2.5-72b-instruct:free',
-      'mistralai/mistral-7b-instruct:free'
-    ];
+    const models = getOpenRouterModels();
     let lastError = null;
 
     for (const model of models) {

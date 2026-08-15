@@ -1,11 +1,13 @@
-const getGroqModels = () => {
-  const configuredModel = (process.env.GROQ_MODEL || '').trim();
-  return [
-    configuredModel,
+import { getConfiguredModels } from './modelConfig.js';
+
+const getGroqModels = () => getConfiguredModels({
+  primaryEnv: 'GROQ_MODEL',
+  fallbackEnv: 'GROQ_FALLBACK_MODELS',
+  defaults: [
     'openai/gpt-oss-120b',
     'llama-3.1-8b-instant'
-  ].filter(Boolean);
-};
+  ]
+});
 
 export class GroqService {
   async generateStream({ prompt, toolConfig, onDelta, signal }) {

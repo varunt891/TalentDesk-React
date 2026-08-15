@@ -129,7 +129,7 @@ export class AIService {
 
     const startTime = Date.now();
 
-    // 2. Primary Provider: Groq (Ultra-low latency Llama-3.3-70b & Llama-3.1-8b)
+    // 2. Primary Provider: Groq
     if (!fileInlineData) {
       try {
         const groqResult = await groqService.generate({ prompt: cleanPrompt, toolConfig });
