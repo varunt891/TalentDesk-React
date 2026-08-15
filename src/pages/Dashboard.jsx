@@ -1693,7 +1693,7 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
                 <span
                   className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold tracking-wider uppercase transition-all duration-200"
                   style={{
-                    background: item.count > 0 
+                    background: item.count > 0
                       ? `color-mix(in srgb, var(--${item.tone}) 16%, transparent)`
                       : 'color-mix(in srgb, var(--green) 12%, transparent)',
                     color: item.count > 0 ? `var(--${item.tone})` : 'var(--green)',
@@ -1749,11 +1749,10 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
               key={action.label}
               type="button"
               onClick={action.onClick}
-              className={`flex flex-col items-center justify-center gap-2 rounded-[var(--radius-md)] border p-3.5 text-center transition-all duration-[var(--duration-fast)] shadow-sm ${
-                action.ai
+              className={`flex flex-col items-center justify-center gap-2 rounded-[var(--radius-md)] border p-3.5 text-center transition-all duration-[var(--duration-fast)] shadow-sm ${action.ai
                   ? 'bg-ai/15 border-ai/50 text-white hover:bg-ai/25 hover:border-ai hover:shadow-md hover:-translate-y-0.5'
                   : 'bg-surface border-border-strong text-text hover:border-accent hover:bg-surface2 hover:shadow-md hover:-translate-y-0.5'
-              }`}
+                }`}
             >
               <Icon name={action.icon} size={18} className={action.ai ? 'text-ai' : 'text-accent'} />
               <span className="text-[12px] font-bold tracking-tight text-text leading-tight">{action.label}</span>

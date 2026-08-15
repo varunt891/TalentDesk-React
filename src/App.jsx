@@ -68,7 +68,7 @@ function MainApp() {
   // Global callback time checker
   useEffect(() => {
     if (!user) return
-    
+
     const checkCallbacks = async () => {
       try {
         const { data: callbacks } = await db.from('callbacks').select('*').eq('status', 'pending')

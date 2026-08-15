@@ -814,9 +814,9 @@ export default function PixelRobot({
                 className={cn(
                   "transition-colors duration-300",
                   robotState === 'hire' ? "fill-amber-400 animate-ping" :
-                  robotState === 'sleep' ? "fill-slate-500" :
-                  robotState === 'coffee' ? "fill-emerald-400" :
-                  "fill-sky-400 animate-pulse"
+                    robotState === 'sleep' ? "fill-slate-500" :
+                      robotState === 'coffee' ? "fill-emerald-400" :
+                        "fill-sky-400 animate-pulse"
                 )}
               />
               <rect x="15" y="0" width="2" height="1" fill="#38bdf8" />
@@ -891,9 +891,9 @@ export default function PixelRobot({
                 height="2"
                 className={cn(
                   robotState === 'hire' ? "fill-amber-400 animate-ping" :
-                  robotState === 'sleep' ? "fill-slate-600" :
-                  robotState === 'coffee' ? "fill-emerald-400" :
-                  "fill-sky-400 animate-pulse"
+                    robotState === 'sleep' ? "fill-slate-600" :
+                      robotState === 'coffee' ? "fill-emerald-400" :
+                        "fill-sky-400 animate-pulse"
                 )}
               />
 
@@ -954,8 +954,8 @@ export default function PixelRobot({
             className={cn(
               "absolute -top-0.5 right-0.5 w-1.5 h-1.5 rounded-full ring-1 ring-background shadow-xs",
               robotState === 'sleep' ? "bg-slate-500" :
-              robotState === 'hire' ? "bg-amber-400 animate-ping" :
-              "bg-emerald-400 animate-pulse"
+                robotState === 'hire' ? "bg-amber-400 animate-ping" :
+                  "bg-emerald-400 animate-pulse"
             )}
           />
         </div>

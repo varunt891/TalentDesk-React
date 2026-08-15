@@ -80,10 +80,10 @@ function getTargetUtcTimestamp(dateStr, timeStr, tzAbbr) {
       hour: 'numeric', minute: 'numeric', second: 'numeric',
       hour12: false
     })
-    
+
     const formattedParts = formatter.formatToParts(testUtc)
     const tzPart = formattedParts.find(p => p.type === 'timeZoneName')?.value || ''
-    
+
     let offsetMinutes = -240
     const offsetMatch = tzPart.match(/(GMT|UTC)?([+-])(\d{1,2})(?::(\d{2}))?/)
     if (offsetMatch) {
@@ -416,10 +416,10 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
     if (staleFollowups.length) list.push({ id: 'stale', tone: 'red', icon: 'followups', text: `${staleFollowups.length} follow-up${staleFollowups.length === 1 ? '' : 's'} overdue more than 3 days`, setView: 'followups' })
 
     const queueCounts = {}
-    ;[...enrichedCallbacks, ...enrichedFollowups].filter(x => x.status !== 'done').forEach(x => {
-      if (!x._recruiter) return
-      queueCounts[x._recruiter] = (queueCounts[x._recruiter] || 0) + 1
-    })
+      ;[...enrichedCallbacks, ...enrichedFollowups].filter(x => x.status !== 'done').forEach(x => {
+        if (!x._recruiter) return
+        queueCounts[x._recruiter] = (queueCounts[x._recruiter] || 0) + 1
+      })
     const heavy = Object.entries(queueCounts).filter(([, n]) => n >= 8).sort((a, b) => b[1] - a[1])
     if (heavy.length) list.push({ id: 'heavy', tone: 'accent', icon: 'users', text: `${heavy[0][0]} has ${heavy[0][1]} open communication items` })
 
@@ -781,10 +781,10 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
               className={cn(
                 'inline-flex items-center gap-1.5 h-7 pl-2 pr-2.5 rounded-full text-[11px] font-semibold border transition-colors duration-[var(--duration-fast)]',
                 insight.tone === 'red' ? 'bg-red/10 text-red border-red/25 hover:bg-red/15' :
-                insight.tone === 'yellow' ? 'bg-yellow/10 text-yellow border-yellow/25 hover:bg-yellow/15' :
-                insight.tone === 'green' ? 'bg-green/10 text-green border-green/25 hover:bg-green/15' :
-                insight.tone === 'accent' ? 'bg-accent/10 text-accent border-accent/25 hover:bg-accent/15' :
-                'bg-surface2 text-text2 border-border hover:bg-surface3'
+                  insight.tone === 'yellow' ? 'bg-yellow/10 text-yellow border-yellow/25 hover:bg-yellow/15' :
+                    insight.tone === 'green' ? 'bg-green/10 text-green border-green/25 hover:bg-green/15' :
+                      insight.tone === 'accent' ? 'bg-accent/10 text-accent border-accent/25 hover:bg-accent/15' :
+                        'bg-surface2 text-text2 border-border hover:bg-surface3'
               )}
             >
               <Icon name={insight.icon} size={11} />
@@ -946,8 +946,8 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
                     timer.isOverdue
                       ? 'bg-red/10 border-red/30 text-red'
                       : timer.urgent
-                      ? 'bg-orange/10 border-orange/30 text-orange'
-                      : 'bg-accent/10 border-accent/30 text-accent'
+                        ? 'bg-orange/10 border-orange/30 text-orange'
+                        : 'bg-accent/10 border-accent/30 text-accent'
                   )}
                 >
                   <div className="flex items-center gap-3">
@@ -1234,7 +1234,7 @@ function CommCard({ item, kind, onOpen, onToggleDone, onContextMenu, actionsFor 
         <div className="flex items-center gap-1.5 flex-wrap mb-1">
           <Badge size="sm" tone={priorityTone}>{priorityValue || (isCallback ? 'Warm' : 'Medium')}</Badge>
           {item.status !== 'pending' && <StatusPill status={item.status} tone={(isCallback ? CB_STATUS_TONE : FU_STATUS_TONE)[item.status] || 'neutral'} size="sm" />}
-          
+
           {timer && (
             <span
               className={cn(
@@ -1242,8 +1242,8 @@ function CommCard({ item, kind, onOpen, onToggleDone, onContextMenu, actionsFor 
                 timer.isOverdue
                   ? 'bg-red/15 text-red border border-red/30 animate-pulse'
                   : timer.urgent
-                  ? 'bg-orange/15 text-orange border border-orange/30 animate-pulse'
-                  : 'bg-accent/12 text-accent border border-accent/25'
+                    ? 'bg-orange/15 text-orange border border-orange/30 animate-pulse'
+                    : 'bg-accent/12 text-accent border border-accent/25'
               )}
               title={timer.isOverdue ? `Call overdue by ${timer.raw}` : `Call due in ${timer.raw}`}
             >

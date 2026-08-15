@@ -1,3 +1,12 @@
+const getGroqModels = () => {
+  const configuredModel = (process.env.GROQ_MODEL || '').trim();
+  return [
+    configuredModel,
+    'openai/gpt-oss-120b',
+    'llama-3.1-8b-instant'
+  ].filter(Boolean);
+};
+
 export class GroqService {
   async generateStream({ prompt, toolConfig, onDelta, signal }) {
     const key = (process.env.GROQ_API_KEY || '').trim();
@@ -8,7 +17,7 @@ export class GroqService {
       throw err;
     }
 
-    const models = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+    const models = getGroqModels();
     let lastError = null;
 
     for (const model of models) {
@@ -91,7 +100,7 @@ export class GroqService {
       throw err;
     }
 
-    const models = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+    const models = getGroqModels();
     let lastError = null;
 
     for (const model of models) {

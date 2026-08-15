@@ -297,7 +297,7 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
       const target = candidates.find(c => c.id === openEditCandidateId)
       if (target) openEdit(target)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openEditCandidateId, candidates.length])
 
   const handleExtractSkillsAI = async () => {

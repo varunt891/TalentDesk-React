@@ -21,7 +21,7 @@ const TOOL_LABELS = {
 
 const PROVIDER_INFO = {
   gemini: { name: 'Google Gemini', color: 'from-blue-500 to-indigo-600', badgeTone: 'accent' },
-  groq: { name: 'Groq LLaMA', color: 'from-amber-500 to-orange-600', badgeTone: 'yellow' },
+  groq: { name: 'Groq GPT-OSS', color: 'from-amber-500 to-orange-600', badgeTone: 'yellow' },
   openrouter: { name: 'OpenRouter AI', color: 'from-purple-500 to-pink-600', badgeTone: 'ai' },
   mistral: { name: 'Mistral AI', color: 'from-emerald-500 to-teal-600', badgeTone: 'green' },
   unknown: { name: 'System / Default', color: 'from-gray-500 to-slate-600', badgeTone: 'neutral' },
