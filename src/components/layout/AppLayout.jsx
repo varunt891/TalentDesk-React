@@ -72,6 +72,9 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
   const mainRef = useRef(null)
   useEffect(() => {
     if (mainRef.current) mainRef.current.scrollTop = 0
+    window.scrollTo(0, 0)
+    document.body.scrollTop = 0
+    document.documentElement.scrollTop = 0
   }, [currentPage])
 
   const handleNavigate = (page, params) => {
@@ -109,7 +112,7 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
         />
       </div>
 
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div className="flex-1 min-w-0 h-full min-h-0 flex flex-col overflow-hidden">
         <TopBar
           onOpenSidebar={() => setSidebarOpen(true)}
           theme={theme}
@@ -118,7 +121,7 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
           onNavigate={handleNavigate}
           currentPage={currentPage}
         />
-        <main ref={mainRef} className="app-main flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col">
+        <main ref={mainRef} className="app-main flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col overscroll-y-contain">
           {children}
         </main>
       </div>

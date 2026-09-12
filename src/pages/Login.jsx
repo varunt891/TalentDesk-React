@@ -15,6 +15,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
+    window.scrollTo(0, 0)
     if (!authLoading && user) navigate('/', { replace: true })
   }, [authLoading, navigate, user])
 
@@ -31,6 +32,7 @@ export default function Login() {
       return
     }
 
+    window.scrollTo(0, 0)
     navigate('/')
   }
 
