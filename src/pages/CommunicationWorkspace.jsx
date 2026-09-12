@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useCandidates } from '../hooks/useCandidates'
 import { db } from '../lib/api'
@@ -121,7 +121,7 @@ function getCallbackCountdown(dateStr, timeStr, tzStr, now = new Date()) {
   const mins = totalMins % 60
   const secs = Math.floor((absMs % 60000) / 1000)
 
-  let text = ''
+  let text
   if (days > 0) {
     text = `${days}d ${hrs}h ${mins}m`
   } else if (hrs > 0) {
@@ -143,6 +143,11 @@ function getCallbackCountdown(dateStr, timeStr, tzStr, now = new Date()) {
     diffMs,
     urgent: !isOverdue && days === 0 && hrs < 2,
   }
+}
+function isSnoozed(item, now = new Date()) {
+  if (!item.snoozed_until) return false
+  const snoozedUntil = new Date(item.snoozed_until)
+  return !Number.isNaN(snoozedUntil.getTime()) && snoozedUntil > now
 }
 function daysDiff(dateStr) {
   if (!dateStr) return null
@@ -201,6 +206,7 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
   const [jobs, setJobs] = useState([])
   const [profiles, setProfiles] = useState([])
   const [loading, setLoading] = useState(true)
+  const [nowMs, setNowMs] = useState(() => new Date().getTime())
 
   const fetchAll = () => {
     setLoading(true)
@@ -218,6 +224,10 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
       .finally(() => setLoading(false))
   }
   useEffect(() => { fetchAll() }, [])
+  useEffect(() => {
+    const interval = setInterval(() => setNowMs(new Date().getTime()), 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Filters persist across the three sidebar entries (Callbacks/Follow-ups/
   // Re-submit Finder route to the same component but each is its own
@@ -258,79 +268,6 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
 
   const [packetModal, setPacketModal] = useState({ isOpen: false, candidate: null, job: null })
   const [aiMatchModal, setAiMatchModal] = useState({ isOpen: false, candidate: null, job: null })
-
-  const [activeAlert, setActiveAlert] = useState(null)
-  const dismissedAlertsRef = useRef(new Set())
-
-  const playAlertChime = () => {
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)()
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = 'sine'
-      osc.frequency.setValueAtTime(587.33, ctx.currentTime)
-      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15)
-      gain.gain.setValueAtTime(0.2, ctx.currentTime)
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6)
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.start()
-      osc.stop(ctx.currentTime + 0.6)
-    } catch {
-      // Audio fallback
-    }
-  }
-
-  useEffect(() => {
-    const checkDueCallbacks = () => {
-      const now = new Date()
-      const dueCb = callbacks.find(cb => {
-        if ((cb.status || '').toLowerCase() === 'done') return false
-        if (dismissedAlertsRef.current.has(cb.id)) return false
-        const targetUtc = getTargetUtcTimestamp(cb.date, cb.time, cb.timezone)
-        if (!targetUtc) return false
-        const diffMs = targetUtc - now.getTime()
-        return diffMs <= 0
-      })
-
-      if (dueCb && (!activeAlert || activeAlert.id !== dueCb.id)) {
-        setActiveAlert(dueCb)
-        playAlertChime()
-      }
-    }
-
-    checkDueCallbacks()
-    const interval = setInterval(checkDueCallbacks, 4000)
-    return () => clearInterval(interval)
-  }, [callbacks, activeAlert])
-
-  const dismissAlert = () => {
-    if (activeAlert) {
-      dismissedAlertsRef.current.add(activeAlert.id)
-    }
-    setActiveAlert(null)
-  }
-
-  const completeAlertCb = async () => {
-    if (!activeAlert) return
-    const id = activeAlert.id
-    dismissedAlertsRef.current.add(id)
-    setActiveAlert(null)
-    setCallbacks(prev => prev.map(c => c.id === id ? { ...c, status: 'done' } : c))
-    await db.from('callbacks').update({ status: 'done' }).eq('id', id)
-    showToast('Callback marked complete!')
-  }
-
-  const snoozeAlertCb = (mins = 10) => {
-    if (!activeAlert) return
-    const id = activeAlert.id
-    dismissedAlertsRef.current.add(id)
-    setActiveAlert(null)
-    showToast(`Snoozed for ${mins} minutes`)
-    setTimeout(() => {
-      dismissedAlertsRef.current.delete(id)
-    }, mins * 60 * 1000)
-  }
 
   // Real cross-reference: Callback/Followup rows have no candidate FK, only a
   // free-text candidate_name — same name-matching technique used across the
@@ -542,14 +479,15 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
     return true
   }), [eligible, search, resubmitFilters])
 
-  const splitByDate = (items) => {
+  const splitByDate = (items, currentMs) => {
     const today = [], overdue = [], upcoming = [], completed = []
-    const nowMs = Date.now()
+    const now = new Date(currentMs)
     items.forEach(item => {
       if (item.status === 'done') { completed.push(item); return }
+      if (isSnoozed(item, now)) { upcoming.push(item); return }
       if (!item.date) { upcoming.push(item); return }
       const targetUtc = getTargetUtcTimestamp(item.date, item.time, item.timezone)
-      const isTimeOverdue = targetUtc ? targetUtc < nowMs : false
+      const isTimeOverdue = targetUtc ? targetUtc < currentMs : false
       if (item.date < todayStr() || (item.date === todayStr() && isTimeOverdue)) {
         overdue.push(item)
       } else if (item.date === todayStr()) {
@@ -560,8 +498,8 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
     })
     return { today, overdue, upcoming, completed }
   }
-  const cbSections = useMemo(() => splitByDate(filteredCallbacks), [filteredCallbacks])
-  const fuSections = useMemo(() => splitByDate(filteredFollowups), [filteredFollowups])
+  const cbSections = useMemo(() => splitByDate(filteredCallbacks, nowMs), [filteredCallbacks, nowMs])
+  const fuSections = useMemo(() => splitByDate(filteredFollowups, nowMs), [filteredFollowups, nowMs])
 
   const openDrawer = (item, kind) => setShowDetail({ item, kind })
   const openCandidateDrawer = (candidate) => { setShowCandidateDetail(candidate); setCandidatePreviewTab('overview') }
@@ -583,7 +521,7 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
       if (!cbForm.candidate_name) return showToast('Candidate name required', 'error')
       if (!cbForm.date || !cbForm.time) return showToast('Date and time required', 'error')
       setSaving(true)
-      const payload = { ...cbForm, status: 'pending', date: cbForm.date || null, user_id: user?.id, org_id: currentOrgId }
+      const payload = { ...cbForm, status: 'pending', date: cbForm.date || null, snoozed_until: null, user_id: user?.id, org_id: currentOrgId }
       if (editingId) {
         const { error } = await db.from('callbacks').update(payload).eq('id', editingId)
         setSaving(false)
@@ -657,9 +595,9 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
   const toggleDone = async (item, kind) => {
     const newStatus = item.status === 'done' ? 'pending' : 'done'
     const table = kind === 'callback' ? 'callbacks' : 'followups'
-    if (kind === 'callback') setCallbacks(prev => prev.map(c => c.id === item.id ? { ...c, status: newStatus } : c))
+    if (kind === 'callback') setCallbacks(prev => prev.map(c => c.id === item.id ? { ...c, status: newStatus, snoozed_until: null } : c))
     else setFollowups(prev => prev.map(f => f.id === item.id ? { ...f, status: newStatus } : f))
-    await db.from(table).update({ status: newStatus }).eq('id', item.id)
+    await db.from(table).update(kind === 'callback' ? { status: newStatus, snoozed_until: null } : { status: newStatus }).eq('id', item.id)
   }
 
   const confirmDelete = async () => {
@@ -1211,7 +1149,9 @@ function CommCard({ item, kind, onOpen, onToggleDone, onContextMenu, actionsFor 
     return () => clearInterval(interval)
   }, [isCallback, isDone])
 
-  const timer = isCallback && !isDone ? getCallbackCountdown(item.date, item.time, item.timezone, now) : null
+  const snoozed = isCallback && isSnoozed(item, now)
+  const snoozedUntil = snoozed ? new Date(item.snoozed_until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null
+  const timer = isCallback && !isDone && !snoozed ? getCallbackCountdown(item.date, item.time, item.timezone, now) : null
 
   return (
     <div
@@ -1253,7 +1193,8 @@ function CommCard({ item, kind, onOpen, onToggleDone, onContextMenu, actionsFor 
             </span>
           )}
 
-          {!timer && isOverdue && <Badge size="sm" tone="red">Overdue</Badge>}
+          {snoozedUntil && <Badge size="sm" tone="accent">Snoozed until {snoozedUntil}</Badge>}
+          {!timer && !snoozed && isOverdue && <Badge size="sm" tone="red">Overdue</Badge>}
         </div>
         <strong className={cn('text-[13px] font-bold text-text block truncate', isDone && 'line-through text-text3')}>{item.candidate_name}</strong>
         <div className="flex items-center gap-2.5 flex-wrap mt-1 text-[10.5px] text-text3">

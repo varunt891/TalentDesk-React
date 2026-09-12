@@ -24,6 +24,7 @@ import { runAiAction } from '../lib/ai/aiClient'
 import { logUsageEvent } from '../lib/ai/usage'
 import { useAuth } from '../context/AuthContext'
 import { useCandidates } from '../hooks/useCandidates'
+import { normalizeAiPlainText } from '../lib/aiTextFormat'
 import {
   Button, Card, CardHeader, KPICard, Badge, StatusPill, Table, Tabs,
   EmptyState, Skeleton, Avatar, Icon, Menu, MenuTrigger, Input,
@@ -2374,7 +2375,7 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
                         leftIcon={eodCopied ? 'check' : 'copy'}
                         onClick={() => {
                           if (navigator.clipboard) {
-                            navigator.clipboard.writeText(eodSummaryText)
+                            navigator.clipboard.writeText(normalizeAiPlainText(eodSummaryText))
                             setEodCopied(true)
                             setTimeout(() => setEodCopied(false), 2500)
                           }

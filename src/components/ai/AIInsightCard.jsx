@@ -3,6 +3,7 @@ import { Button, Card, Icon } from '../ui'
 import MarkdownView from '../MarkdownView'
 import { runAiAction } from '../../lib/ai/aiClient'
 import { logUsageEvent } from '../../lib/ai/usage'
+import { normalizeAiPlainText } from '../../lib/aiTextFormat'
 
 /**
  * The single building block for contextual AI integration across
@@ -41,7 +42,7 @@ export default function AIInsightCard({ orgId, userId, title, icon = 'sparkles',
     }
   }
 
-  const copy = () => { navigator.clipboard.writeText(result || ''); setCopied(true); setTimeout(() => setCopied(false), 1500) }
+  const copy = () => { navigator.clipboard.writeText(normalizeAiPlainText(result || '')); setCopied(true); setTimeout(() => setCopied(false), 1500) }
 
   return (
     <Card className="bg-surface2">

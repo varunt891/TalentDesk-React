@@ -264,12 +264,16 @@ export default function Admin() {
 
   const updateUser = async (id, updates) => {
     setSaving(true)
-    const { error } = await db.from('profiles').update(updates).eq('id', id)
-    setSaving(false)
-
-    if (error) return showToast(error.message, 'error')
-    setUsers(prev => prev.map(user => user.id === id ? { ...user, ...updates } : user))
-    showToast('Member updated successfully')
+    try {
+      const { error } = await db.from('profiles').update(updates).eq('id', id)
+      if (error) { showToast(error.message, 'error'); return }
+      setUsers(prev => prev.map(user => user.id === id ? { ...user, ...updates } : user))
+      showToast('Member updated successfully')
+    } catch (err) {
+      showToast(err.message || 'Update failed', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const moveMemberToTeam = async (member, unitKey) => {
@@ -840,10 +844,13 @@ function MemberCard({ departments, managers, onAssignManager, onUpdateUser, savi
         <div className="min-w-0 flex-1">
           <strong className="block text-[13px] font-semibold text-text truncate">{user.full_name || 'Unnamed Member'}</strong>
           <span className="block text-xs text-text3 truncate">{user.email}</span>
-          <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+          <div className="flex items-center gap-2 flex-wrap mt-1.5">
             <RolePill role={role} />
-            <Badge tone="neutral" size="sm">{user.department || 'Unassigned'}</Badge>
-            <Badge tone="neutral" size="sm">{user.team || 'No group'}</Badge>
+            {(user.department || user.team) && (
+              <span className="text-[10px] text-text3 font-medium">
+                {[user.department, user.team].filter(Boolean).join(' · ')}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
@@ -909,7 +916,9 @@ function TeamsTab({ onAssignManager, saving, userStats, users }) {
   const [expandedNodes, setExpandedNodes] = useState(new Set())
 
   const hierarchyUsers = useMemo(() => {
-    return users.filter(u => !['admin', 'superadmin'].includes(u.role))
+    // Exclude platform-level roles that aren't part of an org reporting tree
+    const platformRoles = ['superadmin', 'SUPERADMIN']
+    return users.filter(u => !platformRoles.includes(u.role))
   }, [users])
 
   const treeRoots = useMemo(() => {
@@ -1033,7 +1042,9 @@ function TreeNode({ user, allUsers, userStats, onAssignManager, query, level, ex
     'linear-gradient(135deg, var(--yellow), var(--red))'
   ]
   const avatarBg = avatarGradients[(user.full_name || '').charCodeAt(0) % avatarGradients.length]
-  const managerOptions = allUsers.filter(u => ['manager', 'admin', 'superadmin'].includes(u.role) && u.id !== user.id)
+  // Match manager-eligible roles case-insensitively to handle both lowercase (profile) and UPPERCASE (member) role formats
+  const managerEligibleRoles = ['manager', 'recruitment_manager', 'account_manager', 'hr_manager', 'hr_team', 'recruitment_manager', 'operations_manager', 'admin', 'superadmin', 'owner']
+  const managerOptions = allUsers.filter(u => managerEligibleRoles.includes((u.role || '').toLowerCase()) && u.id !== user.id)
 
   const roleLabel = user.role === 'recruiter'
     ? `${user.department || ''} Recruiter`
@@ -1256,13 +1267,20 @@ function PersonMini({ stats, user }) {
   )
 }
 
-/* Metric Strip Component */
 function MetricStrip({ stats }) {
+  const items = [
+    { label: 'SUB', value: stats.submissions || 0, color: 'var(--accent)' },
+    { label: 'INT', value: stats.interviews || 0, color: 'var(--ai)' },
+    { label: 'HIRES', value: stats.hires || 0, color: 'var(--green)' },
+  ]
   return (
-    <div className="flex items-center gap-1.5 shrink-0">
-      <Badge tone="accent" size="sm">{stats.submissions || 0} Sub</Badge>
-      <Badge tone="ai" size="sm">{stats.interviews || 0} Int</Badge>
-      <Badge tone="green" size="sm">{stats.hires || 0} Hires</Badge>
+    <div className="flex items-center gap-2 shrink-0">
+      {items.map(({ label, value, color }) => (
+        <span key={label} className="flex flex-col items-center leading-none">
+          <span className="text-[13px] font-bold" style={{ color }}>{value}</span>
+          <span className="text-[8px] font-semibold uppercase tracking-wide text-text3">{label}</span>
+        </span>
+      ))}
     </div>
   )
 }

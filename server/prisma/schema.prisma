@@ -126,6 +126,7 @@ model Candidate {
   feedback_status  String?
   priority         String?
   interview_date   String?
+  interview_time   String?
   interview_type   String?
   fe_name          String?
   fe_extension     String?
@@ -194,6 +195,7 @@ model Callback {
   date           String?
   time           String?
   timezone       String?
+  snoozed_until  DateTime?
   interest       String?
   notes          String?
   status         String?

@@ -1,48 +1,30 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useCandidates } from '../hooks/useCandidates'
 import { useAuth } from '../context/AuthContext'
-import { db, apiRequest, apiUpload } from '../lib/api'
+import { db, apiRequest } from '../lib/api'
 import SubmissionPacketModal from '../components/SubmissionPacketModal'
 import AIMatchModal from '../components/AIMatchModal'
 import BulkResumeUploadModal from '../components/candidates/BulkResumeUploadModal'
 import CandidateFormDrawer from '../components/candidates/CandidateFormDrawer'
-import CollisionWarning from '../components/candidates/CollisionWarning'
-import { findLocalCollisionMatches } from '../lib/collisions'
 import { useOpenCollisionIds } from '../hooks/useOpenCollisionIds'
 import * as XLSX from 'xlsx'
 import { PageContainer } from '../components/layout/PageContainer'
 import {
-  Button, Input, Textarea, FormField, Select, Combobox, Badge, StatusPill, Card, CardHeader,
+  Button, Badge, StatusPill, Card, CardHeader,
   KPICard, PageHeader, Table, Modal, Switch, Icon, Avatar, Menu, MenuTrigger, EmptyState, useToast,
-  MarkdownEditor,
 } from '../components/ui'
 import { WorkspaceSearch, FilterWorkspace, EntityDrawer } from '../components/workspace'
-import { Drawer } from '../components/ui/Modal'
 import { ensureArray, STATUS_TONE, computeScore } from '../lib/candidateHealth'
-import { fallbackExtractSkills } from '../lib/skillExtraction'
 import AIInsightCard from '../components/ai/AIInsightCard'
 import { useAISetContext } from '../lib/ai/context'
 import { useAIGovernance } from '../lib/ai/governance'
 import { runAiAction } from '../lib/ai/aiClient'
 import { logUsageEvent } from '../lib/ai/usage'
 import MarkdownView from '../components/MarkdownView'
+import { normalizeAiPlainText } from '../lib/aiTextFormat'
 
 const STATUSES = ['Pending', 'Submitted', 'Shortlisted', 'Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired', 'Rejected', 'On Hold', 'Withdrew']
 const FEEDBACK = ['Awaiting', 'Positive', 'Negative', 'No Response']
-const WORK_AUTHS = ['US Citizen', 'Green Card', 'H1B', 'OPT/CPT', 'TN Visa', 'Other']
-
-const emptyForm = {
-  first_name: '', last_name: '', email: '', phone: '', location: '',
-  work_auth: 'US Citizen', experience: '', linkedin: '',
-  submission_date: new Date().toISOString().slice(0, 10),
-  job_id: '', job_title: '', client: '', rate: '', relocation: 'No',
-  internal_status: 'Pending', external_status: 'Pending',
-  feedback_status: 'Awaiting', priority: 'Medium',
-  interview_date: '', interview_type: '',
-  fe_name: '', fe_extension: '', account_manager: '', recruiter_name: '',
-  skills: [], notes: '', followup_date: '', resume_text: '',
-  resume_file_key: '', resume_file_name: '', resume_file_size: null
-}
 
 export default function Candidates({ onNavigate, openEditCandidateId }) {
   const { profile, organization, user } = useAuth()
@@ -53,7 +35,7 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
   const isSuperAdmin = profile?.role === 'superadmin' || profile?.role === 'SUPERADMIN'
   const isAdmin = isSuperAdmin || profile?.role === 'admin'
   const [allOrgsView, setAllOrgsView] = useState(false)
-  const { candidates, loading, addCandidate, addCandidates, updateCandidate, deleteCandidate } = useCandidates({ allOrgs: isSuperAdmin && allOrgsView })
+  const { candidates, loading, addCandidate, addCandidates, updateCandidate, deleteCandidate, refetch } = useCandidates({ allOrgs: isSuperAdmin && allOrgsView })
 
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({ status: [], fe: [], job: [], location: [], feedback: [], org: [], recruiter: [], priority: [] })
@@ -113,13 +95,6 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
     }
     setAiMatchModal({ isOpen: true, candidate: cand, job: jobMock })
   }
-  const [form, setForm] = useState(emptyForm)
-  const [skillInput, setSkillInput] = useState('')
-  const [extractingSkills, setExtractingSkills] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [formErrors, setFormErrors] = useState({})
-  const firstNameRef = useRef(null)
-  const jobIdRef = useRef(null)
   const [deleteId, setDeleteId] = useState(null)
   const [selected, setSelected] = useState([])
   const pageRef = useRef(null)
@@ -164,7 +139,6 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
   const locationOptions = [...new Set(candidates.map(c => c.location).filter(Boolean))].sort()
   const orgOptions = [...new Set(candidates.map(c => c.org_name || organization?.name || 'TalentDesk').filter(Boolean))].sort()
   const recruiterOptions = [...new Set(candidates.map(c => c.recruiter_name).filter(Boolean))].sort()
-  const jobTitleOptions = [...new Set(candidates.map(c => c.job_title).filter(Boolean))].sort()
 
   const filtered = candidates.filter(c => {
     const q = search.toLowerCase()
@@ -243,8 +217,8 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
 
   const bulkExport = () => {
     const sel = candidates.filter(c => selected.includes(c.id))
-    const headers = ['First Name', 'Last Name', 'Email', 'Phone', 'Location', 'Work Auth', 'Experience', 'Submission Date', 'Job ID', 'Job Title', 'Client', 'Rate', 'Internal Status', 'External Status', 'Feedback', 'Priority', 'Interview Date', 'FE Name', 'Extension', 'Skills', 'Notes']
-    const rows = sel.map(c => [c.first_name, c.last_name, c.email, c.phone, c.location, c.work_auth, c.experience, c.submission_date, c.job_id, c.job_title, c.client, c.rate, c.internal_status, c.external_status, c.feedback_status, c.priority, c.interview_date, c.fe_name, c.fe_extension, ensureArray(c.skills).join(';'), c.notes])
+    const headers = ['First Name', 'Last Name', 'Email', 'Phone', 'Location', 'Work Auth', 'Experience', 'Submission Date', 'Job ID', 'Job Title', 'Client', 'Rate', 'Internal Status', 'External Status', 'Feedback', 'Priority', 'Interview Date', 'Interview Time', 'FE Name', 'Extension', 'Skills', 'Notes']
+    const rows = sel.map(c => [c.first_name, c.last_name, c.email, c.phone, c.location, c.work_auth, c.experience, c.submission_date, c.job_id, c.job_title, c.client, c.rate, c.internal_status, c.external_status, c.feedback_status, c.priority, c.interview_date, c.interview_time, c.fe_name, c.fe_extension, ensureArray(c.skills).join(';'), c.notes])
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Candidates')
@@ -253,8 +227,8 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
   }
 
   const exportAll = () => {
-    const headers = ['First Name', 'Last Name', 'Email', 'Phone', 'Location', 'Work Auth', 'Experience', 'Submission Date', 'Job ID', 'Job Title', 'Client', 'Rate', 'Internal Status', 'External Status', 'Feedback', 'Priority', 'Interview Date', 'FE Name', 'Extension', 'Skills', 'Notes']
-    const rows = filtered.map(c => [c.first_name, c.last_name, c.email, c.phone, c.location, c.work_auth, c.experience, c.submission_date, c.job_id, c.job_title, c.client, c.rate, c.internal_status, c.external_status, c.feedback_status, c.priority, c.interview_date, c.fe_name, c.fe_extension, ensureArray(c.skills).join(';'), c.notes])
+    const headers = ['First Name', 'Last Name', 'Email', 'Phone', 'Location', 'Work Auth', 'Experience', 'Submission Date', 'Job ID', 'Job Title', 'Client', 'Rate', 'Internal Status', 'External Status', 'Feedback', 'Priority', 'Interview Date', 'Interview Time', 'FE Name', 'Extension', 'Skills', 'Notes']
+    const rows = filtered.map(c => [c.first_name, c.last_name, c.email, c.phone, c.location, c.work_auth, c.experience, c.submission_date, c.job_id, c.job_title, c.client, c.rate, c.internal_status, c.external_status, c.feedback_status, c.priority, c.interview_date, c.interview_time, c.fe_name, c.fe_extension, ensureArray(c.skills).join(';'), c.notes])
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Candidates')
@@ -270,25 +244,8 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
   }
 
   // Form
-  const openAdd = () => { setForm(emptyForm); setEditingId(null); setSkillInput(''); setFormErrors({}); setShowModal(true) }
-  const openEdit = (c) => {
-    setForm({
-      first_name: c.first_name || '', last_name: c.last_name || '', email: c.email || '',
-      phone: c.phone || '', location: c.location || '', work_auth: c.work_auth || 'US Citizen',
-      experience: c.experience || '', linkedin: c.linkedin || '',
-      submission_date: c.submission_date || new Date().toISOString().slice(0, 10),
-      job_id: c.job_id || '', job_title: c.job_title || '', client: c.client || '',
-      rate: c.rate || '', relocation: c.relocation || 'No',
-      internal_status: c.internal_status || 'Pending', external_status: c.external_status || 'Pending',
-      feedback_status: c.feedback_status || 'Awaiting', priority: c.priority || 'Medium',
-      interview_date: c.interview_date || '', interview_type: c.interview_type || '',
-      fe_name: c.fe_name || '', fe_extension: c.fe_extension || '',
-      account_manager: c.account_manager || '', recruiter_name: c.recruiter_name || '',
-      skills: ensureArray(c.skills), notes: c.notes || '', followup_date: c.followup_date || '',
-      resume_text: c.resume_text || ''
-    })
-    setEditingId(c.id); setSkillInput(''); setFormErrors({}); setShowModal(true)
-  }
+  const openAdd = () => { setEditingId(null); setShowModal(true) }
+  const openEdit = (c) => { setEditingId(c.id); setShowModal(true) }
 
   // Auto-open edit drawer when navigated back from CandidateDetail with an edit ID
   // Must be placed after openEdit is declared to avoid temporal dead zone.
@@ -300,180 +257,7 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openEditCandidateId, candidates.length])
 
-  const handleExtractSkillsAI = async () => {
-    if (!form.resume_text || !form.resume_text.trim()) {
-      return showToast('Please paste resume text first', 'error')
-    }
-    setExtractingSkills(true)
-    try {
-      const res = await apiRequest('/ai/generate', {
-        method: 'POST',
-        body: {
-          toolId: 'resume_skills',
-          prompt: `Extract up to 10 key technical and professional skills from this candidate resume:\n\n${form.resume_text}`
-        }
-      })
-      let extracted = []
-      if (res && res.text) {
-        try {
-          const cleaned = res.text.replace(/```json/gi, '').replace(/```/g, '').trim()
-          extracted = JSON.parse(cleaned)
-        } catch {
-          const match = res.text.match(/\[.*?\]/s)
-          try { extracted = JSON.parse(match[0]) } catch (e) {
-            console.warn('Fallback JSON parse failed', e)
-          }
-        }
-      }
-
-      if (!Array.isArray(extracted) || extracted.length === 0) {
-        extracted = fallbackExtractSkills(form.resume_text)
-      }
-
-      if (extracted.length > 0) {
-        const top10 = extracted.map(s => String(s).trim()).filter(Boolean).slice(0, 10)
-        setForm(f => ({
-          ...f,
-          skills: Array.from(new Set([...(f.skills || []), ...top10]))
-        }))
-        showToast(`AI extracted ${top10.length} skills!`, 'success')
-      } else {
-        showToast('No skills detected in resume', 'error')
-      }
-    } catch (err) {
-      console.warn('[AI Skill Extractor] Error, falling back to keyword matcher:', err)
-      const fallback = fallbackExtractSkills(form.resume_text)
-      if (fallback.length > 0) {
-        setForm(f => ({
-          ...f,
-          skills: Array.from(new Set([...(f.skills || []), ...fallback]))
-        }))
-        showToast(`Extracted ${fallback.length} skills (local engine)`, 'success')
-      } else {
-        showToast('Failed to extract skills', 'error')
-      }
-    } finally {
-      setExtractingSkills(false)
-    }
-  }
-
-  const handleAutoFillProfileAI = async () => {
-    if (!form.resume_text || !form.resume_text.trim()) {
-      return showToast('Please paste resume text or upload a resume file first', 'error')
-    }
-    setExtractingSkills(true)
-    try {
-      const res = await apiRequest('/ai/parse-resume', {
-        method: 'POST',
-        body: { resumeText: form.resume_text }
-      })
-      if (res && res.profile) {
-        const p = res.profile
-        setForm(prev => ({
-          ...prev,
-          first_name: p.first_name || prev.first_name,
-          last_name: p.last_name || prev.last_name,
-          email: p.email || prev.email,
-          phone: p.phone || prev.phone,
-          location: p.location || prev.location,
-          experience: p.experience !== undefined && p.experience !== null ? String(p.experience) : prev.experience,
-          work_auth: p.work_auth || prev.work_auth,
-          rate: p.rate || prev.rate,
-          skills: Array.isArray(p.skills) && p.skills.length > 0 ? Array.from(new Set([...(prev.skills || []), ...p.skills])) : prev.skills
-        }))
-        showToast('⚡ AI Auto-Filled candidate name, email, location & skills!')
-      } else {
-        throw new Error(res.error || 'Could not parse profile details.')
-      }
-    } catch (err) {
-      showToast(err.message || 'Failed to auto-fill candidate profile', 'error')
-    } finally {
-      setExtractingSkills(false)
-    }
-  }
-
-  const handleResumeFileUpload = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    e.target.value = ''
-    if (file.size > 5 * 1024 * 1024) {
-      showToast(`${file.name} is over 5MB — please upload a smaller file`, 'error')
-      return
-    }
-    setExtractingSkills(true)
-    showToast(`Parsing ${file.name}... Please wait`)
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const res = await apiUpload('/upload/resume', formData)
-      if (res && res.success) {
-        const p = res.profile || {}
-        setForm(prev => ({
-          ...prev,
-          resume_text: res.extractedText || prev.resume_text,
-          resume_file_key: res.resume_file_key || prev.resume_file_key,
-          resume_file_name: res.resume_file_name || prev.resume_file_name,
-          resume_file_size: res.resume_file_size || prev.resume_file_size,
-          first_name: p.first_name || prev.first_name,
-          last_name: p.last_name || prev.last_name,
-          email: p.email || prev.email,
-          phone: p.phone || prev.phone,
-          location: p.location || prev.location,
-          experience: p.experience !== undefined && p.experience !== null ? String(p.experience) : prev.experience,
-          work_auth: p.work_auth || prev.work_auth,
-          rate: p.rate || prev.rate,
-          skills: Array.isArray(p.skills) && p.skills.length > 0 ? Array.from(new Set([...(prev.skills || []), ...p.skills])) : prev.skills
-        }))
-        showToast(res.resume_file_key ? `⚡ Resume saved & profile auto-filled from ${file.name}!` : `⚡ Text & profile auto-filled from ${file.name}!`)
-      } else {
-        throw new Error(res.error || 'Failed to parse document text.')
-      }
-    } catch (err) {
-      showToast(err.message || 'File upload parsing failed', 'error')
-    } finally {
-      setExtractingSkills(false)
-    }
-  }
-
-  const collisionMatches = useMemo(
-    () => findLocalCollisionMatches(candidates, form, editingId),
-    [candidates, form.email, form.phone, form.job_id, form.client, editingId]
-  )
   const openCollisionIds = useOpenCollisionIds()
-
-  const handleSave = async () => {
-    const errors = {}
-    if (!form.first_name) errors.first_name = 'First name is required'
-    if (!form.job_id) errors.job_id = 'Job ID is required'
-    if (Object.keys(errors).length) {
-      setFormErrors(errors)
-      showToast(Object.values(errors).join(' · '), 'error')
-      const target = errors.first_name ? firstNameRef.current : jobIdRef.current
-      target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      return
-    }
-    setFormErrors({})
-    setSaving(true)
-    const warnCollisions = (collisions) => {
-      if (!collisions?.length) return
-      pushToast({
-        tone: 'warning',
-        title: `Saved, but ${collisions.length} possible duplicate${collisions.length > 1 ? 's' : ''} detected`,
-        description: 'See the Collisions page to review.',
-        duration: 7000,
-      })
-    }
-    if (editingId) {
-      const { error, collisions } = await updateCandidate(editingId, form)
-      if (error) showToast(error.message, 'error')
-      else { showToast('Candidate updated!'); warnCollisions(collisions); setShowModal(false) }
-    } else {
-      const { error, collisions } = await addCandidate(form)
-      if (error) showToast(error.message, 'error')
-      else { showToast('Candidate added!'); warnCollisions(collisions); setShowModal(false) }
-    }
-    setSaving(false)
-  }
 
   const [downloadingResume, setDownloadingResume] = useState(false)
   const handleDownloadResume = async (candidateId) => {
@@ -481,7 +265,14 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
     try {
       const res = await apiRequest(`/upload/resume-url/${candidateId}`)
       if (res?.success && res.url) {
-        window.open(res.url, '_blank', 'noopener')
+        const link = document.createElement('a')
+        link.href = res.url
+        if (res.fileName) link.download = res.fileName
+        link.target = '_blank'
+        link.rel = 'noopener'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
       } else {
         throw new Error(res?.error || 'Could not generate a download link.')
       }
@@ -491,23 +282,6 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
       setDownloadingResume(false)
     }
   }
-
-  const addSkill = (e) => {
-    if (e.key === 'Enter' && skillInput.trim()) {
-      e.preventDefault()
-      const current = ensureArray(form.skills)
-      if (!current.includes(skillInput.trim())) setForm(f => ({ ...f, skills: [...current, skillInput.trim()] }))
-      setSkillInput('')
-    }
-  }
-
-  const inp = (field) => ({
-    value: form[field],
-    onChange: e => {
-      setForm(f => ({ ...f, [field]: e.target.value }))
-      if (formErrors[field]) setFormErrors(errs => { const next = { ...errs }; delete next[field]; return next })
-    },
-  })
 
   const candidateStats = [
     { label: 'Total Candidates', value: candidates.length, helper: `${filtered.length} shown`, tone: 'accent', icon: 'users' },
@@ -520,13 +294,13 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
 
   const columns = [
     {
-      key: 'name', header: 'Candidate', sortable: true, sortValue: (c) => `${c.last_name || ''} ${c.first_name || ''}`,
+      key: 'name', header: 'Candidate', width: 220, sortable: true, sortValue: (c) => `${c.last_name || ''} ${c.first_name || ''}`,
       render: (c) => (
         <span className="flex items-center gap-2 min-w-0">
-          <Avatar name={`${c.first_name || ''} ${c.last_name || ''}`.trim() || '?'} size="xs" />
+          <Avatar name={`${c.first_name || ''} ${c.last_name || ''}`.trim() || '?'} size="xs" className="shrink-0" />
           <span className="min-w-0">
-            <span className="flex items-center gap-1">
-              <strong className="text-[12.5px] text-text font-semibold truncate">{c.first_name} {c.last_name}</strong>
+            <span className="flex items-center gap-1.5">
+              <strong className="text-[12.5px] text-text font-semibold whitespace-nowrap">{c.first_name} {c.last_name}</strong>
               {openCollisionIds.has(c.id) && <Icon name="alertCircle" size={13} className="text-red shrink-0" aria-label="Possible duplicate submission" />}
               {c.resume_text && <Icon name="edit" size={13} className="text-text3/60 shrink-0" aria-label="Resume text on file" />}
               {c.resume_file_name && (
@@ -547,7 +321,7 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
       ),
     },
     {
-      key: 'role', header: 'Role', sortable: true, sortValue: (c) => c.job_title || '',
+      key: 'role', header: 'Role', width: 200, sortable: true, sortValue: (c) => c.job_title || '',
       render: (c) => (
         <span className="flex flex-col gap-px min-w-0">
           <strong className="text-[12.5px] text-text font-semibold truncate leading-tight">{c.job_title || 'Role n/a'}</strong>
@@ -560,7 +334,6 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
     ...(isSuperAdmin && allOrgsView ? [{ key: 'org_name', header: 'Organization', sortable: true, hideable: true, render: (c) => <Badge tone="accent" size="sm">{c.org_name || organization?.name || 'TalentDesk'}</Badge> }] : []),
     { key: 'internal_status', header: 'Int. Status', sortable: true, render: (c) => <StatusPill status={c.internal_status} tone={STATUS_TONE[c.internal_status] || 'neutral'} size="sm" /> },
     { key: 'external_status', header: 'Ext. Status', sortable: true, render: (c) => <StatusPill status={c.external_status} tone={STATUS_TONE[c.external_status] || 'neutral'} size="sm" /> },
-    { key: 'health', header: 'Health', hideable: true, render: (c) => { const sc = computeScore(c); return <StatusPill status={sc.gradeLabel} tone={sc.total >= 80 ? 'green' : sc.total >= 60 ? 'accent' : sc.total >= 40 ? 'yellow' : 'red'} size="sm" /> } },
     { key: 'fe_name', header: 'Front End', hideable: true, className: 'text-[12px] text-text2' },
     ...(isAdmin ? [{ key: 'recruiter_name', header: 'Recruiter', sortable: true, hideable: true, className: 'text-[12px] text-text2' }] : []),
   ]
@@ -627,7 +400,7 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
         selectable
         selectedIds={selected}
         onSelectionChange={setSelected}
-        onRowClick={(c) => onNavigate ? onNavigate('candidate_detail', { candidateId: c.id }) : (() => { setShowDetail(c); setPreviewTab('overview') })()}
+        onRowClick={(c) => { setShowDetail(c); setPreviewTab('overview') }}
         emptyState={
           <EmptyState
             icon="users"
@@ -654,8 +427,9 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
             align="end"
             trigger={(p) => <MenuTrigger {...p} />}
             items={[
-              { label: 'View details', icon: 'eye', onClick: () => onNavigate ? onNavigate('candidate_detail', { candidateId: c.id }) : (() => { setShowDetail(c); setPreviewTab('overview') })() },
-              { label: 'Edit', icon: 'edit', onClick: () => openEdit(c) },
+              { label: 'Quick preview', icon: 'eye', onClick: () => { setShowDetail(c); setPreviewTab('overview') } },
+              { label: 'View full details', icon: 'arrowUpRight', onClick: () => onNavigate ? onNavigate('candidate_detail', { candidateId: c.id }) : (() => { setShowDetail(c); setPreviewTab('overview') })() },
+              { label: 'Edit candidate', icon: 'edit', onClick: () => openEdit(c) },
               { label: 'Deep AI Fit', icon: 'sparkles', onClick: () => openAiMatchForCandidate(c) },
               { label: '1-Click Packet', icon: 'arrowUpRight', onClick: () => openPacketForCandidate(c) },
               'divider',
@@ -664,8 +438,9 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
           />
         )}
         contextMenuItems={(c) => [
-          { label: 'View details', icon: 'eye', onClick: () => onNavigate ? onNavigate('candidate_detail', { candidateId: c.id }) : (() => { setShowDetail(c); setPreviewTab('overview') })() },
-          { label: 'Edit', icon: 'edit', onClick: () => openEdit(c) },
+          { label: 'Quick preview', icon: 'eye', onClick: () => { setShowDetail(c); setPreviewTab('overview') } },
+          { label: 'View full details', icon: 'arrowUpRight', onClick: () => onNavigate ? onNavigate('candidate_detail', { candidateId: c.id }) : (() => { setShowDetail(c); setPreviewTab('overview') })() },
+          { label: 'Edit candidate', icon: 'edit', onClick: () => openEdit(c) },
           { label: 'Deep AI Fit', icon: 'sparkles', onClick: () => openAiMatchForCandidate(c) },
           { label: '1-Click Packet', icon: 'arrowUpRight', onClick: () => openPacketForCandidate(c) },
           'divider',
@@ -698,7 +473,10 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
                 )}
                 <Button variant="secondary" leftIcon="sparkles" onClick={() => openAiMatchForCandidate(showDetail)}>Deep AI Fit</Button>
                 <Button variant="ai" leftIcon="arrowUpRight" onClick={() => openPacketForCandidate(showDetail)}>1-Click Packet</Button>
-                <Button variant="primary" onClick={() => { setShowDetail(null); openEdit(showDetail) }}>Edit</Button>
+                <Button variant="secondary" leftIcon="edit" onClick={() => { const cand = showDetail; setShowDetail(null); openEdit(cand) }}>Edit</Button>
+                {onNavigate && (
+                  <Button variant="primary" leftIcon="arrowUpRight" onClick={() => { const cId = showDetail.id; setShowDetail(null); onNavigate('candidate_detail', { candidateId: cId }) }}>View Full Details</Button>
+                )}
               </>
             }
           >
@@ -742,7 +520,7 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
                 <div className="grid sm:grid-cols-2 gap-3">
                   <DetailCard title="Personal Info" rows={[['Full Name', `${showDetail.first_name} ${showDetail.last_name}`], ['Email', showDetail.email], ['Phone', showDetail.phone], ['Location', showDetail.location], ['Work Auth', showDetail.work_auth], ['Experience', showDetail.experience ? showDetail.experience + ' yrs' : '-'], ['LinkedIn', showDetail.linkedin], ['Relocation', showDetail.relocation]]} />
                   <DetailCard title="Submission" rows={[['Date', showDetail.submission_date], ['Job ID', showDetail.job_id], ['Job Title', showDetail.job_title], ['Client', showDetail.client], ['Rate', showDetail.rate]]} />
-                  <DetailCard title="Status" rows={[['Internal', showDetail.internal_status], ['External', showDetail.external_status], ['Feedback', showDetail.feedback_status], ['Priority', showDetail.priority], ['Interview Date', showDetail.interview_date], ['Interview Type', showDetail.interview_type], ['Follow-up', showDetail.followup_date]]} />
+                  <DetailCard title="Status" rows={[['Internal', showDetail.internal_status], ['External', showDetail.external_status], ['Feedback', showDetail.feedback_status], ['Priority', showDetail.priority], ['Interview Date', showDetail.interview_date], ['Interview Time', showDetail.interview_time], ['Interview Type', showDetail.interview_type], ['Follow-up', showDetail.followup_date]]} />
                   <DetailCard title="Front End" rows={[['FE Name', showDetail.fe_name], ['Extension', showDetail.fe_extension], ['Acct Manager', showDetail.account_manager], ['Recruiter', showDetail.recruiter_name]]} />
                 </div>
 
@@ -753,6 +531,98 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
                     {!ensureArray(showDetail.skills).length && <span className="text-text3 text-sm">No skills listed</span>}
                   </div>
                 </Card>
+              </div>
+            )}
+
+            {previewTab === 'timeline' && (
+              <div className="flex flex-col gap-2">
+                {candidateTimeline.length === 0 ? (
+                  <EmptyState icon="calendar" title="No timeline activity" description="Callbacks and follow-ups logged for this candidate will show up here." />
+                ) : (
+                  candidateTimeline.map(ev => (
+                    <div key={ev.id} className="flex items-start gap-3 rounded-[var(--radius-md)] border border-border bg-surface2 px-3 py-2.5">
+                      <span className="w-7 h-7 rounded-[var(--radius-sm)] bg-accent/10 text-accent flex items-center justify-center shrink-0">
+                        <Icon name={ev.type === 'Callback' ? 'callbacks' : 'followups'} size={13} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <strong className="text-xs font-bold text-text">{ev.type}: {ev.title}</strong>
+                          <span className="text-[11px] text-text3 shrink-0">{ev.date || '—'}</span>
+                        </div>
+                        {ev.sub && <p className="text-xs text-text3 mt-0.5">{ev.sub}</p>}
+                        {ev.status && <Badge size="sm" tone="neutral" className="mt-1">{ev.status}</Badge>}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+            {previewTab === 'notes' && (
+              <div className="flex flex-col gap-4">
+                <Card>
+                  <CardHeader
+                    title="Notes"
+                    action={
+                      showDetail.notes && (
+                        <Button
+                          size="xs"
+                          variant="secondary"
+                          leftIcon="expand"
+                          onClick={() => setExpandedFieldModal({
+                            title: `Candidate Notes — ${showDetail.first_name} ${showDetail.last_name}`,
+                            subtitle: `${showDetail.job_title || ''} · ${showDetail.job_id || ''}`,
+                            content: showDetail.notes
+                          })}
+                        >
+                          View in full
+                        </Button>
+                      )
+                    }
+                  />
+                  <p className="text-sm text-text2 leading-relaxed">{showDetail.notes || 'No notes yet.'}</p>
+                  {showDetail.followup_date && <p className="text-xs text-text3 mt-2">Follow-up date: <b className="text-text2">{showDetail.followup_date}</b></p>}
+                </Card>
+                {showDetail.resume_file_name && (
+                  <Card>
+                    <CardHeader
+                      title="Resume File"
+                      action={
+                        <Button
+                          size="xs"
+                          variant="secondary"
+                          leftIcon="download"
+                          loading={downloadingResume}
+                          onClick={() => handleDownloadResume(showDetail.id)}
+                        >
+                          Download
+                        </Button>
+                      }
+                    />
+                    <p className="text-sm text-text2 truncate">{showDetail.resume_file_name}</p>
+                  </Card>
+                )}
+                {showDetail.resume_text && (
+                  <Card>
+                    <CardHeader
+                      title="Resume Text"
+                      action={
+                        <Button
+                          size="xs"
+                          variant="secondary"
+                          leftIcon="expand"
+                          onClick={() => setExpandedFieldModal({
+                            title: `Resume Text — ${showDetail.first_name} ${showDetail.last_name}`,
+                            subtitle: `${showDetail.email || ''} · ${showDetail.phone || ''}`,
+                            content: showDetail.resume_text
+                          })}
+                        >
+                          View in full
+                        </Button>
+                      }
+                    />
+                    <div className="text-xs text-text2 leading-relaxed max-h-60 overflow-y-auto"><MarkdownView content={showDetail.resume_text} /></div>
+                  </Card>
+                )}
               </div>
             )}
 
@@ -893,22 +763,18 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
       {/* Add/edit drawer — shared component used by CandidateDetail too */}
       <CandidateFormDrawer
         open={showModal}
-        onClose={() => setShowModal(false)}
-        candidateData={editingId ? candidates.find(c => c.id === editingId) || null : null}
+        onClose={() => { setShowModal(false); setEditingId(null); }}
+        candidateData={candidates.find(c => c.id === editingId) || null}
         candidates={candidates}
-        onSaved={async (savedData) => {
-          if (editingId) {
-            // updateCandidate already applied the optimistic update;
-            // re-fetch is handled by the hook on next render.
-            updateCandidate(editingId, savedData)
-          } else {
-            addCandidate(savedData)
-          }
+        onSaved={async () => {
+          await refetch()
+          setShowModal(false)
+          setEditingId(null)
         }}
         showToast={showToast}
       />
 
-      {/* Delete confirm */}
+      {/* Delete Confirmation Modal */}
       <Modal
         open={!!deleteId}
         onClose={() => setDeleteId(null)}
@@ -980,7 +846,7 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
               leftIcon="copy"
               onClick={() => {
                 if (expandedFieldModal?.content) {
-                  navigator.clipboard.writeText(expandedFieldModal.content)
+                  navigator.clipboard.writeText(normalizeAiPlainText(expandedFieldModal.content))
                   showToast('Copied to clipboard!')
                 }
               }}
@@ -1001,7 +867,6 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
   )
 }
 
-// Helpers
 function DetailCard({ title, rows }) {
   return (
     <Card padding="sm" className="overflow-hidden min-w-0">
@@ -1016,8 +881,4 @@ function DetailCard({ title, rows }) {
       </div>
     </Card>
   )
-}
-
-function FormSectionTitle({ children }) {
-  return <h3 className="text-xs font-bold text-accent uppercase tracking-wide pb-2 mb-3.5 border-b border-border">{children}</h3>
 }

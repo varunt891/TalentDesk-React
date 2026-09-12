@@ -76,44 +76,50 @@ export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggle
   return (
     <aside
       className={cn(
-        'h-full flex flex-col bg-[var(--sidebar-bg)] border-r border-border shrink-0',
-        'transition-[width] duration-200 ease-[var(--ease-standard)]',
-        isCollapsed ? 'w-16' : 'w-52'
+        'app-sidebar h-full flex flex-col bg-[var(--sidebar-bg)] border-r border-border shrink-0 overflow-x-hidden',
+        'transition-[width,min-width] duration-200 ease-[var(--ease-standard)] will-change-[width]',
+        isCollapsed ? 'w-16 min-w-[4rem]' : 'w-52 min-w-[13rem]'
       )}
     >
       {/* Header */}
-      <div className={cn('flex items-center gap-2 h-14 border-b border-border shrink-0', isCollapsed ? 'justify-center px-2' : 'justify-between px-4')}>
+      <div className={cn('flex items-center h-14 border-b border-border shrink-0', isCollapsed ? 'justify-center px-2' : 'justify-between px-4')}>
         {isCollapsed ? (
-          <div
-            className="w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center text-sm font-extrabold bg-gradient-to-br from-accent to-accent2 text-white shrink-0 shadow-[0_4px_14px_-2px_color-mix(in_srgb,var(--accent)_55%,transparent)]"
-            title={orgName}
-          >
-            TD
-          </div>
-        ) : (
-          <div className="min-w-0">
-            <div className="font-serif text-[16px] font-medium text-text tracking-tight truncate">TalentDesk</div>
-            <div className="text-[10px] font-semibold text-text3 uppercase tracking-wider truncate">{orgName}</div>
-          </div>
-        )}
-        <div className="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
             onClick={onToggleCollapse}
-            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className="focus-ring hidden lg:flex w-7 h-7 rounded-[var(--radius-sm)] items-center justify-center text-text3 hover:bg-surface2 hover:text-text transition-colors duration-[var(--duration-fast)]"
+            aria-label="Expand sidebar"
+            title="Expand sidebar"
+            className="group/toggle focus-ring relative w-9 h-9 rounded-[var(--radius-md)] flex items-center justify-center bg-gradient-to-br from-accent to-accent2 text-white shrink-0 shadow-[0_4px_14px_-2px_color-mix(in_srgb,var(--accent)_55%,transparent)] hover:scale-105 transition-all duration-200"
           >
-            <Icon name={isCollapsed ? 'chevronRight' : 'chevronLeft'} size={13} />
+            <span className="group-hover/toggle:opacity-0 font-serif text-sm font-extrabold transition-opacity duration-150">TD</span>
+            <Icon name="chevronRight" size={16} className="absolute opacity-0 group-hover/toggle:opacity-100 transition-opacity duration-150 text-white" />
           </button>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close navigation"
-            className="focus-ring lg:hidden w-7 h-7 rounded-[var(--radius-sm)] flex items-center justify-center text-text3 hover:bg-surface2 hover:text-text"
-          >
-            <Icon name="x" size={14} />
-          </button>
-        </div>
+        ) : (
+          <>
+            <div className="min-w-0">
+              <div className="font-serif text-[16px] font-medium text-text tracking-tight truncate">TalentDesk</div>
+              <div className="text-[10px] font-semibold text-text3 uppercase tracking-wider truncate">{orgName}</div>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                aria-label="Collapse sidebar"
+                className="focus-ring hidden lg:flex w-7 h-7 rounded-[var(--radius-sm)] items-center justify-center text-text3 hover:bg-surface2 hover:text-text transition-colors duration-[var(--duration-fast)]"
+              >
+                <Icon name="chevronLeft" size={13} />
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close navigation"
+                className="focus-ring lg:hidden w-7 h-7 rounded-[var(--radius-sm)] flex items-center justify-center text-text3 hover:bg-surface2 hover:text-text"
+              >
+                <Icon name="x" size={14} />
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Nav */}
@@ -141,6 +147,7 @@ export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggle
               title={isCollapsed ? displayName : undefined}
               aria-label="Account menu"
               className={cn(
+                'sidebar-account-trigger',
                 'focus-ring flex items-center min-w-0 rounded-[var(--radius-md)] border transition-colors duration-[var(--duration-fast)]',
                 isCollapsed ? 'w-9 h-9 justify-center p-0' : 'w-full gap-2.5 px-2 py-1.5',
                 open ? 'bg-surface3 border-border-strong shadow-xs' : 'border-transparent hover:bg-surface3/70 hover:border-border'
@@ -172,7 +179,7 @@ export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggle
             onClick={onToggleTheme}
             aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            className="focus-ring w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center text-text3 hover:text-text hover:bg-surface3 transition-colors duration-[var(--duration-fast)]"
+            className="sidebar-theme-icon focus-ring w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center text-text3 hover:text-text hover:bg-surface3 transition-colors duration-[var(--duration-fast)]"
           >
             <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={14} />
           </button>
@@ -181,7 +188,7 @@ export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggle
             type="button"
             onClick={onToggleTheme}
             aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            className="focus-ring relative flex items-center h-8 w-full rounded-full bg-surface3/70 border border-border/70 hover:border-border-strong transition-colors duration-[var(--duration-fast)]"
+            className="sidebar-theme-toggle focus-ring relative flex items-center h-8 w-full rounded-full bg-surface3/70 border border-border/70 hover:border-border-strong transition-colors duration-[var(--duration-fast)]"
           >
             <span
               className={cn(
@@ -203,6 +210,8 @@ export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggle
 }
 
 function NavSection({ title, items, currentPage, onNavigate, isCollapsed, pendingTasksCount, favorites, onToggleFavorite, collapsed, onToggleCollapse, pinned, children }) {
+  if (items?.length === 0 && !children) return null
+
   return (
     <div className="flex flex-col gap-0.5 mb-1">
       {!isCollapsed ? (
@@ -220,7 +229,7 @@ function NavSection({ title, items, currentPage, onNavigate, isCollapsed, pendin
           </button>
         )
       ) : (
-        <div className="h-px bg-border mx-1.5 my-1.5" />
+        <div className="h-px bg-border/60 mx-2 my-1" />
       )}
       {(pinned || !collapsed) && children}
       {!pinned && !collapsed && items?.map(item => (
@@ -247,9 +256,10 @@ function NavItem({ item, active, onClick, isCollapsed, pendingTasksCount, isFavo
       <button
         type="button"
         onClick={onClick}
-        title={isCollapsed ? item.label : undefined}
+        aria-label={item.label}
+        data-active={active ? 'true' : undefined}
         className={cn(
-          'focus-ring relative flex items-center gap-2.5 w-full h-[34px] rounded-[var(--radius-md)] text-[13px] font-semibold transition-[background-color,box-shadow,color] duration-[var(--duration-fast)]',
+          'sidebar-nav-button focus-ring relative flex items-center gap-2.5 w-full h-[34px] rounded-[var(--radius-md)] text-[13px] font-semibold transition-[background-color,box-shadow,color] duration-[var(--duration-fast)]',
           isCollapsed ? 'justify-center px-0' : 'px-2.5',
           active ? 'bg-accent/14 text-accent shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent)_22%,transparent)]' : muted ? 'text-text3 hover:bg-surface3 hover:text-text2' : 'text-text2 hover:bg-surface3 hover:text-text'
         )}
@@ -267,6 +277,19 @@ function NavItem({ item, active, onClick, isCollapsed, pendingTasksCount, isFavo
           </span>
         )}
       </button>
+
+      {/* Floating tooltip when collapsed */}
+      {isCollapsed && (
+        <div className="pointer-events-none absolute left-full ml-2.5 z-[9999] hidden group-hover/nav:flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--radius-sm)] bg-surface3 border border-border text-xs font-semibold text-text shadow-lg whitespace-nowrap animate-in fade-in zoom-in-95 duration-100">
+          <span>{item.label}</span>
+          {showRedDot && (
+            <span className="text-[10px] font-extrabold bg-red/20 text-red rounded-full px-1.5 leading-4">
+              {pendingTasksCount}
+            </span>
+          )}
+        </div>
+      )}
+
       {!isCollapsed && onToggleFavorite && (
         <button
           type="button"

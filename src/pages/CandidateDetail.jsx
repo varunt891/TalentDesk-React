@@ -6,11 +6,12 @@ import { PageContainer } from '../components/layout/PageContainer'
 import CandidateFormDrawer from '../components/candidates/CandidateFormDrawer'
 import {
   Button, Badge, StatusPill, Card, CardHeader, KPICard, PageHeader,
-  EmptyState, Avatar, Icon, useToast, Skeleton, PageSpinner, Textarea, Select,
+  EmptyState, Avatar, Icon, useToast, Skeleton, PageSpinner, Textarea, Select, Input, TimePicker,
 } from '../components/ui'
 import MarkdownView from '../components/MarkdownView'
 import AIInsightCard from '../components/ai/AIInsightCard'
 import { ensureArray, STATUS_TONE, computeScore } from '../lib/candidateHealth'
+import { INTERVIEW_SCHEDULED_STATUS, hasInterviewScheduledStatus, syncInterviewCallback } from '../lib/interviewScheduling'
 
 const STATUSES = ['Pending', 'Submitted', 'Shortlisted', 'Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired', 'Rejected', 'On Hold', 'Withdrew']
 const PRIORITY_TONE = { High: 'red', Medium: 'yellow', Low: 'neutral' }
@@ -209,6 +210,7 @@ function InterviewCard({ candidate }) {
               </div>
               <div className="text-[11.5px] text-text3 mt-0.5">
                 {interviewDate?.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                {candidate.interview_time ? ` at ${candidate.interview_time}` : ''}
               </div>
             </div>
             <div className="text-right">
@@ -517,6 +519,9 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
       external_status: found.external_status || 'Pending',
       feedback_status: found.feedback_status || 'Awaiting',
       priority: found.priority || 'Medium',
+      interview_date: found.interview_date || '',
+      interview_time: found.interview_time || '',
+      interview_type: found.interview_type || '',
     })
 
     // Fetch other submissions by same candidate email
@@ -563,7 +568,14 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
     try {
       const res = await apiRequest(`/upload/resume-url/${candidateId}`)
       if (res?.success && res.url) {
-        window.open(res.url, '_blank', 'noopener')
+        const link = document.createElement('a')
+        link.href = res.url
+        if (res.fileName) link.download = res.fileName
+        link.target = '_blank'
+        link.rel = 'noopener'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
       } else {
         throw new Error(res?.error || 'Could not generate a download link.')
       }
@@ -574,14 +586,58 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
     }
   }
 
+  const setStatusField = (field, value) => {
+    setStatusDraft(d => ({
+      ...d,
+      [field]: value,
+      interview_time: value === INTERVIEW_SCHEDULED_STATUS && !d.interview_time ? '10:00 AM' : d.interview_time,
+      interview_type: value === INTERVIEW_SCHEDULED_STATUS && !d.interview_type ? 'Video Call' : d.interview_type,
+    }))
+  }
+
   const handleSaveStatus = async () => {
     if (!candidate) return
+    if (hasInterviewScheduledStatus(statusDraft) && !statusDraft.interview_date) {
+      toast({ tone: 'error', title: 'Interview date required', description: 'Add a date before scheduling the interview callback.' })
+      return
+    }
+    if (hasInterviewScheduledStatus(statusDraft) && !statusDraft.interview_time) {
+      toast({ tone: 'error', title: 'Interview time required', description: 'Add a time before scheduling the interview callback.' })
+      return
+    }
+    if (hasInterviewScheduledStatus(statusDraft) && !statusDraft.interview_type) {
+      toast({ tone: 'error', title: 'Interview type required', description: 'Choose phone, video, panel, or another interview type.' })
+      return
+    }
+
     setSavingStatus(true)
     try {
-      const { data } = await db.from('candidates').update(statusDraft).eq('id', candidate.id).select()
+      const { data, error } = await db.from('candidates').update(statusDraft).eq('id', candidate.id).select()
+      if (error) throw error
       const updated = Array.isArray(data) ? data[0] : data
+      const nextCandidate = updated || { ...candidate, ...statusDraft }
       if (updated) setCandidate(prev => ({ ...prev, ...updated }))
-      toast({ tone: 'success', title: 'Status updated' })
+      const sync = await syncInterviewCallback(nextCandidate, {
+        userId,
+        orgId,
+        timezone: organization?.timezone,
+      })
+      if (sync.error) throw sync.error
+      if (sync.data) {
+        setCallbacksLog(prev => {
+          const exists = prev.some(cb => cb.id === sync.data.id)
+          return exists ? prev.map(cb => cb.id === sync.data.id ? sync.data : cb) : [sync.data, ...prev]
+        })
+      }
+      const title = sync.action === 'closed'
+        ? 'Status updated and interview callback closed'
+        : sync.synced
+          ? 'Status updated and callback scheduled'
+          : 'Status updated'
+      toast({
+        tone: 'success',
+        title,
+      })
     } catch (err) {
       toast({ tone: 'error', title: 'Failed to update status', description: err.message })
     } finally {
@@ -1000,7 +1056,7 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
                 <label className="text-[10.5px] font-bold uppercase tracking-wide text-text3 block mb-1.5">Internal</label>
                 <Select
                   value={statusDraft.internal_status}
-                  onChange={v => setStatusDraft(d => ({ ...d, internal_status: v }))}
+                  onChange={v => setStatusField('internal_status', v)}
                   options={STATUSES.map(s => ({ value: s, label: s }))}
                 />
               </div>
@@ -1008,8 +1064,16 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
                 <label className="text-[10.5px] font-bold uppercase tracking-wide text-text3 block mb-1.5">Client / External</label>
                 <Select
                   value={statusDraft.external_status}
-                  onChange={v => setStatusDraft(d => ({ ...d, external_status: v }))}
+                  onChange={v => setStatusField('external_status', v)}
                   options={STATUSES.map(s => ({ value: s, label: s }))}
+                />
+              </div>
+              <div>
+                <label className="text-[10.5px] font-bold uppercase tracking-wide text-text3 block mb-1.5">Feedback</label>
+                <Select
+                  value={statusDraft.feedback_status}
+                  onChange={v => setStatusDraft(d => ({ ...d, feedback_status: v }))}
+                  options={['Awaiting', 'Positive', 'Negative', 'No Response'].map(o => ({ value: o, label: o }))}
                 />
               </div>
               <div>
@@ -1020,6 +1084,44 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
                   options={['High', 'Medium', 'Low'].map(o => ({ value: o, label: o }))}
                 />
               </div>
+              {hasInterviewScheduledStatus(statusDraft) && (
+                <div className="rounded-[var(--radius-md)] border border-accent/20 bg-accent/5 p-3 flex flex-col gap-3">
+                  <div className="flex items-start gap-2">
+                    <span className="w-7 h-7 rounded-[var(--radius-sm)] bg-accent/12 text-accent flex items-center justify-center shrink-0">
+                      <Icon name="calendar" size={13} />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-text">Schedule interview callback</div>
+                      <div className="text-[11px] text-text3 leading-snug">Saving this status creates or updates one pending callback for this candidate.</div>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[10.5px] font-bold uppercase tracking-wide text-text3 block mb-1.5">Interview Date</label>
+                    <Input
+                      type="date"
+                      value={statusDraft.interview_date || ''}
+                      onChange={e => setStatusDraft(d => ({ ...d, interview_date: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10.5px] font-bold uppercase tracking-wide text-text3 block mb-1.5">Interview Time</label>
+                    <TimePicker
+                      value={statusDraft.interview_time || ''}
+                      onChange={v => setStatusDraft(d => ({ ...d, interview_time: v }))}
+                      placeholder="Select time..."
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10.5px] font-bold uppercase tracking-wide text-text3 block mb-1.5">Interview Type</label>
+                    <Select
+                      value={statusDraft.interview_type || ''}
+                      onChange={v => setStatusDraft(d => ({ ...d, interview_type: v }))}
+                      options={['Phone Screen', 'Video Call', 'On-site', 'Panel', 'Technical'].map(o => ({ value: o, label: o }))}
+                      placeholder="Select type..."
+                    />
+                  </div>
+                </div>
+              )}
               <Button
                 variant="primary"
                 size="sm"
@@ -1027,7 +1129,11 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
                 disabled={
                   statusDraft.internal_status === (candidate.internal_status || 'Pending') &&
                   statusDraft.external_status === (candidate.external_status || 'Pending') &&
-                  statusDraft.priority === (candidate.priority || 'Medium')
+                  statusDraft.feedback_status === (candidate.feedback_status || 'Awaiting') &&
+                  statusDraft.priority === (candidate.priority || 'Medium') &&
+                  (statusDraft.interview_date || '') === (candidate.interview_date || '') &&
+                  (statusDraft.interview_time || '') === (candidate.interview_time || '') &&
+                  (statusDraft.interview_type || '') === (candidate.interview_type || '')
                 }
                 onClick={handleSaveStatus}
               >

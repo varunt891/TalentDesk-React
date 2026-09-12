@@ -1,6 +1,8 @@
 // `docx` and `pdfmake` (with embedded fonts) together add well over 1MB to
 // the bundle — dynamically imported here so that cost is only ever paid the
 // moment someone actually clicks Export, not on every page load of the app.
+import { normalizeAiExportText } from '../aiTextFormat'
+
 let pdfMakeReady = null
 async function loadPdfMake() {
   if (!pdfMakeReady) {
@@ -81,7 +83,7 @@ const DOCX_HEADING_LEVELS = ['HEADING_1', 'HEADING_2', 'HEADING_3', 'HEADING_4']
 // so exported .docx files read the way the on-screen result (MarkdownView)
 // looks instead of dumping raw markdown syntax.
 function markdownToDocxChildren(docx, text) {
-  const lines = (text || '').split('\n')
+  const lines = normalizeAiExportText(text).split('\n')
   const children = []
   let tableBuffer = null
   let codeBuffer = null
@@ -189,7 +191,7 @@ const PDF_HEADING_STYLES = ['h1', 'h2', 'h3', 'h4']
 // docx's — pdfmake handles line-wrapping and page breaks automatically, so
 // this stays purely about structure, not pixel positions.
 function markdownToPdfContent(text) {
-  const lines = (text || '').split('\n')
+  const lines = normalizeAiExportText(text).split('\n')
   const content = []
   let tableBuffer = null
   let listBuffer = null

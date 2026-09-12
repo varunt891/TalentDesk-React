@@ -4,6 +4,7 @@ import AIResultCard from './AIResultCard'
 import { streamAiGenerate } from '../../lib/ai/aiClient'
 import { logUsageEvent } from '../../lib/ai/usage'
 import { exportResultToDocx, exportResultToPdf } from '../../lib/ai/exportResult'
+import { normalizeAiPlainText } from '../../lib/aiTextFormat'
 
 /**
  * Market Salary & Demand — a purpose-built form (role / location / years of
@@ -65,7 +66,7 @@ export default function SalaryAnalysisPanel({ orgId, userId, source = 'ai_center
   }
   const stopStreaming = () => abortRef.current?.abort()
 
-  const copyResult = () => { navigator.clipboard.writeText(result || ''); setCopied(true); setTimeout(() => setCopied(false), 1500) }
+  const copyResult = () => { navigator.clipboard.writeText(normalizeAiPlainText(result || '')); setCopied(true); setTimeout(() => setCopied(false), 1500) }
   const exportWord = () => exportResultToDocx(result, `salary_${role || 'role'}`)
   const exportPdf = () => exportResultToPdf(result, `salary_${role || 'role'}`)
 

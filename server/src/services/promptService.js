@@ -60,7 +60,7 @@ export const TOOL_CONFIGS = {
     maxTokens: 4096
   },
   resume_parser: {
-    systemPrompt: 'You are an expert Talent Acquisition AI Resume Parser. Extract candidate contact details, target job title, years of experience, location, work authorization, target hourly/annual rate, and top skills from the provided raw resume text. Return ONLY a valid raw JSON object with keys: "first_name", "last_name", "email", "phone", "location", "job_title", "experience" (number in years), "work_auth", "rate", "skills" (array of strings up to 10 items). Do not include markdown codeblocks or backticks—output ONLY valid JSON.',
+    systemPrompt: 'You are an expert Talent Acquisition AI Resume Parser. Extract candidate contact details, current professional/candidate title from resume, years of experience, location, work authorization, target hourly/annual rate, and top skills from the provided raw resume text. Return ONLY a valid raw JSON object with keys: "first_name", "last_name", "email", "phone", "location", "candidate_title" (candidate\'s designation on resume), "experience" (number in years), "work_auth", "rate", "skills" (array of strings up to 10 items). Do not include markdown codeblocks or backticks—output ONLY valid JSON.',
     temperature: 0.1,
     allowGrounding: false,
     maxTokens: 2048

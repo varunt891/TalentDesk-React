@@ -448,11 +448,9 @@ button {
 }
 
 .app-sidebar {
-  width: 220px;
-  min-width: 220px;
-  height: 100vh;
-  position: sticky;
-  top: 0;
+  /* Width/height/position are now controlled via Tailwind in Sidebar.jsx
+     (w-16/w-52 + min-w-[4rem]/min-w-[13rem] + transition-[width,min-width]).
+     Only visual / theming props live here. */
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border);
@@ -461,16 +459,6 @@ button {
   -webkit-backdrop-filter: blur(16px);
   z-index: 40;
   box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
-  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1), background 0.25s ease;
-}
-
-[data-theme="light"] .app-sidebar {
-  background: rgba(255, 255, 255, 0.72);
-}
-
-.app-sidebar.collapsed {
-  width: 68px;
-  min-width: 68px;
 }
 
 .app-sidebar.collapsed .sidebar-logo {
@@ -2398,73 +2386,13 @@ button {
     text-transform: uppercase !important;
   }
 
-  .app-sidebar {
-    position: fixed !important;
-    inset: 0 auto 0 0 !important;
-    width: min(84vw, 292px) !important;
-    min-width: 0 !important;
-    max-width: 292px !important;
-    box-shadow: 28px 0 70px rgba(0, 0, 0, 0.28) !important;
-    transform: translateX(-105%) !important;
-    visibility: hidden !important;
-    opacity: 0 !important;
-    background: var(--surface) !important;
-    backdrop-filter: blur(16px) !important;
-    -webkit-backdrop-filter: blur(16px) !important;
-    transition: transform 220ms ease, opacity 220ms ease, visibility 220ms ease !important;
-    z-index: 60 !important;
-  }
-
-  .sidebar-open .app-sidebar {
-    transform: translateX(0) !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    background: var(--surface) !important;
-    border-right: 1px solid var(--border) !important;
-    box-shadow: 28px 0 70px rgba(0, 0, 0, 0.42) !important;
-  }
-
-  .sidebar-open .app-sidebar.collapsed {
-    width: min(84vw, 292px) !important;
-  }
-
-  .sidebar-open .app-sidebar.collapsed .sidebar-nav-item {
-    justify-content: flex-start !important;
-    padding: 9px 12px !important;
-    width: 100% !important;
-  }
-
-  .sidebar-open .app-sidebar.collapsed .sidebar-nav-label {
-    display: inline !important;
-  }
-
-  .mobile-sidebar-backdrop {
-    position: fixed !important;
-    inset: 0 !important;
-    display: block !important;
-    background: rgba(0, 0, 0, 0.42) !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
-    transition: opacity 220ms ease !important;
-    z-index: 50 !important;
-  }
-
-  .sidebar-open .mobile-sidebar-backdrop {
-    opacity: 1 !important;
-    pointer-events: auto !important;
-  }
+  /* Mobile sidebar is handled by the wrapper div in AppLayout.jsx using
+     Tailwind translate-x-full / translate-x-0 on the PARENT element.
+     Applying transforms here directly to .app-sidebar would double-stack
+     and break the animation. Removed: 2401-2455 mobile sidebar block. */
 }
 
-@media (max-width: 760px) {
-
-
-
-
-
-
-
-
-}
+@media (max-width: 760px) {}
 
 @media (max-width: 480px) {
 
@@ -2474,10 +2402,7 @@ button {
 }
 
 /* Jobs page mobile layout override */
-@media (max-width: 1120px) {
-
-
-}
+@media (max-width: 1120px) {}
 
 /* Real-device mobile hardening: keep the app inside the visual viewport. */
 @media (max-width: 760px) {
@@ -5845,24 +5770,8 @@ body {
     text-transform: capitalize !important;
   }
 
-  .app-sidebar {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    bottom: 0 !important;
-    height: 100vh !important;
-    height: 100dvh !important;
-    width: 280px !important;
-    min-width: 280px !important;
-    max-width: 85vw !important;
-    z-index: 99999 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-    transform: translateX(-100%) !important;
-    transition: transform 0.25s ease-in-out !important;
-    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5) !important;
-  }
+  /* Mobile sidebar: handled by AppLayout wrapper div transform.
+     Position/transform on .app-sidebar directly removed (was conflicting). */
 
   .app-sidebar .sidebar-logo {
     flex-shrink: 0 !important;
@@ -5878,26 +5787,6 @@ body {
 
   .app-sidebar .sidebar-footer {
     flex-shrink: 0 !important;
-  }
-
-  .app-shell.sidebar-open .app-sidebar {
-    transform: translateX(0) !important;
-  }
-
-  .mobile-sidebar-backdrop {
-    display: block !important;
-    position: fixed !important;
-    inset: 0 !important;
-    background: rgba(0, 0, 0, 0.5) !important;
-    z-index: 99990 !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
-    transition: opacity 0.25s ease !important;
-  }
-
-  .app-shell.sidebar-open .mobile-sidebar-backdrop {
-    opacity: 1 !important;
-    pointer-events: auto !important;
   }
 
   .app-main {
@@ -6144,8 +6033,7 @@ body {
 }
 
 /* Universal Mobile Modal & Form Grid Overhaul */
-@media (max-width: 640px) {
-}
+@media (max-width: 640px) {}
 
 .search-icon-v2 {
   position: absolute !important;
@@ -6568,13 +6456,9 @@ body {
 
 
 /* --- Responsive Media Queries --- */
-@media (max-width: 1100px) {
-}
+@media (max-width: 1100px) {}
 
-@media (max-width: 900px) {
-
-
-}
+@media (max-width: 900px) {}
 
 @media (max-width: 767px) {
 
@@ -8670,11 +8554,8 @@ html[data-theme="dark"] .ai-center-page {
   color: var(--text) !important;
 }
 
-html[data-theme="dark"] .app-sidebar {
-  background: var(--surface2) !important;
-  border-color: var(--border) !important;
-  box-shadow: none !important;
-}
+/* Dark sidebar background/shadow are now set by the canonical .app-sidebar block near bottom.
+   This old override with box-shadow:none has been removed to restore the gradient shadow. */
 
 html[data-theme="dark"] .mobile-topbar {
   background: var(--bg) !important;
@@ -9041,10 +8922,7 @@ html[data-theme="dark"] .app-main {
   box-shadow: inset 1px 0 0 #1f1f1f !important;
 }
 
-html[data-theme="dark"] .app-sidebar {
-  background: #050505 !important;
-  border-color: #242424 !important;
-}
+/* Dark sidebar: background now from canonical .app-sidebar gradient block. */
 
 html[data-theme="dark"] .theme-slider-container,
 html[data-theme="dark"] .user-card {
@@ -9068,6 +8946,311 @@ html[data-theme="dark"] .followups-page,
 html[data-theme="dark"] .resubmit-page {
   background: #000000 !important;
   color: #ededed !important;
+}
+
+/* ==========================================================================
+   PREMIUM SHELL THEME
+   Final authoritative layer for a unified product-wide visual system. The
+   app now uses one graphite neutral scale across the page, sidebar, topbar,
+   cards, inputs, menus, drawers, and dense work surfaces.
+   ========================================================================== */
+
+:root {
+  --bg: #090d12;
+  --surface: #111820;
+  --surface2: #17212b;
+  --surface3: #20303d;
+  --surface-sunken: #06090d;
+  --sidebar-bg: #0c1218;
+  --border: #263440;
+  --border-strong: #3b4c5c;
+  --border-light: rgba(226, 232, 240, 0.12);
+  --accent: #14b8a6;
+  --accent2: #38bdf8;
+  --accent3: #f472b6;
+  --ai: #a78bfa;
+  --ai-soft: rgba(167, 139, 250, 0.13);
+  --green: #34d399;
+  --yellow: #fbbf24;
+  --orange: #fb923c;
+  --red: #f87171;
+  --text: #f4f7fb;
+  --text2: #b7c3cf;
+  --text3: #7f8d9b;
+  --chart-1: #14b8a6;
+  --chart-2: #38bdf8;
+  --chart-3: #a78bfa;
+  --chart-4: #f472b6;
+  --chart-5: #fbbf24;
+  --chart-6: #34d399;
+  --chart-7: #fb923c;
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32), 0 10px 24px -22px rgba(56, 189, 248, 0.28);
+  --shadow-md: 0 14px 34px -24px rgba(0, 0, 0, 0.74), 0 1px 0 rgba(255, 255, 255, 0.035) inset;
+  --shadow-lg: 0 28px 70px -32px rgba(0, 0, 0, 0.82), 0 1px 0 rgba(255, 255, 255, 0.045) inset;
+}
+
+[data-theme="light"] {
+  --bg: #f6f8fb;
+  --surface: #ffffff;
+  --surface2: #eef3f7;
+  --surface3: #e3ebf2;
+  --surface-sunken: #eaf0f5;
+  --sidebar-bg: #f9fbfd;
+  --border: #d9e3ec;
+  --border-strong: #bdccd9;
+  --border-light: rgba(15, 23, 42, 0.08);
+  --accent: #0f9f90;
+  --accent2: #0284c7;
+  --accent3: #db2777;
+  --ai: #7c3aed;
+  --ai-soft: rgba(124, 58, 237, 0.08);
+  --green: #059669;
+  --yellow: #d97706;
+  --orange: #ea580c;
+  --red: #dc2626;
+  --text: #14202b;
+  --text2: #536171;
+  --text3: #83909d;
+  --shadow-xs: 0 1px 2px rgba(20, 32, 43, 0.05);
+  --shadow-sm: 0 1px 2px rgba(20, 32, 43, 0.06), 0 8px 20px -18px rgba(2, 132, 199, 0.28);
+  --shadow-md: 0 16px 38px -28px rgba(20, 32, 43, 0.24), 0 1px 0 rgba(255, 255, 255, 0.8) inset;
+  --shadow-lg: 0 30px 80px -40px rgba(20, 32, 43, 0.32), 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+}
+
+html[data-theme="dark"],
+html[data-theme="dark"] body,
+html[data-theme="dark"] #root {
+  background:
+    radial-gradient(circle at 22% -12%, rgba(20, 184, 166, 0.12), transparent 32rem),
+    radial-gradient(circle at 92% 4%, rgba(167, 139, 250, 0.10), transparent 30rem),
+    var(--bg) !important;
+  color: var(--text) !important;
+  color-scheme: dark;
+}
+
+html[data-theme="light"],
+html[data-theme="light"] body,
+html[data-theme="light"] #root {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.62), transparent 18rem),
+    var(--bg) !important;
+  color: var(--text) !important;
+  color-scheme: light;
+}
+
+.app-shell {
+  background: var(--bg) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .app-shell {
+  background:
+    radial-gradient(circle at 20% -18%, rgba(20, 184, 166, 0.13), transparent 32rem),
+    radial-gradient(circle at 82% 0%, rgba(56, 189, 248, 0.08), transparent 28rem),
+    linear-gradient(135deg, #090d12 0%, #0a1016 45%, #080b10 100%) !important;
+}
+
+html[data-theme="light"] .app-shell {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f6fa 48%, #f6f8fb 100%) !important;
+}
+
+.app-main {
+  background: transparent !important;
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--border) 64%, transparent) !important;
+}
+
+.app-topbar {
+  background: color-mix(in srgb, var(--surface) 86%, transparent) !important;
+  border-color: color-mix(in srgb, var(--border) 76%, transparent) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.035) inset, 0 14px 36px -30px rgba(0, 0, 0, 0.72) !important;
+  backdrop-filter: blur(22px) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(135%) !important;
+}
+
+html[data-theme="light"] .app-topbar {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 16px 34px -30px rgba(20, 32, 43, 0.30) !important;
+}
+
+.app-sidebar {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--sidebar-bg) 94%, var(--accent) 6%), var(--sidebar-bg)) !important;
+  border-color: color-mix(in srgb, var(--border) 82%, transparent) !important;
+  box-shadow: 1px 0 0 rgba(255, 255, 255, 0.035) inset, 18px 0 44px -34px rgba(0, 0, 0, 0.76) !important;
+  backdrop-filter: blur(22px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(130%) !important;
+}
+
+html[data-theme="light"] .app-sidebar {
+  background: linear-gradient(180deg, #ffffff, var(--sidebar-bg)) !important;
+  box-shadow: 1px 0 0 rgba(255, 255, 255, 0.9) inset, 18px 0 38px -34px rgba(20, 32, 43, 0.30) !important;
+}
+
+.sidebar-nav-button {
+  border: 1px solid transparent !important;
+}
+
+.sidebar-nav-button:hover {
+  background: color-mix(in srgb, var(--surface3) 62%, transparent) !important;
+  border-color: color-mix(in srgb, var(--border) 58%, transparent) !important;
+}
+
+.sidebar-nav-button.bg-accent\/14,
+.sidebar-nav-button[aria-current="page"],
+.sidebar-nav-button[data-active="true"] {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 17%, transparent), color-mix(in srgb, var(--accent2) 10%, transparent)) !important;
+  border-color: color-mix(in srgb, var(--accent) 38%, transparent) !important;
+  color: var(--text) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent) inset, 0 12px 26px -22px color-mix(in srgb, var(--accent) 76%, transparent) !important;
+}
+
+.sidebar-account-trigger,
+.sidebar-theme-toggle,
+.sidebar-theme-icon {
+  background: color-mix(in srgb, var(--surface2) 66%, transparent) !important;
+  border-color: color-mix(in srgb, var(--border) 76%, transparent) !important;
+}
+
+.sidebar-account-trigger:hover,
+.sidebar-theme-toggle:hover,
+.sidebar-theme-icon:hover {
+  background: color-mix(in srgb, var(--surface3) 72%, transparent) !important;
+  border-color: var(--border-strong) !important;
+}
+
+.bg-surface,
+.bg-surface\/90,
+.bg-surface2,
+.bg-surface2\/40,
+.bg-surface2\/50,
+.bg-surface2\/60,
+.bg-surface2\/70,
+.bg-surface3,
+.bg-surface3\/50,
+.bg-surface3\/60,
+.bg-surface3\/70 {
+  border-color: color-mix(in srgb, var(--border) 86%, transparent);
+}
+
+.bg-surface {
+  background-color: color-mix(in srgb, var(--surface) 96%, transparent) !important;
+}
+
+.bg-surface2,
+.bg-surface2\/40,
+.bg-surface2\/50,
+.bg-surface2\/60,
+.bg-surface2\/70 {
+  background-color: color-mix(in srgb, var(--surface2) 82%, transparent) !important;
+}
+
+.bg-surface3,
+.bg-surface3\/50,
+.bg-surface3\/60,
+.bg-surface3\/70 {
+  background-color: color-mix(in srgb, var(--surface3) 78%, transparent) !important;
+}
+
+.border-border,
+.divide-border> :not([hidden])~ :not([hidden]) {
+  border-color: color-mix(in srgb, var(--border) 88%, transparent) !important;
+}
+
+input,
+textarea,
+select,
+button[role="combobox"] {
+  border-color: color-mix(in srgb, var(--border) 86%, transparent);
+}
+
+html[data-theme="dark"] input,
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] select {
+  background-color: color-mix(in srgb, var(--surface2) 84%, #000 16%) !important;
+  border-color: color-mix(in srgb, var(--border) 86%, transparent) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder {
+  color: var(--text3) !important;
+}
+
+html[data-theme="dark"] .ai-command-center-page,
+html[data-theme="dark"] .ai-center-page,
+html[data-theme="dark"] .reports-page,
+html[data-theme="dark"] .callbacks-page,
+html[data-theme="dark"] .followups-page,
+html[data-theme="dark"] .resubmit-page {
+  background: transparent !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .ai-center-header,
+html[data-theme="dark"] .ai-tool-tile,
+html[data-theme="dark"] .ai-form-card,
+html[data-theme="dark"] .ai-results-card,
+html[data-theme="dark"] .job-card,
+html[data-theme="dark"] .job-summary-card,
+html[data-theme="dark"] .activity-feed-item,
+html[data-theme="dark"] .activity-item,
+html[data-theme="dark"] .activity-card,
+html[data-theme="dark"] .feed-item,
+html[data-theme="dark"] .ai-radar-card,
+html[data-theme="dark"] .job-health-card {
+  background: color-mix(in srgb, var(--surface) 94%, transparent) !important;
+  border-color: color-mix(in srgb, var(--border) 86%, transparent) !important;
+  color: var(--text) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+html[data-theme="dark"] .quick-action-item,
+html[data-theme="dark"] .pipeline-flow-chip.compact,
+html[data-theme="dark"] .todo-item-card.enhanced,
+html[data-theme="dark"] .completed-tasks-collapsible,
+html[data-theme="dark"] .completed-tasks-summary,
+html[data-theme="dark"] .ai-field input,
+html[data-theme="dark"] .ai-field textarea,
+html[data-theme="dark"] .ai-output-content,
+html[data-theme="dark"] .job-status-tab {
+  background: color-mix(in srgb, var(--surface2) 86%, transparent) !important;
+  border-color: color-mix(in srgb, var(--border) 86%, transparent) !important;
+  color: var(--text) !important;
+  box-shadow: var(--shadow-xs) !important;
+}
+
+html[data-theme="dark"] .copilot-slideout-panel,
+html[data-theme="dark"] .copilot-window-header,
+html[data-theme="dark"] .copilot-prompts-strip {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+html[data-theme="dark"] .copilot-messages-box {
+  background: var(--surface-sunken) !important;
+}
+
+html[data-theme="dark"] .copilot-msg-card.ai,
+html[data-theme="dark"] .typing-indicator-card,
+html[data-theme="dark"] .copilot-snapshot-card,
+html[data-theme="dark"] .snapshot-badge,
+html[data-theme="dark"] .copilot-action-confirm-card,
+html[data-theme="dark"] .copilot-insights-accordion,
+html[data-theme="dark"] .accordion-content-body,
+html[data-theme="dark"] .copilot-input-box {
+  background: color-mix(in srgb, var(--surface2) 88%, transparent) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
+@media (max-width: 900px) {
+  .app-topbar {
+    height: 64px !important;
+    min-height: 64px !important;
+  }
+
+  /* Sidebar background at 900px handled by canonical .app-sidebar block. */
 }
 
 html[data-theme="dark"] .ai-center-header,
@@ -10542,39 +10725,8 @@ button:focus-visible {
     font-weight: 700;
   }
 
-  .app-sidebar {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    bottom: 0 !important;
-    height: 100vh !important;
-    height: 100dvh !important;
-    width: 280px !important;
-    max-width: 85vw !important;
-    z-index: 99999 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-    transform: translateX(-100%) !important;
-    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5);
-  }
-
-  .app-shell.sidebar-open .app-sidebar {
-    transform: translateX(0) !important;
-  }
-
-  .mobile-sidebar-backdrop {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 9998;
-  }
-
-  .app-shell.sidebar-open .mobile-sidebar-backdrop {
-    display: block !important;
-  }
+  /* Mobile sidebar: handled by AppLayout wrapper div transform. Removed duplicate
+     .app-sidebar position/transform rules that conflicted with parent slide-in. */
 
 
   .table-responsive-wrapper {
@@ -10872,6 +11024,108 @@ button:focus-visible {
   background: transparent !important;
   -webkit-appearance: none !important;
   appearance: none !important;
+}
+
+/* Premium theme end-cap: keep shell surfaces unified after legacy overrides. */
+html[data-theme="dark"],
+html[data-theme="dark"] body,
+html[data-theme="dark"] #root,
+html[data-theme="dark"] .app-shell {
+  background:
+    radial-gradient(circle at 20% -18%, rgba(20, 184, 166, 0.13), transparent 32rem),
+    radial-gradient(circle at 82% 0%, rgba(56, 189, 248, 0.08), transparent 28rem),
+    linear-gradient(135deg, #090d12 0%, #0a1016 45%, #080b10 100%) !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="light"],
+html[data-theme="light"] body,
+html[data-theme="light"] #root,
+html[data-theme="light"] .app-shell {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f6fa 48%, #f6f8fb 100%) !important;
+  color: var(--text) !important;
+}
+
+.app-main {
+  background: transparent !important;
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--border) 64%, transparent) !important;
+}
+
+.app-topbar {
+  background: color-mix(in srgb, var(--surface) 86%, transparent) !important;
+  border-color: color-mix(in srgb, var(--border) 76%, transparent) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.035) inset, 0 14px 36px -30px rgba(0, 0, 0, 0.72) !important;
+  backdrop-filter: blur(22px) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(135%) !important;
+}
+
+/* Sidebar visual theming — canonical block (kept); duplicates below removed. */
+.app-sidebar {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--sidebar-bg) 94%, var(--accent) 6%), var(--sidebar-bg)) !important;
+  border-color: color-mix(in srgb, var(--border) 82%, transparent) !important;
+  box-shadow: 1px 0 0 rgba(255, 255, 255, 0.035) inset, 18px 0 44px -34px rgba(0, 0, 0, 0.76) !important;
+  backdrop-filter: blur(22px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(130%) !important;
+}
+
+html[data-theme="light"] .app-sidebar {
+  background: linear-gradient(180deg, #ffffff, var(--sidebar-bg)) !important;
+  box-shadow: 1px 0 0 rgba(255, 255, 255, 0.9) inset, 18px 0 38px -34px rgba(20, 32, 43, 0.30) !important;
+}
+
+.sidebar-nav-button[data-active="true"] {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 17%, transparent), color-mix(in srgb, var(--accent2) 10%, transparent)) !important;
+  border-color: color-mix(in srgb, var(--accent) 38%, transparent) !important;
+  color: var(--text) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent) inset, 0 12px 26px -22px color-mix(in srgb, var(--accent) 76%, transparent) !important;
+}
+
+html[data-theme="dark"] .ai-command-center-page,
+html[data-theme="dark"] .ai-center-page,
+html[data-theme="dark"] .reports-page,
+html[data-theme="dark"] .callbacks-page,
+html[data-theme="dark"] .followups-page,
+html[data-theme="dark"] .resubmit-page {
+  background: transparent !important;
+  color: var(--text) !important;
+}
+
+html[data-theme="dark"] .ai-center-header,
+html[data-theme="dark"] .ai-tool-tile,
+html[data-theme="dark"] .ai-form-card,
+html[data-theme="dark"] .ai-results-card,
+html[data-theme="dark"] .job-card,
+html[data-theme="dark"] .job-summary-card,
+html[data-theme="dark"] .activity-feed-item,
+html[data-theme="dark"] .activity-item,
+html[data-theme="dark"] .activity-card,
+html[data-theme="dark"] .feed-item,
+html[data-theme="dark"] .ai-radar-card,
+html[data-theme="dark"] .job-health-card {
+  background: color-mix(in srgb, var(--surface) 94%, transparent) !important;
+  border-color: color-mix(in srgb, var(--border) 86%, transparent) !important;
+  color: var(--text) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+html[data-theme="dark"] input,
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] select {
+  background-color: color-mix(in srgb, var(--surface2) 84%, #000 16%) !important;
+  border-color: color-mix(in srgb, var(--border) 86%, transparent) !important;
+  color: var(--text) !important;
+}
+
+@media (max-width: 900px) {
+  .app-topbar {
+    height: 64px !important;
+    min-height: 64px !important;
+  }
+
+  /* .app-sidebar background on mobile is handled by the canonical .app-sidebar block above.
+     Width/position/transform are handled by AppLayout wrapper. */
 }
 
 filter-search-shell:focus-within {

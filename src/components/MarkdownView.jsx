@@ -6,6 +6,8 @@
  * tokens so AI output reads like a native part of the product rather than
  * a generic markdown dump.
  */
+import { normalizeAiBreakTags } from '../lib/aiTextFormat'
+
 export default function MarkdownView({ content }) {
   if (!content) return null
   // A plain local counter (not state/a ref) — scoped to this single render
@@ -18,13 +20,14 @@ export default function MarkdownView({ content }) {
   // reach dangerouslySetInnerHTML below — markdown syntax chars (*, `, [, ])
   // aren't HTML-special, so escaping first doesn't interfere with the
   // substitutions that follow.
-  const escapeHtml = (str) => str
+  const escapeHtml = (str) => normalizeAiBreakTags(str, '<br>')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
 
   const formatInline = (str) => {
     return escapeHtml(str)
+      .replace(/&lt;br&gt;/gi, '<br />')
       .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer" class="text-accent font-semibold hover:underline underline-offset-2">$1 ↗</a>')
       .replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-text">$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>')

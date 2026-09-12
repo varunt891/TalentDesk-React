@@ -4,16 +4,17 @@ import { useAuth } from '../../context/AuthContext'
 import CollisionWarning from './CollisionWarning'
 import { findLocalCollisionMatches } from '../../lib/collisions'
 import { fallbackExtractSkills } from '../../lib/skillExtraction'
-import { runAiAction } from '../../lib/ai/aiClient'
+import { useOrgPreferences } from '../../lib/admin/orgPreferences'
+import { getMarketConfig } from '../../lib/marketConfig'
+import { INTERVIEW_SCHEDULED_STATUS, hasInterviewScheduledStatus, syncInterviewCallback } from '../../lib/interviewScheduling'
 import {
-  Button, Input, Textarea, FormField, Select, Combobox, Badge, Card, Icon,
+  Button, Input, Textarea, FormField, Select, Combobox, Badge, Card, Icon, TimePicker,
   useToast, Drawer, MarkdownEditor,
 } from '../ui'
 import { ensureArray } from '../../lib/candidateHealth'
 
 const STATUSES = ['Pending', 'Submitted', 'Shortlisted', 'Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired', 'Rejected', 'On Hold', 'Withdrew']
 const FEEDBACK = ['Awaiting', 'Positive', 'Negative', 'No Response']
-const WORK_AUTHS = ['US Citizen', 'Green Card', 'H1B', 'OPT/CPT', 'TN Visa', 'Other']
 
 const emptyForm = {
   first_name: '', last_name: '', email: '', phone: '', location: '',
@@ -22,7 +23,7 @@ const emptyForm = {
   job_id: '', job_title: '', client: '', rate: '', relocation: 'No',
   internal_status: 'Pending', external_status: 'Pending',
   feedback_status: 'Awaiting', priority: 'Medium',
-  interview_date: '', interview_type: '',
+  interview_date: '', interview_time: '', interview_type: '',
   fe_name: '', fe_extension: '', account_manager: '', recruiter_name: '',
   skills: [], notes: '', followup_date: '', resume_text: '',
   resume_file_key: '', resume_file_name: '', resume_file_size: null,
@@ -53,6 +54,11 @@ export default function CandidateFormDrawer({
   showToast: showToastProp,
 }) {
   const { user, profile, organization } = useAuth()
+  const roleUpper = (profile?.role || '').toUpperCase()
+  const isHigherAuthority = ['SUPERADMIN', 'ADMIN', 'OWNER', 'RECRUITMENT_MANAGER', 'ACCOUNT_MANAGER'].includes(roleUpper)
+  const orgId = organization?.id || profile?.org_id
+  const { preferences } = useOrgPreferences(orgId)
+  const market = getMarketConfig(preferences?.market)
   const { toast: pushToast } = useToast()
   const showToast = showToastProp || ((msg, type = 'success') => {
     pushToast({ tone: type === 'error' ? 'error' : type === 'warning' ? 'warning' : 'success', title: msg })
@@ -82,6 +88,7 @@ export default function CandidateFormDrawer({
   // Populate form when candidateData changes (opening edit mode)
   useEffect(() => {
     if (open) {
+      const defaultRecruiter = profile?.full_name || user?.user_metadata?.full_name || (user?.email ? user.email.split('@')[0] : '')
       if (candidateData) {
         setForm({
           first_name: candidateData.first_name || '',
@@ -89,7 +96,7 @@ export default function CandidateFormDrawer({
           email: candidateData.email || '',
           phone: candidateData.phone || '',
           location: candidateData.location || '',
-          work_auth: candidateData.work_auth || 'US Citizen',
+          work_auth: candidateData.work_auth || market.defaultWorkAuth,
           experience: candidateData.experience || '',
           linkedin: candidateData.linkedin || '',
           submission_date: candidateData.submission_date || new Date().toISOString().slice(0, 10),
@@ -103,11 +110,12 @@ export default function CandidateFormDrawer({
           feedback_status: candidateData.feedback_status || 'Awaiting',
           priority: candidateData.priority || 'Medium',
           interview_date: candidateData.interview_date || '',
+          interview_time: candidateData.interview_time || '',
           interview_type: candidateData.interview_type || '',
           fe_name: candidateData.fe_name || '',
           fe_extension: candidateData.fe_extension || '',
           account_manager: candidateData.account_manager || '',
-          recruiter_name: candidateData.recruiter_name || '',
+          recruiter_name: candidateData.recruiter_name || defaultRecruiter,
           skills: ensureArray(candidateData.skills),
           notes: candidateData.notes || '',
           followup_date: candidateData.followup_date || '',
@@ -117,12 +125,16 @@ export default function CandidateFormDrawer({
           resume_file_size: candidateData.resume_file_size || null,
         })
       } else {
-        setForm(emptyForm)
+        setForm({
+          ...emptyForm,
+          work_auth: market.defaultWorkAuth,
+          recruiter_name: defaultRecruiter,
+        })
       }
       setSkillInput('')
       setFormErrors({})
     }
-  }, [open, candidateData?.id])
+  }, [open, candidateData, market.defaultWorkAuth, profile, user])
 
   const inp = (field) => ({
     value: form[field],
@@ -131,6 +143,16 @@ export default function CandidateFormDrawer({
       if (formErrors[field]) setFormErrors(errs => { const next = { ...errs }; delete next[field]; return next })
     },
   })
+
+  const setStatusField = (field, value) => {
+    setForm(f => ({
+      ...f,
+      [field]: value,
+      interview_time: value === INTERVIEW_SCHEDULED_STATUS && !f.interview_time ? '10:00 AM' : f.interview_time,
+      interview_type: value === INTERVIEW_SCHEDULED_STATUS && !f.interview_type ? 'Video Call' : f.interview_type,
+    }))
+    if (formErrors[field]) setFormErrors(errs => { const next = { ...errs }; delete next[field]; return next })
+  }
 
   const addSkill = (e) => {
     if (e.key === 'Enter' && skillInput.trim()) {
@@ -169,7 +191,7 @@ export default function CandidateFormDrawer({
       } else {
         showToast('No skills detected in resume', 'error')
       }
-    } catch (err) {
+    } catch {
       const fallback = fallbackExtractSkills(form.resume_text)
       if (fallback.length > 0) {
         setForm(f => ({ ...f, skills: Array.from(new Set([...(f.skills || []), ...fallback])) }))
@@ -189,20 +211,28 @@ export default function CandidateFormDrawer({
       const res = await apiRequest('/ai/parse-resume', { method: 'POST', body: { resumeText: form.resume_text } })
       if (res?.profile) {
         const p = res.profile
-        setForm(prev => ({
-          ...prev,
-          first_name: p.first_name || prev.first_name,
-          last_name: p.last_name || prev.last_name,
-          email: p.email || prev.email,
-          phone: p.phone || prev.phone,
-          location: p.location || prev.location,
-          experience: p.experience != null ? String(p.experience) : prev.experience,
-          work_auth: p.work_auth || prev.work_auth,
-          rate: p.rate || prev.rate,
-          skills: Array.isArray(p.skills) && p.skills.length > 0
-            ? Array.from(new Set([...(prev.skills || []), ...p.skills]))
-            : prev.skills,
-        }))
+        const candTitle = p.candidate_title || p.job_title
+        setForm(prev => {
+          let updatedNotes = prev.notes || ''
+          if (candTitle && !updatedNotes.includes(candTitle)) {
+            updatedNotes = updatedNotes ? `Resume Designation: ${candTitle}\n${updatedNotes}` : `Resume Designation: ${candTitle}`
+          }
+          return {
+            ...prev,
+            first_name: p.first_name || prev.first_name,
+            last_name: p.last_name || prev.last_name,
+            email: p.email || prev.email,
+            phone: p.phone || prev.phone,
+            location: p.location || prev.location,
+            experience: p.experience != null ? String(p.experience) : prev.experience,
+            work_auth: p.work_auth || prev.work_auth,
+            rate: p.rate || prev.rate,
+            notes: updatedNotes,
+            skills: Array.isArray(p.skills) && p.skills.length > 0
+              ? Array.from(new Set([...(prev.skills || []), ...p.skills]))
+              : prev.skills,
+          }
+        })
         showToast('⚡ AI Auto-Filled candidate name, email, location & skills!')
       } else {
         throw new Error(res?.error || 'Could not parse profile details.')
@@ -230,24 +260,32 @@ export default function CandidateFormDrawer({
       const res = await apiUpload('/upload/resume', formData)
       if (res?.success) {
         const p = res.profile || {}
-        setForm(prev => ({
-          ...prev,
-          resume_text: res.extractedText || prev.resume_text,
-          resume_file_key: res.resume_file_key || prev.resume_file_key,
-          resume_file_name: res.resume_file_name || prev.resume_file_name,
-          resume_file_size: res.resume_file_size || prev.resume_file_size,
-          first_name: p.first_name || prev.first_name,
-          last_name: p.last_name || prev.last_name,
-          email: p.email || prev.email,
-          phone: p.phone || prev.phone,
-          location: p.location || prev.location,
-          experience: p.experience != null ? String(p.experience) : prev.experience,
-          work_auth: p.work_auth || prev.work_auth,
-          rate: p.rate || prev.rate,
-          skills: Array.isArray(p.skills) && p.skills.length > 0
-            ? Array.from(new Set([...(prev.skills || []), ...p.skills]))
-            : prev.skills,
-        }))
+        const candTitle = p.candidate_title || p.job_title
+        setForm(prev => {
+          let updatedNotes = prev.notes || ''
+          if (candTitle && !updatedNotes.includes(candTitle)) {
+            updatedNotes = updatedNotes ? `Resume Designation: ${candTitle}\n${updatedNotes}` : `Resume Designation: ${candTitle}`
+          }
+          return {
+            ...prev,
+            resume_text: res.extractedText || prev.resume_text,
+            resume_file_key: res.resume_file_key || prev.resume_file_key,
+            resume_file_name: res.resume_file_name || prev.resume_file_name,
+            resume_file_size: res.resume_file_size || prev.resume_file_size,
+            first_name: p.first_name || prev.first_name,
+            last_name: p.last_name || prev.last_name,
+            email: p.email || prev.email,
+            phone: p.phone || prev.phone,
+            location: p.location || prev.location,
+            experience: p.experience != null ? String(p.experience) : prev.experience,
+            work_auth: p.work_auth || prev.work_auth,
+            rate: p.rate || prev.rate,
+            notes: updatedNotes,
+            skills: Array.isArray(p.skills) && p.skills.length > 0
+              ? Array.from(new Set([...(prev.skills || []), ...p.skills]))
+              : prev.skills,
+          }
+        })
         showToast(res.resume_file_key ? `⚡ Resume saved & profile auto-filled from ${file.name}!` : `⚡ Text & profile auto-filled from ${file.name}!`)
       } else {
         throw new Error(res?.error || 'Failed to parse document text.')
@@ -277,6 +315,9 @@ export default function CandidateFormDrawer({
     const errors = {}
     if (!form.first_name) errors.first_name = 'First name is required'
     if (!form.job_id) errors.job_id = 'Job ID is required'
+    if (hasInterviewScheduledStatus(form) && !form.interview_date) errors.interview_date = 'Interview date is required'
+    if (hasInterviewScheduledStatus(form) && !form.interview_time) errors.interview_time = 'Interview time is required'
+    if (hasInterviewScheduledStatus(form) && !form.interview_type) errors.interview_type = 'Interview type is required'
     if (Object.keys(errors).length) {
       setFormErrors(errors)
       showToast(Object.values(errors).join(' · '), 'error')
@@ -287,13 +328,27 @@ export default function CandidateFormDrawer({
     setFormErrors({})
     setSaving(true)
 
-    const payload = cleanDates(form)
+    const defaultRecruiter = profile?.full_name || user?.user_metadata?.full_name || (user?.email ? user.email.split('@')[0] : '')
+    const recruiterToSave = isHigherAuthority
+      ? (form.recruiter_name || defaultRecruiter)
+      : (isEdit ? (candidateData?.recruiter_name || defaultRecruiter) : defaultRecruiter)
+
+    const payload = {
+      ...cleanDates(form),
+      recruiter_name: recruiterToSave,
+    }
 
     try {
       if (isEdit) {
         const { data, error } = await db.from('candidates').update(payload).eq('id', editingId).select()
         if (error) throw error
         const updated = Array.isArray(data) ? data[0] : data
+        const sync = await syncInterviewCallback(updated || { ...candidateData, ...payload }, {
+          userId: user?.id,
+          orgId,
+          timezone: organization?.timezone || preferences?.timezone,
+        })
+        if (sync.error) throw sync.error
         showToast('Candidate updated!')
         onSaved?.(updated)
         onClose()
@@ -301,10 +356,16 @@ export default function CandidateFormDrawer({
         const { data, error } = await db.from('candidates').insert([{
           ...payload,
           user_id: user.id,
-          org_id: profile?.org_id,
+          org_id: orgId,
         }]).select()
         if (error) throw error
         const created = Array.isArray(data) ? data[0] : data
+        const sync = await syncInterviewCallback(created || payload, {
+          userId: user?.id,
+          orgId,
+          timezone: organization?.timezone || preferences?.timezone,
+        })
+        if (sync.error) throw sync.error
         showToast('Candidate added!')
         onSaved?.(created)
         onClose()
@@ -334,6 +395,18 @@ export default function CandidateFormDrawer({
       }
     >
       <div className="flex flex-col gap-5">
+        <div className="rounded-[var(--radius-md)] border border-accent/25 bg-accent/5 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-8 h-8 rounded-[var(--radius-sm)] bg-accent/12 text-accent flex items-center justify-center shrink-0">
+              <Icon name="building" size={15} />
+            </span>
+            <div className="min-w-0">
+              <div className="text-xs font-bold text-text">{market.shortLabel} profile</div>
+              <div className="text-[11px] text-text3 leading-snug">{market.descriptionHint}</div>
+            </div>
+          </div>
+          <Badge tone="accent" size="sm" className="self-start sm:self-center">{market.currency}</Badge>
+        </div>
 
         {/* Resume & AI */}
         <div>
@@ -374,12 +447,12 @@ export default function CandidateFormDrawer({
             </FormField>
             <FormField label="Last Name"><Input {...inp('last_name')} placeholder="Smith" /></FormField>
             <FormField label="Email"><Input {...inp('email')} type="email" placeholder="john@email.com" /></FormField>
-            <FormField label="Phone"><Input {...inp('phone')} placeholder="+1 555 000 0000" /></FormField>
+            <FormField label="Phone"><Input {...inp('phone')} placeholder={market.phonePlaceholder} /></FormField>
             <FormField label="Location" required>
-              <Combobox value={form.location} onChange={v => setForm(f => ({ ...f, location: v }))} options={locationOptions} placeholder="City, State" />
+              <Combobox value={form.location} onChange={v => setForm(f => ({ ...f, location: v }))} options={locationOptions} placeholder={market.candidateLocationPlaceholder} />
             </FormField>
-            <FormField label="Work Auth">
-              <Select value={form.work_auth} onChange={v => setForm(f => ({ ...f, work_auth: v }))} options={WORK_AUTHS.map(o => ({ value: o, label: o }))} />
+            <FormField label={market.workAuthLabel}>
+              <Select value={form.work_auth} onChange={v => setForm(f => ({ ...f, work_auth: v }))} options={market.workAuthOptions.map(o => ({ value: o, label: o }))} />
             </FormField>
             <FormField label="Experience (yrs)"><Input {...inp('experience')} type="number" placeholder="5" /></FormField>
             <FormField label="LinkedIn"><Input {...inp('linkedin')} placeholder="linkedin.com/in/..." /></FormField>
@@ -400,7 +473,7 @@ export default function CandidateFormDrawer({
               <Combobox value={form.job_title} onChange={v => setForm(f => ({ ...f, job_title: v }))} options={jobTitleOptions} placeholder="Software Engineer" />
             </FormField>
             <FormField label="Client"><Input {...inp('client')} placeholder="Acme Corp" /></FormField>
-            <FormField label="Bill Rate"><Input {...inp('rate')} placeholder="$85/hr" /></FormField>
+            <FormField label={market.candidateRateLabel}><Input {...inp('rate')} placeholder={market.candidateRatePlaceholder} /></FormField>
             <FormField label="Relocation">
               <Select value={form.relocation} onChange={v => setForm(f => ({ ...f, relocation: v }))} options={['Yes', 'No', 'Negotiable'].map(o => ({ value: o, label: o }))} />
             </FormField>
@@ -412,10 +485,10 @@ export default function CandidateFormDrawer({
           <FormSectionTitle>Status Tracking</FormSectionTitle>
           <div className="grid sm:grid-cols-2 gap-3.5">
             <FormField label="Internal Status">
-              <Select value={form.internal_status} onChange={v => setForm(f => ({ ...f, internal_status: v }))} options={STATUSES.map(s => ({ value: s, label: s }))} />
+              <Select value={form.internal_status} onChange={v => setStatusField('internal_status', v)} options={STATUSES.map(s => ({ value: s, label: s }))} />
             </FormField>
             <FormField label="External Status">
-              <Select value={form.external_status} onChange={v => setForm(f => ({ ...f, external_status: v }))} options={STATUSES.map(s => ({ value: s, label: s }))} />
+              <Select value={form.external_status} onChange={v => setStatusField('external_status', v)} options={STATUSES.map(s => ({ value: s, label: s }))} />
             </FormField>
             <FormField label="Feedback Status">
               <Select value={form.feedback_status} onChange={v => setForm(f => ({ ...f, feedback_status: v }))} options={FEEDBACK.map(o => ({ value: o, label: o }))} />
@@ -423,25 +496,54 @@ export default function CandidateFormDrawer({
             <FormField label="Priority">
               <Select value={form.priority} onChange={v => setForm(f => ({ ...f, priority: v }))} options={['High', 'Medium', 'Low'].map(o => ({ value: o, label: o }))} />
             </FormField>
-            <FormField label="Interview Date"><Input {...inp('interview_date')} type="date" /></FormField>
-            <FormField label="Interview Type">
-              <Select value={form.interview_type} onChange={v => setForm(f => ({ ...f, interview_type: v }))} options={['Phone Screen', 'Video Call', 'On-site', 'Panel', 'Technical'].map(o => ({ value: o, label: o }))} placeholder="Select type..." />
+            <FormField label="Interview Date" required={hasInterviewScheduledStatus(form)} error={formErrors.interview_date}>
+              <Input {...inp('interview_date')} type="date" error={!!formErrors.interview_date} />
+            </FormField>
+            <FormField label="Interview Time" required={hasInterviewScheduledStatus(form)} error={formErrors.interview_time}>
+              <TimePicker
+                value={form.interview_time || ''}
+                onChange={v => {
+                  setForm(f => ({ ...f, interview_time: v }))
+                  if (formErrors.interview_time) setFormErrors(errs => { const next = { ...errs }; delete next.interview_time; return next })
+                }}
+                placeholder="Select time..."
+              />
+            </FormField>
+            <FormField label="Interview Type" required={hasInterviewScheduledStatus(form)} error={formErrors.interview_type}>
+              <Select
+                value={form.interview_type}
+                onChange={v => {
+                  setForm(f => ({ ...f, interview_type: v }))
+                  if (formErrors.interview_type) setFormErrors(errs => { const next = { ...errs }; delete next.interview_type; return next })
+                }}
+                options={['Phone Screen', 'Video Call', 'On-site', 'Panel', 'Technical'].map(o => ({ value: o, label: o }))}
+                placeholder="Select type..."
+              />
             </FormField>
           </div>
         </div>
 
         {/* Front End / Ownership */}
         <div>
-          <FormSectionTitle>Front End / Ownership</FormSectionTitle>
+          <FormSectionTitle>{market.ownershipTitle}</FormSectionTitle>
           <div className="grid sm:grid-cols-2 gap-3.5">
-            <FormField label="FE Name" required>
-              <Combobox value={form.fe_name} onChange={v => setForm(f => ({ ...f, fe_name: v }))} options={feOptions} placeholder="Sarah K." />
+            <FormField label={market.ownerLabel} required>
+              <Combobox value={form.fe_name} onChange={v => setForm(f => ({ ...f, fe_name: v }))} options={feOptions} placeholder={market.ownerPlaceholder} />
             </FormField>
-            <FormField label="Extension"><Input {...inp('fe_extension')} placeholder="x204" /></FormField>
-            <FormField label="Account Manager"><Input {...inp('account_manager')} placeholder="Mike R." /></FormField>
-            <FormField label="Recruiter">
-              <Combobox value={form.recruiter_name} onChange={v => setForm(f => ({ ...f, recruiter_name: v }))} options={recruiterOptions} placeholder="Your name" />
-            </FormField>
+            <FormField label={market.ownerExtensionLabel}><Input {...inp('fe_extension')} placeholder={market.ownerExtensionPlaceholder} /></FormField>
+            <FormField label="Account Manager"><Input {...inp('account_manager')} placeholder={market.accountManagerPlaceholder} /></FormField>
+            {isHigherAuthority ? (
+              <FormField label="Recruiter">
+                <Combobox value={form.recruiter_name} onChange={v => setForm(f => ({ ...f, recruiter_name: v }))} options={recruiterOptions} placeholder="Select recruiter..." />
+              </FormField>
+            ) : (
+              <FormField label="Recruiter">
+                <div className="h-10 px-3 flex items-center justify-between rounded-[var(--radius-sm)] border border-border bg-surface2 text-text text-sm font-medium">
+                  <span className="truncate">{form.recruiter_name || profile?.full_name || user?.user_metadata?.full_name || (user?.email ? user.email.split('@')[0] : '')}</span>
+                  <span className="text-[10px] uppercase font-bold text-accent px-1.5 py-0.5 rounded bg-accent/10 shrink-0">Auto-filled</span>
+                </div>
+              </FormField>
+            )}
           </div>
         </div>
 
@@ -474,7 +576,7 @@ export default function CandidateFormDrawer({
                 />
               </div>
             </FormField>
-            <FormField label="Notes"><Textarea {...inp('notes')} placeholder="Internal notes..." rows={3} /></FormField>
+            <FormField label="Notes"><Textarea {...inp('notes')} placeholder={market.notesPlaceholder} rows={3} /></FormField>
             <FormField label="Follow-up Date"><Input {...inp('followup_date')} type="date" /></FormField>
           </div>
         </div>

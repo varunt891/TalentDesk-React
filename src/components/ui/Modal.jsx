@@ -20,10 +20,10 @@ function useOverlayBehavior(open, onClose) {
 function Header({ title, subtitle, onClose, isMaximized, onToggleMaximize }) {
   if (!title && !onClose) return null
   return (
-    <div className="flex items-start justify-between gap-3 px-6 py-5 border-b border-border shrink-0">
+    <div className="flex items-start justify-between gap-3 px-4 sm:px-6 py-4 sm:py-5 border-b border-border shrink-0">
       <div className="min-w-0">
-        {title && <h2 className="text-[17px] font-bold text-text tracking-tight truncate">{title}</h2>}
-        {subtitle && <p className="text-[13px] text-text3 mt-1 leading-relaxed">{subtitle}</p>}
+        {title && <h2 className="text-[16px] sm:text-[17px] font-bold text-text tracking-tight truncate">{title}</h2>}
+        {subtitle && <p className="text-xs sm:text-[13px] text-text3 mt-1 leading-relaxed">{subtitle}</p>}
       </div>
       <div className="flex items-center gap-1 shrink-0">
         {onToggleMaximize && (
@@ -55,7 +55,7 @@ export default function Modal({ open, onClose, title, subtitle, size = 'md', foo
 
   return createPortal(
     <div
-      className="fixed inset-0 flex items-center justify-center p-4 bg-[#0b0d14]/55 backdrop-blur-sm"
+      className="fixed inset-0 flex items-center justify-center p-3 sm:p-4 bg-[#0b0d14]/55 backdrop-blur-sm"
       style={{ zIndex: 'var(--z-modal)' }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.() }}
     >
@@ -70,8 +70,8 @@ export default function Modal({ open, onClose, title, subtitle, size = 'md', foo
         {hideHeader ? children : (
           <>
             <Header title={title} subtitle={subtitle} onClose={onClose} />
-            <div className="px-6 py-5 overflow-y-auto flex-1">{children}</div>
-            {footer && <div className="px-6 py-4 border-t border-border bg-surface2/50 rounded-b-[var(--radius-lg)] flex items-center justify-end gap-2 shrink-0">{footer}</div>}
+            <div className="px-4 sm:px-6 py-4 sm:py-5 overflow-y-auto flex-1">{children}</div>
+            {footer && <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-t border-border bg-surface2/50 rounded-b-[var(--radius-lg)] flex items-center justify-end gap-2 shrink-0 flex-wrap">{footer}</div>}
           </>
         )}
       </div>
@@ -119,8 +119,8 @@ export function Drawer({ open, onClose, title, subtitle, size = 'md', side = 'ri
               isMaximized={localMaximized}
               onToggleMaximize={allowMaximize ? () => setLocalMaximized(!localMaximized) : null}
             />
-            <div className="px-6 py-5 overflow-y-auto flex-1">{children}</div>
-            {footer && <div className="px-6 py-4 border-t border-border bg-surface2/50 flex items-center justify-end gap-2 shrink-0">{footer}</div>}
+            <div className="px-4 sm:px-6 py-4 sm:py-5 overflow-y-auto flex-1">{children}</div>
+            {footer && <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-t border-border bg-surface2/50 flex items-center justify-end gap-2 shrink-0 flex-wrap">{footer}</div>}
           </>
         )}
       </div>

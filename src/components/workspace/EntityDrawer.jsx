@@ -32,9 +32,9 @@ export default function EntityDrawer({
   return (
     <Drawer open={open} onClose={onClose} size={isMaximized ? 'full' : size} hideHeader>
       <div className="flex flex-col h-full">
-        <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-border shrink-0">
+        <div className="flex items-start justify-between gap-3 px-4 sm:px-5 py-3.5 sm:py-4 border-b border-border shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            {avatarName && <Avatar name={avatarName} size="lg" />}
+            {avatarName && <Avatar name={avatarName} size="lg" className="shrink-0" />}
             <div className="min-w-0">
               {eyebrow && <div className="text-[10px] font-bold text-accent uppercase tracking-wide mb-0.5">{eyebrow}</div>}
               <div className="flex items-center gap-2 flex-wrap">
@@ -66,17 +66,17 @@ export default function EntityDrawer({
         </div>
 
         {tabs && (
-          <div className="px-5 pt-2 shrink-0">
+          <div className="px-4 sm:px-5 pt-2 shrink-0 overflow-x-auto">
             <Tabs items={tabs} value={activeTab} onChange={onTabChange} />
           </div>
         )}
 
-        <div className={cn('flex-1 overflow-y-auto min-w-0 px-5 py-4', !tabs && 'pt-4')}>
+        <div className={cn('flex-1 overflow-y-auto min-w-0 px-4 sm:px-5 py-4', !tabs && 'pt-4')}>
           {children}
         </div>
 
         {actions && (
-          <div className="px-5 py-3.5 border-t border-border flex items-center justify-end gap-2 shrink-0">
+          <div className="px-4 sm:px-5 py-3 border-t border-border flex flex-wrap items-center justify-end gap-2 shrink-0 bg-surface">
             {actions}
           </div>
         )}

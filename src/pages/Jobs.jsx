@@ -20,6 +20,7 @@ import { useAIGovernance } from '../lib/ai/governance'
 import { runAiAction } from '../lib/ai/aiClient'
 import { logUsageEvent } from '../lib/ai/usage'
 import MarkdownView from '../components/MarkdownView'
+import { normalizeAiPlainText } from '../lib/aiTextFormat'
 
 function ensureArray(val) {
   if (Array.isArray(val)) return val
@@ -530,7 +531,7 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
         selectable
         selectedIds={selected}
         onSelectionChange={setSelected}
-        onRowClick={(j) => openFullPage(j)}
+        onRowClick={(j) => { setShowDetail(j); setPreviewTab('overview') }}
         emptyState={
           <EmptyState
             icon="jobs"
@@ -557,20 +558,20 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
             align="end"
             trigger={(p) => <MenuTrigger {...p} />}
             items={[
-              { label: 'Open full job page', icon: 'arrowUpRight', onClick: () => openFullPage(j) },
               { label: 'Quick preview', icon: 'eye', onClick: () => { setShowDetail(j); setPreviewTab('overview') } },
+              { label: 'View full details', icon: 'arrowUpRight', onClick: () => openFullPage(j) },
               { label: 'View pipeline / matches', icon: 'pipeline', onClick: () => { setShowDetail(j); setPreviewTab('pipeline') } },
-              { label: 'Edit', icon: 'edit', onClick: () => openEdit(j) },
+              { label: 'Edit job', icon: 'edit', onClick: () => openEdit(j) },
               'divider',
               { label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleteId(j.id) },
             ]}
           />
         )}
         contextMenuItems={(j) => [
-          { label: 'Open full job page', icon: 'arrowUpRight', onClick: () => openFullPage(j) },
           { label: 'Quick preview', icon: 'eye', onClick: () => { setShowDetail(j); setPreviewTab('overview') } },
+          { label: 'View full details', icon: 'arrowUpRight', onClick: () => openFullPage(j) },
           { label: 'View pipeline / matches', icon: 'pipeline', onClick: () => { setShowDetail(j); setPreviewTab('pipeline') } },
-          { label: 'Edit', icon: 'edit', onClick: () => openEdit(j) },
+          { label: 'Edit job', icon: 'edit', onClick: () => openEdit(j) },
           'divider',
           { label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleteId(j.id) },
         ]}
@@ -601,9 +602,9 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
             onTabChange={setPreviewTab}
             actions={
               <>
-                <Button variant="ghost" leftIcon="arrowUpRight" onClick={() => { const job = showDetail; setShowDetail(null); openFullPage(job) }}>Full Page</Button>
-                <Button variant="secondary" onClick={() => { const job = showDetail; setShowDetail(null); openEdit(job) }}>Edit Job</Button>
-                <Button variant="danger" onClick={() => { setShowDetail(null); setDeleteId(showDetail.id) }}>Delete Job</Button>
+                <Button variant="secondary" leftIcon="edit" onClick={() => { const job = showDetail; setShowDetail(null); openEdit(job) }}>Edit Job</Button>
+                <Button variant="danger" leftIcon="trash" onClick={() => { setShowDetail(null); setDeleteId(showDetail.id) }}>Delete Job</Button>
+                <Button variant="primary" leftIcon="arrowUpRight" onClick={() => { const job = showDetail; setShowDetail(null); openFullPage(job) }}>View Full Details</Button>
               </>
             }
           >
@@ -929,7 +930,7 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
               leftIcon="copy"
               onClick={() => {
                 if (expandedFieldModal?.content) {
-                  navigator.clipboard.writeText(expandedFieldModal.content)
+                  navigator.clipboard.writeText(normalizeAiPlainText(expandedFieldModal.content))
                   showToast('Copied to clipboard!')
                 }
               }}

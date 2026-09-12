@@ -145,12 +145,12 @@ export default function JobDetail({ jobId, onNavigate }) {
 
   const submissionColumns = [
     {
-      key: 'name', header: 'Candidate', sortable: true, sortValue: (c) => `${c.last_name || ''} ${c.first_name || ''}`,
+      key: 'name', header: 'Candidate', width: 200, sortable: true, sortValue: (c) => `${c.last_name || ''} ${c.first_name || ''}`,
       render: (c) => (
         <span className="flex items-center gap-2 min-w-0">
-          <Avatar name={`${c.first_name || ''} ${c.last_name || ''}`.trim() || '?'} size="xs" />
+          <Avatar name={`${c.first_name || ''} ${c.last_name || ''}`.trim() || '?'} size="xs" className="shrink-0" />
           <span className="min-w-0">
-            <strong className="text-[12.5px] text-text font-semibold truncate block">{c.first_name} {c.last_name}</strong>
+            <strong className="text-[12.5px] text-text font-semibold whitespace-nowrap block">{c.first_name} {c.last_name}</strong>
             <small className="block text-[11px] text-text3 truncate leading-tight">{c.email || 'No email'}</small>
           </span>
         </span>

@@ -372,8 +372,9 @@ router.post('/:table', async (req, res, next) => {
     const table = req.params.table
     const config = configFor(table)
     if (config.readOnly) return res.status(405).json({ error: 'This table is read-only' })
-    if (config.adminWrite && !['admin', 'superadmin'].includes(req.profile.role)) {
-      return requireAdmin(req, res, () => { })
+    if (config.adminWrite) {
+      const r = (req.memberRole || req.profile.role || '').toUpperCase()
+      if (!['ADMIN', 'SUPERADMIN', 'OWNER'].includes(r)) return requireAdmin(req, res, () => {})
     }
     if (table === 'jobs' && !canManageJobAssignment(req)) {
       return res.status(403).json({ error: 'Only account managers and above can create job requisitions.' })
@@ -422,8 +423,9 @@ router.put('/:table/:id', async (req, res, next) => {
     const table = req.params.table
     const config = configFor(table)
     if (config.readOnly) return res.status(405).json({ error: 'This table is read-only' })
-    if (config.adminWrite && !['admin', 'superadmin'].includes(req.profile.role)) {
-      return requireAdmin(req, res, () => { })
+    if (config.adminWrite) {
+      const r = (req.memberRole || req.profile.role || '').toUpperCase()
+      if (!['ADMIN', 'SUPERADMIN', 'OWNER'].includes(r)) return requireAdmin(req, res, () => {})
     }
 
     if (table === 'jobs' && !canManageJobAssignment(req)) {
@@ -458,8 +460,9 @@ router.delete('/:table/:id', async (req, res, next) => {
     const table = req.params.table
     const config = configFor(table)
     if (config.readOnly) return res.status(405).json({ error: 'This table is read-only' })
-    if (config.adminWrite && !['admin', 'superadmin'].includes(req.profile.role)) {
-      return requireAdmin(req, res, () => { })
+    if (config.adminWrite) {
+      const r = (req.memberRole || req.profile.role || '').toUpperCase()
+      if (!['ADMIN', 'SUPERADMIN', 'OWNER'].includes(r)) return requireAdmin(req, res, () => {})
     }
 
     const model = prisma[config.model]

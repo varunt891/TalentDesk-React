@@ -18,6 +18,45 @@ export default function Signup() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const inviteToken = searchParams.get('invite_token')
+
+  // ── State ── (must be declared before any conditional returns per React Rules of Hooks)
+  const [step, setStep] = useState(inviteToken ? 2 : 1)
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [inviteDetails, setInviteDetails] = useState(null)
+
+  // Company fields (only needed for non-invite flow)
+  const [companyName, setCompanyName] = useState('')
+  const [domain, setDomain] = useState('')
+  const [industry, setIndustry] = useState(INDUSTRY_OPTIONS[0].value)
+  const [website, setWebsite] = useState('')
+
+  // Verify invite token on mount and pre-fill email
+  useEffect(() => {
+    if (!inviteToken) return
+    organizationApi.verifyInvitation(inviteToken)
+      .then(res => {
+        if (res?.data) {
+          setInviteDetails(res.data)
+          if (res.data.email) setEmail(res.data.email)
+        }
+      })
+      .catch(() => {
+        setError('This invitation link is invalid or has expired.')
+      })
+  }, [inviteToken])
+
+  // Step 1 → Step 2 handler (non-invite flow only)
+  const handleStep1Next = (e) => {
+    e.preventDefault()
+    if (!companyName.trim()) { setError('Company name is required'); return }
+    setError('')
+    setStep(2)
+  }
+
   // If no inviteToken is present, platform personnel/members cannot self-register without an invitation
   if (!inviteToken) {
     return (

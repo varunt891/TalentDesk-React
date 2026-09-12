@@ -65,8 +65,8 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
   // fuzzy title/client search only surfaces jobs you can already see there.
   useEffect(() => {
     if (!searchOpen) return
-    db.from('jobs').select('*').then(({ data }) => setSearchJobs(data || [])).catch(() => {})
-    db.from('candidates').select('*').then(({ data }) => setSearchCandidates(data || [])).catch(() => {})
+    db.from('jobs').select('*').then(({ data }) => setSearchJobs(data || [])).catch(() => { })
+    db.from('candidates').select('*').then(({ data }) => setSearchCandidates(data || [])).catch(() => { })
   }, [searchOpen])
 
   // Exact Job ID lookup — deliberately org-wide (bypasses owner-scoping via
@@ -82,7 +82,7 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
     let cancelled = false
     db.from('jobs').select('*').eq('job_id', query).param('all_owners', 'true').then(({ data }) => {
       if (!cancelled) setExactJobMatch((data && data[0]) || null)
-    }).catch(() => {})
+    }).catch(() => { })
     return () => { cancelled = true }
   }, [searchQuery, searchOpen])
 
@@ -218,7 +218,7 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
 
   return (
     <header
-      className="h-[72px] shrink-0 flex items-center justify-between gap-3 px-4 sm:px-5 border-b border-border bg-surface/90 backdrop-blur-xl shadow-xs relative z-[var(--z-sticky)]"
+      className="app-topbar h-[72px] shrink-0 flex items-center justify-between gap-3 px-4 sm:px-5 border-b border-border bg-surface/90 backdrop-blur-xl shadow-xs relative z-[var(--z-sticky)]"
       style={searchOpen ? { zIndex: 100000 } : undefined}
     >
       {/* Left section: Mobile menu button + Pixel Robot Playground in left TopBar area */}
@@ -235,7 +235,7 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
         </button>
 
         {/* Pixel Robot playground inside the left TopBar space */}
-        <div className="w-36 sm:w-56 h-full relative flex items-center overflow-visible">
+        <div className="hidden sm:flex w-36 sm:w-56 h-full relative items-center overflow-visible">
           {currentPage !== 'ai_center' && (
             <PixelRobot
               currentPage={currentPage}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { apiRequest } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import MarkdownView from './MarkdownView'
+import { normalizeAiPlainText } from '../lib/aiTextFormat'
 
 export default function SubmissionPacketModal({ isOpen, onClose, candidate, job }) {
   const { organization } = useAuth()
@@ -48,13 +49,14 @@ export default function SubmissionPacketModal({ isOpen, onClose, candidate, job 
   }
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(packetText)
+    navigator.clipboard.writeText(normalizeAiPlainText(packetText))
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
 
   const renderMarkdownToHtml = (markdown) => {
     if (!markdown) return ''
+    const cleanMarkdown = normalizeAiPlainText(markdown)
 
     const formatInline = (str) => {
       return str
@@ -63,7 +65,7 @@ export default function SubmissionPacketModal({ isOpen, onClose, candidate, job 
         .replace(/`([^`]+)`/g, '<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-family:monospace;font-size:12px;color:#0f172a;">$1</code>')
     }
 
-    const lines = markdown.split('\n')
+    const lines = cleanMarkdown.split('\n')
     let html = ''
     let inList = false
     let inTable = false

@@ -6,30 +6,26 @@ import { Button, Card, PageHeader, Tabs, EmptyState, SearchBar, Badge, Modal, Se
 import { Icon } from '../components/ui/icons'
 import { CHART_COLORS } from '../lib/chartColors'
 
-const ROLE_OPTIONS = ['recruiter', 'account_manager', 'recruitment_manager', 'operations_manager', 'manager', 'admin', 'employee']
-  .map(role => ({ value: role, label: role.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) }))
+import { ALL_SYSTEM_ROLES } from '../lib/admin/permissions'
 
-const emptyForm = { full_name: '', email: '', phone: '', extension: '', role: 'recruiter', department: '', team: '' }
+const ROLE_OPTIONS = ALL_SYSTEM_ROLES.map(r => ({ value: r.value, label: r.label }))
+
+const emptyForm = { full_name: '', email: '', phone: '', extension: '', role: 'RECRUITER', department: '', team: '' }
 
 const AVATAR_PALETTE = CHART_COLORS
 
 function getMemberDepartment(member) {
   if (member.department?.trim()) return member.department.trim()
-  if (['admin', 'superadmin'].includes(member.role)) return 'Management'
+  if (['ADMIN', 'SUPERADMIN', 'OWNER', 'admin', 'superadmin', 'owner'].includes(member.role)) return 'Management'
   return 'General'
 }
 
 function formatRole(member) {
-  if (!member) return 'Recruiter'
-  const role = member.role
-  if (role === 'recruitment_manager') return 'Recruitment Manager'
-  if (role === 'account_manager') return 'Account Manager'
-  if (role === 'operations_manager') return 'Operations Manager'
-  if (role === 'superadmin') return 'Superadmin'
-  if (role === 'admin') return 'Admin'
-  if (role === 'recruiter') return 'Recruiter'
-  if (role === 'manager') return (member.manager_id || (member.team && member.team.includes('AM'))) ? 'Account Manager' : 'Recruitment Manager'
-  return role ? role.replace(/_/g, ' ') : 'Recruiter'
+  if (!member || !member.role) return 'Recruiter'
+  const key = String(member.role).toUpperCase()
+  const found = ALL_SYSTEM_ROLES.find(r => r.value === key)
+  if (found) return found.label
+  return member.role.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
 }
 
 export default function Directory() {
@@ -87,10 +83,9 @@ export default function Directory() {
   }
 
   const openEdit = (member) => {
-    let resolvedRole = member.role || 'recruiter'
-    if (resolvedRole === 'manager') {
-      resolvedRole = (member.manager_id || (member.team && member.team.includes('AM'))) ? 'account_manager' : 'recruitment_manager'
-    }
+    const rawRole = (member.role || 'RECRUITER').toUpperCase()
+    const matched = ALL_SYSTEM_ROLES.find(r => r.value === rawRole)
+    const resolvedRole = matched ? matched.value : (ALL_SYSTEM_ROLES.find(r => r.value === rawRole.replace(/\s+/g, '_'))?.value || 'RECRUITER')
     setForm({
       full_name: member.full_name || '', email: member.email || '', phone: member.phone || '',
       extension: member.extension || '', role: resolvedRole, department: getMemberDepartment(member), team: member.team || '',

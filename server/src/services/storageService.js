@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
 
@@ -38,6 +38,18 @@ export class StorageService {
       throw err;
     }
     return bucket;
+  }
+
+  async fileExists(key) {
+    if (!key) return false;
+    try {
+      const client = this.getClient();
+      const bucket = this.getBucket();
+      await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async uploadFile({ buffer, fileName, mimeType, orgId }) {

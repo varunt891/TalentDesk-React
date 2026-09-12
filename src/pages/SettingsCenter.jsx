@@ -4,7 +4,7 @@ import { organizationApi, db, apiRequest } from '../lib/api'
 import { PageContainer } from '../components/layout/PageContainer'
 import {
   Button, Card, CardHeader, KPICard, PageHeader, Tabs, EmptyState, Select, Input, Textarea,
-  Switch, FormField, Badge, Avatar, Modal, useToast, cn, SearchBar, Icon,
+  Switch, FormField, Badge, Avatar, AvatarGroup, Modal, useToast, cn, SearchBar, Icon,
 } from '../components/ui'
 import { SettingsCard, StatusBadge, InfoBanner, ProfileCard, PermissionMatrix, AIUsageSection } from '../components/admin'
 import { ROLES, MODULES, getRole } from '../lib/admin/permissions'
@@ -14,6 +14,7 @@ import { fetchNotifications, markNotificationRead, markNotificationsRead, delete
 import { fetchActivityLog, fetchAuditLog } from '../lib/admin/activity'
 import { useAIGovernance } from '../lib/ai/governance'
 import { SETTINGS_TAB_FLAG } from '../lib/admin/settingsNav'
+import { MARKET_CONFIGS, MARKET_OPTIONS, getMarketConfig } from '../lib/marketConfig'
 
 const TABS = [
   { id: 'general', label: 'General' },
@@ -733,6 +734,16 @@ function GeneralTab({ org, allOrgs, isSuperAdmin, switchingId, onSwitchWorkspace
 }
 
 function OrganizationTab({ org, form, setForm, onSave, saving, isOwnerOrAdmin, preferences, updatePreferences, members }) {
+  const activeMarket = getMarketConfig(preferences.market)
+  const handleMarketChange = (marketId) => {
+    const market = getMarketConfig(marketId)
+    updatePreferences({
+      market: market.id,
+      currency: market.currency,
+      dateFormat: market.dateFormat,
+    })
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <Card>
@@ -768,11 +779,51 @@ function OrganizationTab({ org, form, setForm, onSave, saving, isOwnerOrAdmin, p
       <AIUsageSection org={org} members={members} orgId={org?.id} />
 
       <Card>
-        <CardHeader title="Regional & Recruiting Preferences" subtitle="Personalize currency, dates, language, and drafting defaults." />
+        <CardHeader title="Regional & Recruiting Preferences" subtitle="Tune TalentDesk for the staffing market this workspace serves." />
         <InfoBanner tone="info" className="mb-4">
           These preferences are saved locally to your browser for this organization. They are not yet synced across devices or enforced server-side.
         </InfoBanner>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
+          {Object.values(MARKET_CONFIGS).map(market => {
+            const active = activeMarket.id === market.id
+            return (
+              <button
+                key={market.id}
+                type="button"
+                onClick={() => handleMarketChange(market.id)}
+                className={cn(
+                  'text-left rounded-[var(--radius-md)] border p-4 transition-all duration-[var(--duration-fast)] bg-surface2/50',
+                  'hover:border-accent/40 hover:bg-surface2 focus:outline-none focus:ring-2 focus:ring-accent/20',
+                  active ? 'border-accent/60 ring-1 ring-accent/20 shadow-[0_12px_28px_-18px_color-mix(in_srgb,var(--accent)_45%,transparent)]' : 'border-border'
+                )}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={cn('w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center shrink-0', active ? 'bg-accent text-white' : 'bg-surface3 text-text2')}>
+                        <Icon name="building" size={15} />
+                      </span>
+                      <div>
+                        <div className="text-sm font-bold text-text">{market.label}</div>
+                        <div className="text-[11px] text-text3">{market.currency} · {market.dateFormat}</div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mt-3">
+                      {market.highlights.map(item => (
+                        <Badge key={item} tone={active ? 'accent' : 'neutral'} size="sm">{item}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                  {active && <Icon name="checkCircle" size={18} className="text-accent shrink-0" />}
+                </div>
+              </button>
+            )
+          })}
+        </div>
         <div className="grid sm:grid-cols-2 gap-4 mb-5">
+          <FormField label="Market">
+            <Select value={preferences.market} onChange={handleMarketChange} options={MARKET_OPTIONS} />
+          </FormField>
           <FormField label="Currency">
             <Select value={preferences.currency} onChange={v => updatePreferences({ currency: v })} options={CURRENCY_OPTIONS} />
           </FormField>
@@ -803,7 +854,20 @@ function OrganizationTab({ org, form, setForm, onSave, saving, isOwnerOrAdmin, p
   )
 }
 
+const DEPT_CONFIG = {
+  Healthcare: { icon: 'heart', color: 'var(--red)', bg: 'color-mix(in srgb, var(--red) 15%, transparent)' },
+  IT: { icon: 'code', color: 'var(--blue)', bg: 'color-mix(in srgb, var(--blue) 15%, transparent)' },
+  PMO: { icon: 'briefcase', color: 'var(--purple)', bg: 'color-mix(in srgb, var(--purple) 15%, transparent)' },
+  'E-care': { icon: 'shield', color: 'var(--cyan)', bg: 'color-mix(in srgb, var(--cyan) 15%, transparent)' },
+  Onboarding: { icon: 'userCheck', color: 'var(--amber)', bg: 'color-mix(in srgb, var(--amber) 15%, transparent)' },
+  Helpdesk: { icon: 'headphones', color: 'var(--indigo)', bg: 'color-mix(in srgb, var(--indigo) 15%, transparent)' },
+  Operations: { icon: 'cpu', color: 'var(--accent)', bg: 'color-mix(in srgb, var(--accent) 15%, transparent)' },
+  Unassigned: { icon: 'helpCircle', color: 'var(--yellow)', bg: 'color-mix(in srgb, var(--yellow) 15%, transparent)' },
+}
+
 function TeamsTab({ members }) {
+  const [selectedDept, setSelectedDept] = useState(null)
+
   const groups = useMemo(() => {
     const map = new Map()
     for (const m of members) {
@@ -831,23 +895,80 @@ function TeamsTab({ members }) {
         {groups.length === 0 ? (
           <EmptyState title="No team members yet" description="Invite recruiters from the Users tab to see team groupings here." />
         ) : (
-          <div className="flex flex-col divide-y divide-border">
-            {groups.map(([name, list]) => (
-              <div key={name} className="py-3 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-text">{name}</div>
-                  <div className="text-xs text-text3 mt-0.5">{list.filter(m => m.is_active !== false).length} active of {list.length}</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+            {groups.map(([name, list]) => {
+              const activeCount = list.filter(m => m.is_active !== false).length
+              const percentActive = list.length > 0 ? Math.round((activeCount / list.length) * 100) : 0
+              const cfg = DEPT_CONFIG[name] || { icon: 'layers', color: 'var(--accent)', bg: 'color-mix(in srgb, var(--accent) 15%, transparent)' }
+
+              return (
+                <div
+                  key={name}
+                  className="group/card relative rounded-[var(--radius-md)] border border-border/70 bg-surface2/30 hover:bg-surface2/60 p-4 transition-all duration-200 flex flex-col justify-between gap-4 shadow-2xs hover:shadow-md hover:border-accent/30"
+                >
+                  {/* Top row: Dept icon + Name + Active badge */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className="w-10 h-10 rounded-[var(--radius-sm)] flex items-center justify-center shrink-0 shadow-2xs group-hover/card:scale-105 transition-transform"
+                        style={{ background: cfg.bg, color: cfg.color }}
+                      >
+                        <Icon name={cfg.icon} size={20} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-text truncate group-hover/card:text-accent transition-colors">
+                          {name}
+                        </div>
+                        <div className="text-xs text-text3 mt-0.5 font-medium">
+                          {list.length} member{list.length === 1 ? '' : 's'} · {activeCount} active
+                        </div>
+                      </div>
+                    </div>
+
+                    <Badge tone={percentActive === 100 ? 'green' : 'yellow'} size="sm" className="shrink-0 font-semibold">
+                      {percentActive}% Active
+                    </Badge>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex justify-between items-center text-[11px] font-semibold text-text3">
+                      <span>Team Active Capacity</span>
+                      <span>{activeCount} / {list.length}</span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-surface3 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500 ease-out"
+                        style={{
+                          width: `${percentActive}%`,
+                          background: cfg.color,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Bottom row: Avatar stack + View Members button */}
+                  <div className="flex items-center justify-between gap-3 pt-2 border-t border-border/40">
+                    <AvatarGroup
+                      members={list}
+                      max={5}
+                      size="sm"
+                      onOverflowClick={() => setSelectedDept({ name, list })}
+                      onMemberClick={() => setSelectedDept({ name, list })}
+                    />
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      rightIcon="chevronRight"
+                      onClick={() => setSelectedDept({ name, list })}
+                      className="text-text3 hover:text-text shrink-0"
+                    >
+                      View Team
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex -space-x-2">
-                  {list.slice(0, 5).map(m => <Avatar key={m.id} name={m.full_name || m.email} size="sm" className="ring-2 ring-surface" />)}
-                  {list.length > 5 && (
-                    <span className="w-7 h-7 rounded-full bg-surface3 text-[10px] font-bold text-text3 flex items-center justify-center ring-2 ring-surface">
-                      +{list.length - 5}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </Card>
@@ -875,6 +996,31 @@ function TeamsTab({ members }) {
       <InfoBanner tone="warn">
         Office locations, territory assignment rules, and structured recruiter skill tags are not yet part of the data model — they will appear here once that backend support exists rather than being shown with invented values.
       </InfoBanner>
+
+      {/* Modal for inspecting full team members */}
+      <Modal
+        open={Boolean(selectedDept)}
+        onClose={() => setSelectedDept(null)}
+        title={selectedDept ? `${selectedDept.name} Department` : ''}
+        subtitle={selectedDept ? `${selectedDept.list.length} team member${selectedDept.list.length === 1 ? '' : 's'}` : ''}
+        size="md"
+      >
+        {selectedDept && (
+          <div className="flex flex-col gap-3 max-h-[60vh] overflow-y-auto pr-1">
+            {selectedDept.list.map(m => (
+              <ProfileCard
+                key={m.id}
+                name={m.full_name}
+                email={m.email}
+                roleLabel={getRole(m.role)?.label || m.role}
+                status={m.is_active === false ? 'inactive' : 'active'}
+                department={m.department}
+                team={m.team}
+              />
+            ))}
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }
@@ -1445,4 +1591,3 @@ function BillingTab({ org, isOwnerOrAdmin, saving, onPlanChange }) {
     </div>
   )
 }
-

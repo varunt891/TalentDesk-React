@@ -80,6 +80,12 @@ function getTargetUtcTimestamp(dateStr, timeStr, tzAbbr) {
   }
 }
 
+function isSnoozed(cb, now = new Date()) {
+  if (!cb.snoozed_until) return false
+  const snoozedUntil = new Date(cb.snoozed_until)
+  return !Number.isNaN(snoozedUntil.getTime()) && snoozedUntil > now
+}
+
 export default function GlobalCallbackAlert() {
   const [callbacks, setCallbacks] = useState([])
   const [activeAlert, setActiveAlert] = useState(null)
@@ -140,6 +146,7 @@ export default function GlobalCallbackAlert() {
       const now = new Date()
       const due = callbacks.find(cb => {
         if ((cb.status || '').toLowerCase() === 'done') return false
+        if (isSnoozed(cb, now)) return false
         const key = getAlertKey(cb)
         if (dismissedAlertsRef.current.has(key)) return false
         const targetUtc = getTargetUtcTimestamp(cb.date, cb.time, cb.timezone)
@@ -176,17 +183,22 @@ export default function GlobalCallbackAlert() {
     setActiveAlert(null)
     setCallbacks(prev => prev.map(c => c.id === id ? { ...c, status: 'done' } : c))
     window.dispatchEvent(new CustomEvent('callback-updated'))
-    await db.from('callbacks').update({ status: 'done' }).eq('id', id)
+    await db.from('callbacks').update({ status: 'done', snoozed_until: null }).eq('id', id)
   }
 
-  const snoozeAlertCb = (mins = 10) => {
+  const snoozeAlertCb = async (mins = 10) => {
     if (!activeAlert) return
-    const key = getAlertKey(activeAlert)
-    dismissedAlertsRef.current.add(key)
+    const id = activeAlert.id
+    const previousSnooze = activeAlert.snoozed_until || null
+    const snoozedUntil = new Date(Date.now() + mins * 60 * 1000).toISOString()
     setActiveAlert(null)
-    setTimeout(() => {
-      dismissedAlertsRef.current.delete(key)
-    }, mins * 60 * 1000)
+    setCallbacks(prev => prev.map(c => c.id === id ? { ...c, snoozed_until: snoozedUntil } : c))
+    window.dispatchEvent(new CustomEvent('callback-updated'))
+    const { error } = await db.from('callbacks').update({ snoozed_until: snoozedUntil }).eq('id', id)
+    if (error) {
+      setCallbacks(prev => prev.map(c => c.id === id ? { ...c, snoozed_until: previousSnooze } : c))
+      window.dispatchEvent(new CustomEvent('callback-updated'))
+    }
   }
 
   if (!activeAlert) return null

@@ -343,47 +343,47 @@ router.put('/', requireAuth, requireAdmin, async (req, res, next) => {
 // GET /api/organization/members - List team members
 router.get('/members', requireAuth, async (req, res, next) => {
   try {
-    const members = await prisma.organizationMember.findMany({
-      where: { organization_id: req.organizationId },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            full_name: true,
-            phone: true,
-            department: true,
-            team: true,
-            manager_id: true,
-            is_active: true,
-            created_at: true,
-          },
-        },
-      },
+    const orgId = req.organizationId
+    if (!orgId) return res.status(400).json({ error: 'No active organization' })
+
+    // Fetch all profiles belonging to this org
+    const profiles = await prisma.profile.findMany({
+      where: { org_id: orgId },
       orderBy: { created_at: 'asc' },
     })
 
+    // Fetch all membership records for this org so we can overlay role/status
+    const memberships = await prisma.organizationMember.findMany({
+      where: { organization_id: orgId },
+    })
+    const membershipMap = new Map(memberships.map(m => [m.user_id, m]))
+
     res.json({
-      data: members.map(m => ({
-        id: m.id,
-        user_id: m.user_id,
-        organization_id: m.organization_id,
-        role: m.role,
-        status: m.status,
-        created_at: m.created_at,
-        email: m.user.email,
-        full_name: m.user.full_name,
-        phone: m.user.phone,
-        department: m.user.department,
-        team: m.user.team,
-        manager_id: m.user.manager_id,
-        is_active: m.user.is_active,
-      })),
+      data: profiles.map(p => {
+        const membership = membershipMap.get(p.id)
+        return {
+          // membership id (or fall back to profile id so UI key is always present)
+          id: membership?.id || p.id,
+          user_id: p.id,
+          organization_id: orgId,
+          role: membership?.role || p.role?.toUpperCase() || 'RECRUITER',
+          status: membership?.status || 'ACTIVE',
+          created_at: membership?.created_at || p.created_at,
+          email: p.email,
+          full_name: p.full_name,
+          phone: p.phone,
+          department: p.department,
+          team: p.team,
+          manager_id: p.manager_id,
+          is_active: p.is_active,
+        }
+      }),
     })
   } catch (err) {
     next(err)
   }
 })
+
 
 // GET /api/organization/ai-usage - Real, server-recorded AI credit usage per
 // staff member for the current billing month (replaces the old
@@ -480,33 +480,48 @@ router.get('/ai-usage', requireAuth, requireAdmin, async (req, res, next) => {
 router.put('/members/:id/role', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const { role } = req.body
-    const allowedRoles = ['SUPERADMIN', 'ADMIN', 'OWNER', 'RECRUITER', 'RECRUITMENT_MANAGER', 'ACCOUNT_MANAGER', 'MANAGER', 'HR_MANAGER', 'HR_TEAM', 'VIEWER']
+    const allowedRoles = ['SUPERADMIN', 'ADMIN', 'OWNER', 'RECRUITMENT_MANAGER', 'ACCOUNT_MANAGER', 'RECRUITER', 'HR_MANAGER', 'HR_TEAM', 'OPERATIONS_MANAGER', 'MANAGER', 'EMPLOYEE', 'VIEWER']
 
     const normalizedRole = (role || '').toUpperCase()
     if (!allowedRoles.includes(normalizedRole)) {
       return res.status(400).json({ error: `Invalid role. Allowed roles: ${allowedRoles.join(', ')}` })
     }
 
-    const member = await prisma.organizationMember.findFirst({
-      where: { id: req.params.id, organization_id: req.organizationId },
+    const orgId = req.organizationId
+
+    // Try to find by membership id first; fall back to treating the id as a user/profile id
+    let member = await prisma.organizationMember.findFirst({
+      where: { id: req.params.id, organization_id: orgId },
     })
+
+    let userId = member?.user_id
 
     if (!member) {
-      return res.status(404).json({ error: 'Team member not found in this organization' })
-    }
+      // The id might be a profile id (for seeded users with no membership record)
+      const profile = await prisma.profile.findFirst({ where: { id: req.params.id, org_id: orgId } })
+      if (!profile) return res.status(404).json({ error: 'Team member not found in this organization' })
+      userId = profile.id
 
-    const updated = await prisma.organizationMember.update({
-      where: { id: member.id },
-      data: { role: normalizedRole },
-    })
+      // Upsert the membership record
+      member = await prisma.organizationMember.upsert({
+        where: { user_id_organization_id: { user_id: userId, organization_id: orgId } },
+        update: { role: normalizedRole },
+        create: { user_id: userId, organization_id: orgId, role: normalizedRole, status: 'ACTIVE' },
+      })
+    } else {
+      member = await prisma.organizationMember.update({
+        where: { id: member.id },
+        data: { role: normalizedRole },
+      })
+    }
 
     // Sync profile role
     await prisma.profile.update({
-      where: { id: member.user_id },
+      where: { id: userId },
       data: { role: normalizedRole.toLowerCase() },
     })
 
-    res.json({ data: updated })
+    res.json({ data: member })
   } catch (err) {
     next(err)
   }
@@ -544,7 +559,7 @@ router.post('/invitations', requireAuth, requireAdmin, async (req, res, next) =>
     }
 
     const normalizedEmail = email.trim().toLowerCase()
-    const allowedRoles = ['ADMIN', 'RECRUITER', 'RECRUITMENT_MANAGER', 'ACCOUNT_MANAGER', 'MANAGER', 'HR_MANAGER', 'HR_TEAM', 'VIEWER']
+    const allowedRoles = ['SUPERADMIN', 'ADMIN', 'OWNER', 'RECRUITMENT_MANAGER', 'ACCOUNT_MANAGER', 'RECRUITER', 'HR_MANAGER', 'HR_TEAM', 'OPERATIONS_MANAGER', 'MANAGER', 'EMPLOYEE', 'VIEWER']
     const targetRole = role.toUpperCase()
 
     if (!allowedRoles.includes(targetRole)) {

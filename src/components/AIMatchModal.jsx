@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { apiRequest } from '../lib/api'
 import MarkdownView from './MarkdownView'
+import { normalizeAiPlainText } from '../lib/aiTextFormat'
 
 export default function AIMatchModal({ isOpen, onClose, candidate, job, onOpenSubmissionPacket, onMatchEvaluated }) {
   const [loading, setLoading] = useState(false)
@@ -50,7 +51,7 @@ export default function AIMatchModal({ isOpen, onClose, candidate, job, onOpenSu
   }
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(matchResult)
+    navigator.clipboard.writeText(normalizeAiPlainText(matchResult))
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }

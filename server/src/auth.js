@@ -64,11 +64,12 @@ export async function findTenantOrganization(req) {
 export function mapProfileRole(roleStr) {
   if (!roleStr) return 'RECRUITER'
   const r = roleStr.toUpperCase()
-  if (['SUPERADMIN', 'ADMIN', 'OWNER', 'RECRUITER', 'RECRUITMENT_MANAGER', 'ACCOUNT_MANAGER', 'MANAGER', 'HR_MANAGER', 'HR_TEAM', 'VIEWER'].includes(r)) {
+  if (['SUPERADMIN', 'ADMIN', 'OWNER', 'RECRUITMENT_MANAGER', 'ACCOUNT_MANAGER', 'RECRUITER', 'HR_MANAGER', 'HR_TEAM', 'OPERATIONS_MANAGER', 'MANAGER', 'EMPLOYEE', 'VIEWER'].includes(r)) {
     return r
   }
   if (roleStr === 'recruitment_manager') return 'RECRUITMENT_MANAGER'
   if (roleStr === 'account_manager') return 'ACCOUNT_MANAGER'
+  if (roleStr === 'operations_manager') return 'OPERATIONS_MANAGER'
   if (roleStr === 'hr_manager') return 'HR_MANAGER'
   if (roleStr === 'hr_team') return 'HR_TEAM'
   return 'RECRUITER'

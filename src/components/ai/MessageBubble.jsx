@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Icon, cn } from '../ui'
 import MarkdownView from '../MarkdownView'
+import { normalizeAiPlainText } from '../../lib/aiTextFormat'
 
 // Shared chat turn used by both the floating Copilot widget and the AI
 // Center chat panel. Assistant turns render as calm, unboxed prose next to
@@ -11,7 +12,7 @@ import MarkdownView from '../MarkdownView'
 export default function MessageBubble({ message, onRegenerate, thinking, streaming }) {
   const isUser = message.role === 'user'
   const [copied, setCopied] = useState(false)
-  const copy = () => { navigator.clipboard.writeText(message.content || ''); setCopied(true); setTimeout(() => setCopied(false), 1500) }
+  const copy = () => { navigator.clipboard.writeText(normalizeAiPlainText(message.content || '')); setCopied(true); setTimeout(() => setCopied(false), 1500) }
 
   if (isUser) {
     return (

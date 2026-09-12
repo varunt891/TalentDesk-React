@@ -13,7 +13,10 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
 
   useEffect(() => {
     const handleResize = () => {
-      setIsMobile(window.innerWidth < 1024)
+      const mobile = window.innerWidth < 1024
+      setIsMobile(mobile)
+      // Auto-close mobile sidebar when resizing to desktop
+      if (!mobile) setSidebarOpen(false)
     }
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
@@ -25,6 +28,16 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
     localStorage.setItem('td_theme', next)
     document.documentElement.setAttribute('data-theme', next)
   }
+
+  // Lock body scroll when mobile sidebar is open
+  useEffect(() => {
+    if (isMobile && sidebarOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [isMobile, sidebarOpen])
 
   const toggleSidebarCollapse = () => {
     const next = !sidebarCollapsed
@@ -67,7 +80,7 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
   }
 
   return (
-    <div className="relative isolate flex h-dvh w-full max-w-[100vw] overflow-hidden bg-bg text-text">
+    <div className="app-shell relative isolate flex h-dvh w-full max-w-[100vw] overflow-hidden bg-bg text-text">
 
 
       {sidebarOpen && (
@@ -80,7 +93,7 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
 
       <div
         className={cn(
-          'fixed inset-y-0 left-0 z-40 lg:relative lg:z-auto transition-transform duration-200 ease-[var(--ease-standard)]',
+          'fixed inset-y-0 left-0 z-40 lg:relative lg:z-auto transition-transform duration-200 ease-[var(--ease-standard)] will-change-transform',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
       >
@@ -105,7 +118,7 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
           onNavigate={handleNavigate}
           currentPage={currentPage}
         />
-        <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col">
+        <main ref={mainRef} className="app-main flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col">
           {children}
         </main>
       </div>

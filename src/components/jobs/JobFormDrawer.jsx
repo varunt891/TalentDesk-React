@@ -1,8 +1,11 @@
 import {
   Button, Input, FormField, Label, Select, Combobox, Badge,
-  UserMultiSelect, MarkdownEditor,
+  UserMultiSelect, MarkdownEditor, Icon,
 } from '../ui'
 import { Drawer } from '../ui/Modal'
+import { useAuth } from '../../context/AuthContext'
+import { useOrgPreferences } from '../../lib/admin/orgPreferences'
+import { getMarketConfig } from '../../lib/marketConfig'
 
 function FormSectionTitle({ children }) {
   return <h3 className="text-xs font-bold text-accent uppercase tracking-wide pb-2 mb-3.5 border-b border-border">{children}</h3>
@@ -13,6 +16,9 @@ function FormSectionTitle({ children }) {
 // you're looking at it — pass the object returned by useJobForm() in as
 // `jobForm`, plus a `showToast(msg, type)` for user feedback.
 export default function JobFormDrawer({ jobForm, showToast, onSaved }) {
+  const { profile } = useAuth()
+  const { preferences } = useOrgPreferences(profile?.org_id)
+  const market = getMarketConfig(preferences.market)
   const {
     showModal, setShowModal, editingId, form, setForm, skillInput, setSkillInput,
     saving, generatingDescription, extractingJobSkills, profiles, canManageAssignment,
@@ -56,6 +62,19 @@ export default function JobFormDrawer({ jobForm, showToast, onSaved }) {
       }
     >
       <div className="flex flex-col gap-5">
+        <div className="rounded-[var(--radius-md)] border border-accent/25 bg-accent/5 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-8 h-8 rounded-[var(--radius-sm)] bg-accent/12 text-accent flex items-center justify-center shrink-0">
+              <Icon name="building" size={15} />
+            </span>
+            <div className="min-w-0">
+              <div className="text-xs font-bold text-text">{market.shortLabel} requisition</div>
+              <div className="text-[11px] text-text3 leading-snug">{market.descriptionHint}</div>
+            </div>
+          </div>
+          <Badge tone="accent" size="sm" className="self-start sm:self-center">{market.currency}</Badge>
+        </div>
+
         <div>
           <FormSectionTitle>Basic Information</FormSectionTitle>
           <div className="grid sm:grid-cols-2 gap-3.5">
@@ -66,7 +85,7 @@ export default function JobFormDrawer({ jobForm, showToast, onSaved }) {
             <FormField label="Client Contact"><Input {...inp('contact_name')} placeholder="Roberta Moraes" /></FormField>
             <FormField label="Status"><Select value={form.status} onChange={v => setForm(f => ({ ...f, status: v }))} options={['Open', 'Filled', 'On Hold', 'Closed'].map(o => ({ value: o, label: o }))} /></FormField>
             <FormField label="Priority"><Select value={form.priority} onChange={v => setForm(f => ({ ...f, priority: v }))} options={['High', 'Medium', 'Low'].map(o => ({ value: o, label: o }))} /></FormField>
-            <FormField label="Employment Type"><Select value={form.type} onChange={v => setForm(f => ({ ...f, type: v }))} options={['Contract', 'Full-time', 'Contract-to-Hire', 'Part-time'].map(o => ({ value: o, label: o }))} /></FormField>
+            <FormField label="Employment Type"><Select value={form.type} onChange={v => setForm(f => ({ ...f, type: v }))} options={market.employmentTypes.map(o => ({ value: o, label: o }))} /></FormField>
             <FormField label="Experience Level"><Select value={form.experience_level} onChange={v => setForm(f => ({ ...f, experience_level: v }))} options={['', 'Entry', 'Mid', 'Senior'].map(o => ({ value: o, label: o || 'Not set' }))} /></FormField>
             <FormField label="Assigned To" hint={canManageAssignment ? undefined : 'Only account managers and above can change assignment.'}>
               <UserMultiSelect
@@ -83,7 +102,7 @@ export default function JobFormDrawer({ jobForm, showToast, onSaved }) {
         <div>
           <FormSectionTitle>Location</FormSectionTitle>
           <div className="grid sm:grid-cols-2 gap-3.5">
-            <FormField label="Location"><Combobox value={form.location} onChange={v => setForm(f => ({ ...f, location: v }))} options={locationOptions} placeholder="New York, NY / Remote" /></FormField>
+            <FormField label="Location"><Combobox value={form.location} onChange={v => setForm(f => ({ ...f, location: v }))} options={locationOptions} placeholder={market.locationPlaceholder} /></FormField>
             <FormField label="Work Mode"><Select value={form.work_mode} onChange={v => setForm(f => ({ ...f, work_mode: v }))} options={['Onsite', 'Remote', 'Hybrid'].map(o => ({ value: o, label: o }))} /></FormField>
           </div>
         </div>
@@ -91,10 +110,10 @@ export default function JobFormDrawer({ jobForm, showToast, onSaved }) {
         <div>
           <FormSectionTitle>Compensation</FormSectionTitle>
           <div className="grid sm:grid-cols-2 gap-3.5">
-            <FormField label="Rate"><Input {...inp('rate')} placeholder="$80-100/hr" /></FormField>
-            <FormField label="Bill Rate"><Input {...inp('bill_rate')} placeholder="26.89/hr" /></FormField>
-            <FormField label="Pay Rate"><Input {...inp('pay_rate')} placeholder="19.20/hr" /></FormField>
-            <FormField label="Workers Comp Code"><Input {...inp('workers_comp_code')} placeholder="Optional" /></FormField>
+            <FormField label={market.rateLabel}><Input {...inp('rate')} placeholder={market.ratePlaceholder} /></FormField>
+            <FormField label="Client Bill Rate"><Input {...inp('bill_rate')} placeholder={market.billRatePlaceholder} /></FormField>
+            <FormField label="Candidate Pay Rate"><Input {...inp('pay_rate')} placeholder={market.payRatePlaceholder} /></FormField>
+            <FormField label={market.id === 'IN' ? 'GST / Payroll Code' : 'Workers Comp Code'}><Input {...inp('workers_comp_code')} placeholder="Optional" /></FormField>
           </div>
         </div>
 

@@ -244,15 +244,34 @@ router.post('/candidates/bulk-xlsx', upload.single('file'), async (req, res) => 
 
 router.get('/resume-url/:candidateId', async (req, res) => {
   try {
-    const orgId = activeOrgId(req);
-    const candidate = await prisma.candidate.findFirst({
-      where: { id: req.params.candidateId, ...(orgId ? { org_id: orgId } : {}) },
+    const candidate = await prisma.candidate.findUnique({
+      where: { id: req.params.candidateId },
     });
     if (!candidate) return res.status(404).json({ success: false, error: 'Candidate not found.' });
-    if (!candidate.resume_file_key) return res.status(404).json({ success: false, error: 'No resume file on file for this candidate.' });
 
-    const url = await storageService.getSignedDownloadUrl(candidate.resume_file_key);
-    return res.json({ success: true, url, fileName: candidate.resume_file_name });
+    if (candidate.resume_file_key) {
+      try {
+        const exists = await storageService.fileExists(candidate.resume_file_key);
+        if (exists) {
+          const url = await storageService.getSignedDownloadUrl(candidate.resume_file_key);
+          return res.json({ success: true, url, fileName: candidate.resume_file_name || 'resume.pdf' });
+        }
+        console.warn('[upload.routes] Resume key not found in storage bucket:', candidate.resume_file_key);
+      } catch (storageErr) {
+        console.warn('[upload.routes] R2 signed URL check failed:', storageErr.message);
+      }
+    }
+
+    if (candidate.resume_text) {
+      const fileName = candidate.resume_file_name
+        ? candidate.resume_file_name.replace(/\.[^.]+$/, '.txt')
+        : `${(candidate.first_name || 'candidate').toLowerCase()}_resume.txt`;
+      const encodedText = encodeURIComponent(candidate.resume_text);
+      const dataUrl = `data:text/plain;charset=utf-8,${encodedText}`;
+      return res.json({ success: true, url: dataUrl, fileName });
+    }
+
+    return res.status(404).json({ success: false, error: 'The resume file is no longer available in cloud storage.' });
   } catch (err) {
     const status = err.status || 500;
     return res.status(status).json({ success: false, error: err.message || 'Failed to generate download link.' });

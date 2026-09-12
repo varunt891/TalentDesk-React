@@ -6,6 +6,7 @@ import { COMPARE_DUAL_MODES, COMPARISON_ACTIONS } from '../../lib/ai/categories'
 import { streamAiAction } from '../../lib/ai/aiClient'
 import { logUsageEvent } from '../../lib/ai/usage'
 import { exportResultToDocx, exportResultToPdf } from '../../lib/ai/exportResult'
+import { normalizeAiPlainText } from '../../lib/aiTextFormat'
 
 // A short, human-readable stand-in for a block of pasted content — its
 // first non-empty line, stripped of markdown syntax and truncated. Lets a
@@ -112,7 +113,7 @@ export default function ActionsPanel({ orgId, userId, initialActionId = 'summari
   }
   const stopStreaming = () => abortRef.current?.abort()
 
-  const copyResult = () => { navigator.clipboard.writeText(result || ''); setCopied(true); setTimeout(() => setCopied(false), 1500) }
+  const copyResult = () => { navigator.clipboard.writeText(normalizeAiPlainText(result || '')); setCopied(true); setTimeout(() => setCopied(false), 1500) }
   const exportWord = () => exportResultToDocx(result, current.label)
   const exportPdf = () => exportResultToPdf(result, current.label)
 

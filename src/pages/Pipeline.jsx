@@ -888,7 +888,7 @@ export default function Pipeline() {
                 <div className="grid sm:grid-cols-2 gap-3">
                   <DetailCard title="Pipeline Stage" rows={[['External Status', showDetail.external_status], ['Internal Status', showDetail.internal_status], ['Priority', showDetail.priority], ['Days in Pipeline', daysAgo(showDetail.submission_date)], ['Last Activity', relativeTime(showDetail.updated_at)]]} />
                   <DetailCard title="Submission" rows={[['Date', showDetail.submission_date], ['Job ID', showDetail.job_id], ['Client', showDetail.client], ['Rate', showDetail.rate], ['Location', showDetail.location]]} />
-                  <DetailCard title="Interview" rows={[['Date', showDetail.interview_date], ['Type', showDetail.interview_type], ['Feedback', showDetail.feedback_status]]} />
+                  <DetailCard title="Interview" rows={[['Date', showDetail.interview_date], ['Time', showDetail.interview_time], ['Type', showDetail.interview_type], ['Feedback', showDetail.feedback_status]]} />
                   <DetailCard title="Ownership" rows={[['Recruiter', showDetail.recruiter_name], ['FE Name', showDetail.fe_name], ['Account Manager', showDetail.account_manager]]} />
                 </div>
 
@@ -952,6 +952,7 @@ export default function Pipeline() {
                 `Has Upcoming Callback: ${detailSignals.upcomingCallback ? 'Yes' : 'No'}`,
                 `Overdue Follow-up: ${detailSignals.overdueFollowup ? 'Yes' : 'No'}`,
                 `Interview Date: ${showDetail.interview_date || 'None scheduled'}`,
+                `Interview Time: ${showDetail.interview_time || 'None scheduled'}`,
                 `Health Score: ${sc.total}/100 (${sc.gradeLabel})`,
                 showDetail.notes ? `Recruiter Notes: ${showDetail.notes}` : null,
               ].filter(Boolean).join('\n')

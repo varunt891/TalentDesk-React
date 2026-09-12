@@ -99,11 +99,25 @@ export default function BulkResumeUploadModal({ isOpen, onClose, addCandidates, 
         else throw new Error(res?.error || `Failed to read ${xlsxFile.name}.`)
       }
 
-      setResults(combinedResults.map(r => ({
-        ...r,
-        profile: { ...emptyProfile(), ...r.profile },
-        include: r.success,
-      })))
+      setResults(combinedResults.map(r => {
+        const prof = { ...emptyProfile(), ...r.profile }
+        // For AI-parsed resumes, separate candidate resume designation from submission job title
+        if (r.profile?.candidate_title || r.profile?.job_title) {
+          const candTitle = r.profile.candidate_title || r.profile.job_title
+          if (candTitle && (!prof.notes || !prof.notes.includes(candTitle))) {
+            prof.notes = prof.notes ? `Resume Designation: ${candTitle}\n${prof.notes}` : `Resume Designation: ${candTitle}`
+          }
+          // Do not pollute submission job_title with candidate's resume designation unless explicitly provided in XLSX
+          if (!r.profile.is_xlsx) {
+            prof.job_title = ''
+          }
+        }
+        return {
+          ...r,
+          profile: prof,
+          include: r.success,
+        }
+      }))
       setFiles([])
     } catch (err) {
       showToast?.(err.message || 'Bulk upload failed', 'error')

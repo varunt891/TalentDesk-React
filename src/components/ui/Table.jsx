@@ -387,9 +387,9 @@ export default function Table({
       })()}
 
       {/* Mobile: stacked cards, no table at all */}
-      <div className="md:hidden flex flex-col gap-2">
+      <div className="md:hidden flex flex-col gap-2.5">
         {loading
-          ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-[var(--radius-lg)]" />)
+          ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-[var(--radius-lg)]" />)
           : paginatedData.map(row => {
               const id = getRowId(row)
               if (mobileCard) return <div key={id} onClick={() => onRowClick?.(row)}>{mobileCard(row)}</div>
@@ -398,20 +398,20 @@ export default function Table({
                   key={id}
                   onClick={() => onRowClick?.(row)}
                   onContextMenu={(e) => openContextMenu(e, row)}
-                  className={cn('bg-surface border border-border rounded-[var(--radius-lg)] p-3 flex flex-col gap-1.5', onRowClick && 'cursor-pointer')}
+                  className={cn('bg-surface border border-border rounded-[var(--radius-lg)] p-3.5 flex flex-col gap-2 shadow-xs', onRowClick && 'cursor-pointer hover:border-border-strong')}
                 >
                   {selectable && (
-                    <div onClick={(e) => e.stopPropagation()}>
+                    <div onClick={(e) => e.stopPropagation()} className="pb-1 border-b border-border/50">
                       <Checkbox checked={selectedIds.includes(id)} onChange={() => toggleOne(id)} />
                     </div>
                   )}
                   {visibleColumns.map(col => (
-                    <div key={col.key} className="flex items-center justify-between gap-3 text-sm">
-                      <span className="text-xs font-semibold text-text3">{col.header}</span>
-                      <span className="text-text text-right">{col.render ? col.render(row) : row[col.key]}</span>
+                    <div key={col.key} className="flex items-start justify-between gap-3 text-xs">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-text3 shrink-0 pt-0.5">{col.header}</span>
+                      <div className="text-text text-right min-w-0 flex-1 flex justify-end truncate">{col.render ? col.render(row) : row[col.key]}</div>
                     </div>
                   ))}
-                  {rowActions && <div className="pt-1.5 border-t border-border mt-1 flex justify-end" onClick={(e) => e.stopPropagation()}>{rowActions(row)}</div>}
+                  {rowActions && <div className="pt-2 border-t border-border/60 mt-1 flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>{rowActions(row)}</div>}
                 </div>
               )
             })}
@@ -428,7 +428,7 @@ export default function Table({
             )}
           </span>
 
-          <div className="flex items-center gap-4 ml-auto flex-wrap">
+          <div className="flex items-center gap-3 sm:gap-4 sm:ml-auto flex-wrap">
             <div className="flex items-center gap-1.5">
               <span className="text-text3 text-[11.5px] font-semibold">Rows per page:</span>
               <div className="flex items-center gap-1 bg-surface2 p-0.5 rounded-md border border-border">

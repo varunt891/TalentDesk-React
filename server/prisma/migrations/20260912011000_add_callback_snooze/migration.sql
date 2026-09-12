@@ -1,0 +1,1 @@
+ALTER TABLE "callbacks" ADD COLUMN IF NOT EXISTS "snoozed_until" TIMESTAMP(3);

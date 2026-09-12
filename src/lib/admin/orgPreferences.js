@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react'
 function prefsKey(orgId) { return `td_org_preferences_${orgId || 'na'}` }
 
 export const DEFAULT_ORG_PREFERENCES = {
+  market: 'US',
   currency: 'USD',
   dateFormat: 'MM/DD/YYYY',
   language: 'en',
