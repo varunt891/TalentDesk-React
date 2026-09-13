@@ -8,6 +8,7 @@ import { cn } from '../ui/utils'
 
 const navItems = [
   { id: 'dashboard', icon: 'dashboard', label: 'Dashboard', section: 'Main' },
+  { id: 'ai_center', icon: 'sparkles', label: 'AI Center', section: 'Main', isAI: true },
   { id: 'candidates', icon: 'users', label: 'Candidates', section: 'Main' },
   { id: 'pipeline', icon: 'pipeline', label: 'Pipeline', section: 'Main' },
   { id: 'jobs', icon: 'jobs', label: 'Jobs', section: 'Main' },
@@ -16,7 +17,6 @@ const navItems = [
   { id: 'followups', icon: 'followups', label: 'Follow-ups', section: 'Tools' },
   { id: 'resubmit', icon: 'resubmit', label: 'Re-submit Finder', section: 'Tools' },
   { id: 'collisions', icon: 'alertCircle', label: 'Collisions', section: 'Tools' },
-  { id: 'ai_center', icon: 'sparkles', label: 'AI Center', section: 'Tools' },
   { id: 'reports', icon: 'reports', label: 'Reports', section: 'Tools' },
   { id: 'postings', icon: 'postings', label: 'Job Postings', section: 'Tools' },
   { id: 'team_management', icon: 'directory', label: 'Team Management', section: 'Workspace' },
@@ -250,6 +250,7 @@ function NavSection({ title, items, currentPage, onNavigate, isCollapsed, pendin
 
 function NavItem({ item, active, onClick, isCollapsed, pendingTasksCount, isFavorite, onToggleFavorite, muted }) {
   const showRedDot = item.id === 'tasks' && pendingTasksCount > 0
+  const isAI = item.isAI || item.id === 'ai_center'
 
   return (
     <div className="group/nav relative flex items-center">
@@ -259,21 +260,31 @@ function NavItem({ item, active, onClick, isCollapsed, pendingTasksCount, isFavo
         aria-label={item.label}
         data-active={active ? 'true' : undefined}
         className={cn(
-          'sidebar-nav-button focus-ring relative flex items-center gap-2.5 w-full h-[34px] rounded-[var(--radius-md)] text-[13px] font-semibold transition-[background-color,box-shadow,color] duration-[var(--duration-fast)]',
+          'sidebar-nav-button focus-ring relative flex items-center gap-2.5 w-full h-[36px] rounded-[var(--radius-md)] text-[13px] font-semibold transition-all duration-[var(--duration-fast)]',
           isCollapsed ? 'justify-center px-0' : 'px-2.5',
-          active ? 'bg-accent/14 text-accent shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent)_22%,transparent)]' : muted ? 'text-text3 hover:bg-surface3 hover:text-text2' : 'text-text2 hover:bg-surface3 hover:text-text'
+          active
+            ? isAI
+              ? 'bg-ai-soft text-ai border border-ai/40 shadow-[0_2px_12px_-3px_color-mix(in_srgb,var(--ai)_35%,transparent)] font-bold'
+              : 'bg-accent/14 text-accent shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent)_22%,transparent)]'
+            : isAI
+              ? 'bg-ai-soft/40 text-text hover:bg-ai-soft hover:text-ai border border-ai/20 shadow-2xs font-medium'
+              : muted ? 'text-text3 hover:bg-surface3 hover:text-text2' : 'text-text2 hover:bg-surface3 hover:text-text'
         )}
       >
         <span className="relative shrink-0 flex items-center justify-center">
-          <Icon name={item.icon} size={15} />
+          <Icon name={item.icon} size={15} className={cn(isAI && 'text-ai')} />
           {showRedDot && isCollapsed && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red border-2 border-surface" />}
         </span>
         {!isCollapsed && (
           <span className="flex-1 flex items-center justify-between min-w-0 truncate text-left">
-            <span className="truncate">{item.label}</span>
-            {showRedDot && (
+            <span className={cn('truncate', isAI && 'font-bold')}>{item.label}</span>
+            {isAI ? (
+              <span className="ml-1.5 text-[9px] font-extrabold tracking-wider uppercase bg-ai text-white px-1.5 py-0.5 rounded-full shadow-xs shrink-0">
+                AI
+              </span>
+            ) : showRedDot ? (
               <span className="ml-2 text-[10px] font-extrabold bg-red/15 text-red rounded-full px-1.5 leading-4 shrink-0">{pendingTasksCount}</span>
-            )}
+            ) : null}
           </span>
         )}
       </button>

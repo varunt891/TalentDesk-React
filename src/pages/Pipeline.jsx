@@ -258,7 +258,6 @@ export default function Pipeline() {
     if (e.target.closest?.('[data-pipeline-card-list]')) return
     const el = boardRef.current
     if (!el || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return
-    e.preventDefault()
     el.scrollLeft += e.deltaY
   }
 
@@ -509,7 +508,7 @@ export default function Pipeline() {
   }
 
   return (
-    <div className="w-full mx-auto flex-1 flex flex-col min-h-full" style={{ maxWidth: 'var(--container-max)' }}>
+    <div className="w-full mx-auto flex flex-col" style={{ maxWidth: 'var(--container-max)' }}>
       <div className="pipeline-header-shell shrink-0 px-4 sm:px-6 lg:px-8 mb-2">
         <PageHeader
           eyebrow={compactHeader ? undefined : "Recruiting Workspace"}
@@ -587,45 +586,43 @@ export default function Pipeline() {
         )}
       </div>
 
-      {/* Board */}
-      <div className="relative flex-1 min-h-0 flex flex-col">
+      {/* Board container with floating left/right navigation controls */}
+      <div className="relative">
         {!loading && filtered.length > 0 && (
           <>
             <button
               type="button"
               aria-label="Scroll stages left"
               onClick={() => scrollBoardBy(-1)}
-              className="hidden lg:flex absolute left-5 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full items-center justify-center bg-surface border border-border shadow-md text-text2 hover:text-text hover:border-border-strong"
+              className="absolute left-1.5 sm:left-3 top-1/2 -translate-y-1/2 z-30 w-9 h-9 rounded-full bg-surface/90 backdrop-blur-md border border-border/80 shadow-md text-text2 hover:text-text hover:bg-surface2 hover:border-border-strong hover:scale-105 active:scale-95 flex items-center justify-center transition-all duration-200 cursor-pointer"
             >
-              <Icon name="chevronLeft" size={15} />
+              <Icon name="chevronLeft" size={16} />
             </button>
             <button
               type="button"
               aria-label="Scroll stages right"
               onClick={() => scrollBoardBy(1)}
-              className="hidden lg:flex absolute right-1 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full items-center justify-center bg-surface border border-border shadow-md text-text2 hover:text-text hover:border-border-strong"
+              className="absolute right-1.5 sm:right-3 top-1/2 -translate-y-1/2 z-30 w-9 h-9 rounded-full bg-surface/90 backdrop-blur-md border border-border/80 shadow-md text-text2 hover:text-text hover:bg-surface2 hover:border-border-strong hover:scale-105 active:scale-95 flex items-center justify-center transition-all duration-200 cursor-pointer"
             >
-              <Icon name="chevronRight" size={15} />
+              <Icon name="chevronRight" size={16} />
             </button>
           </>
         )}
+
         <div
           ref={boardRef}
           onDragOver={handleBoardDragOver}
           onWheel={handleBoardWheel}
           onKeyDown={handleBoardKeyDown}
           tabIndex={0}
-          className={cn(
-            "pipeline-board-scroll flex-1 overflow-x-auto overflow-y-hidden snap-x snap-proximity scroll-smooth pl-7 pr-4 sm:pl-9 sm:pr-6 lg:pl-12 lg:pr-8 pb-4 outline-none flex flex-col transition-all duration-300",
-            compactHeader ? "min-h-[calc(100vh-140px)]" : "min-h-[calc(100vh-90px)]"
-          )}
+          className="pipeline-board-scroll overflow-x-auto snap-x snap-proximity scroll-smooth pl-8 pr-8 sm:pl-12 sm:pr-12 lg:pl-14 lg:pr-14 pb-2 outline-none transition-all duration-300"
         >
           {loading ? (
             <div className="flex items-center justify-center h-full text-text3 text-sm">Loading pipeline...</div>
           ) : filtered.length === 0 ? (
             <EmptyState icon="pipeline" title={hasFilters ? 'No candidates match your filters' : 'No candidates yet'} description={hasFilters ? 'Try widening your search or clearing filters.' : 'Candidates you submit will appear here.'} />
           ) : (
-            <div className="flex gap-5 h-full min-h-[680px] min-w-max pr-4 sm:pr-6 lg:pr-8">
+            <div className="flex gap-5 min-w-max">
               {STAGES.map((stage, stageIdx) => {
                 const stats = stageStats[stage.id]
                 const isOver = overStage === stage.id
@@ -644,10 +641,9 @@ export default function Pipeline() {
                       onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setOverStage(stage.id) }}
                       onDragLeave={() => setOverStage(null)}
                       onDrop={event => handleDrop(event, stage.id)}
-                      className="relative w-14 shrink-0 snap-start h-full flex flex-col items-center rounded-[var(--radius-lg)] border shadow-xs transition-colors duration-[var(--duration-fast)] overflow-hidden"
-                      style={{ background: isOver ? `${stage.color}14` : 'var(--surface)', borderColor: isOver ? stage.color : 'var(--border)' }}
+                      className="relative w-14 shrink-0 snap-start h-[calc(100vh-80px)] flex flex-col items-center rounded-[var(--radius-lg)] border border-t-[3.5px] shadow-xs transition-colors duration-[var(--duration-fast)] overflow-hidden"
+                      style={{ background: isOver ? `${stage.color}14` : 'var(--surface)', borderColor: isOver ? stage.color : 'var(--border)', borderTopColor: stage.color }}
                     >
-                      <span aria-hidden="true" className="pointer-events-none absolute top-0 left-0 right-0 h-[3px]" style={{ background: stage.color }} />
                       <div className="flex flex-col items-center gap-3 pt-4 shrink-0">
                         <Icon name="chevronRight" size={13} className="text-text3" />
                         <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: stage.color }} />
@@ -672,16 +668,13 @@ export default function Pipeline() {
                     onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setOverStage(stage.id) }}
                     onDragLeave={() => setOverStage(null)}
                     onDrop={event => handleDrop(event, stage.id)}
-                    className="relative w-[88vw] sm:w-[45vw] lg:w-[358px] shrink-0 snap-start flex flex-col h-full min-h-0 rounded-[var(--radius-lg)] border shadow-xs overflow-hidden transition-[box-shadow,border-color,background-color] duration-[var(--duration-fast)]"
+                    className="relative w-[88vw] sm:w-[45vw] lg:w-[358px] shrink-0 snap-start flex flex-col h-[calc(100vh-80px)] rounded-[var(--radius-lg)] border shadow-xs transition-[box-shadow,border-color,background-color] duration-[var(--duration-fast)]"
                     style={{ background: isOver ? `${stage.color}10` : 'var(--surface)', borderColor: isOver ? stage.color : 'var(--border)' }}
                   >
-                    <span aria-hidden="true" className="pointer-events-none absolute top-0 left-0 right-0 h-[3px] z-10" style={{ background: stage.color }} />
-
-                    {/* Column header — not sticky: only the card list below scrolls,
-                      so sticky headers collide with the page-level scroll. */}
+                    {/* Column header — sticky so it stays visible when the page scrolls */}
                     <div
-                      className="relative z-10 px-3.5 py-2.5 border-b shrink-0"
-                      style={{ background: `color-mix(in srgb, ${stage.color} 9%, var(--surface2))`, borderColor: `${stage.color}30` }}
+                      className="sticky top-0 z-20 px-3.5 pt-3 pb-2.5 border-b border-t-[3.5px] shrink-0 rounded-t-[var(--radius-lg)]"
+                      style={{ background: `color-mix(in srgb, ${stage.color} 9%, var(--surface2))`, borderColor: `${stage.color}30`, borderTopColor: stage.color }}
                     >
                       <div className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: stage.color }} />
@@ -700,10 +693,9 @@ export default function Pipeline() {
                       </div>
                     </div>
 
-                    {/* Cards */}
                     <div
                       data-pipeline-card-list
-                      className="flex-1 min-h-0 overflow-y-auto p-2.5 flex flex-col gap-2.5 bg-surface-sunken"
+                      className="flex-1 min-h-0 overflow-y-auto p-2 pb-6 flex flex-col gap-2 bg-surface-sunken rounded-b-[var(--radius-lg)]"
                     >
                       {stats.cards.length === 0 ? (
                         <div
@@ -735,7 +727,7 @@ export default function Pipeline() {
                             onContextMenu={(e) => openContextMenu(e, c)}
                             onKeyDown={(e) => { if (e.key === 'Enter') openDrawer(c) }}
                             className={cn(
-                              'group relative border rounded-[var(--radius-md)] shadow-xs p-3.5 cursor-grab active:cursor-grabbing transition-all duration-[var(--duration-fast)] hover:-translate-y-0.5 hover:border-[var(--stage-color)] hover:shadow-[0_10px_24px_-12px_var(--stage-glow)] bg-surface',
+                              'group relative border rounded-[var(--radius-md)] shadow-xs p-2.5 sm:p-3 cursor-grab active:cursor-grabbing transition-all duration-[var(--duration-fast)] hover:-translate-y-0.5 hover:border-[var(--stage-color)] hover:shadow-[0_8px_20px_-10px_var(--stage-glow)] bg-surface',
                               draggingId === c.id ? 'opacity-40 scale-[0.98]' : 'opacity-100',
                               isFocused && 'ring-2 ring-accent',
                               isSpotlit && 'ring-2 ring-yellow animate-pulse'
@@ -746,53 +738,52 @@ export default function Pipeline() {
                               '--stage-glow': `${stage.color}55`,
                             }}
                           >
-                            <span aria-hidden="true" className="absolute left-1.5 top-3 bottom-3 w-[3px] rounded-full" style={{ background: stage.color, opacity: 0.85 }} />
-                            <div className="flex items-start gap-2.5">
+                            <span aria-hidden="true" className="absolute left-1 top-2 bottom-2 w-[2.5px] rounded-full" style={{ background: stage.color, opacity: 0.85 }} />
+                            <div className="flex items-start gap-2">
                               <Avatar name={`${c.first_name || ''} ${c.last_name || ''}`.trim() || '?'} size="sm" />
                               <div className="min-w-0 flex-1">
-                                <div className="flex items-center justify-between gap-1.5">
-                                  <strong className="text-[13px] font-bold text-text truncate">{c.first_name} {c.last_name}</strong>
+                                <div className="flex items-center justify-between gap-1">
+                                  <strong className="text-[12.5px] font-bold text-text truncate">{c.first_name} {c.last_name}</strong>
                                   <Menu
                                     align="end"
                                     trigger={(p) => (
                                       <span onClick={(e) => e.stopPropagation()}>
-                                        <MenuTrigger {...p} className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 w-6 h-6" />
+                                        <MenuTrigger {...p} className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 w-5 h-5" />
                                       </span>
                                     )}
                                     items={actionsFor(c)}
                                   />
                                 </div>
-                                <div className="text-[11px] text-text3 truncate">{c.job_title || 'No job title'}</div>
+                                <div className="text-[10.5px] text-text3 truncate leading-tight">{c.job_title || 'No job title'}</div>
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                            <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
                               <Badge size="sm" tone={c.priority === 'High' ? 'red' : c.priority === 'Low' ? 'neutral' : 'yellow'}>{c.priority || 'Medium'}</Badge>
                               <Badge size="sm" tone={sc.total >= 80 ? 'green' : sc.total >= 60 ? 'accent' : sc.total >= 40 ? 'yellow' : 'red'}>{sc.gradeLabel}</Badge>
-                              {c.recruiter_name && <span className="text-[10px] text-text3 truncate max-w-[110px]">{c.recruiter_name}</span>}
+                              {c.recruiter_name && <span className="text-[9.5px] text-text3 truncate max-w-[100px]">{c.recruiter_name}</span>}
                             </div>
 
                             {skills.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-2">
-                                {skills.map(s => <span key={s} className="text-[10px] font-medium text-text2 bg-surface3 rounded-full px-1.5 py-0.5">{s}</span>)}
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {skills.map(s => <span key={s} className="text-[9.5px] font-medium text-text2 bg-surface3 rounded-full px-1.5 py-0.25">{s}</span>)}
                               </div>
                             )}
 
-                            <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-border/70">
-                              <div className="flex items-center gap-2 text-text3">
-                                {c.rate && <span className="text-[10px] font-mono">{c.rate}</span>}
-                                {c.location && <span className="text-[10px] truncate max-w-[90px]">{c.location}</span>}
+                            <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-border/60 text-[10px] text-text3">
+                              <div className="flex items-center gap-1.5 truncate">
+                                {c.rate && <span className="font-mono text-text2 truncate max-w-[75px]">{c.rate}</span>}
+                                {c.rate && c.location && <span className="text-border-strong">·</span>}
+                                {c.location && <span className="truncate max-w-[90px]">{c.location}</span>}
                               </div>
-                              <span className="text-[10px] text-text3">{relativeTime(c.updated_at)}</span>
-                            </div>
-
-                            <div className="flex items-center gap-2 mt-1.5">
-                              {signals.hasCollision && <Icon name="alertCircle" size={11} className="text-red" aria-label="Possible duplicate submission" />}
-                              {signals.hasNotes && <Icon name="edit" size={11} className="text-text3" aria-label="Has notes" />}
-                              {signals.upcomingCallback && <Icon name="callbacks" size={11} className="text-accent" aria-label="Upcoming callback" />}
-                              {c.interview_date && <Icon name="calendar" size={11} className="text-ai" aria-label="Interview scheduled" />}
-                              {c.external_status === 'Offer Extended' && <Icon name="reports" size={11} className="text-yellow" aria-label="Offer extended" />}
-                              {isToday(c.updated_at) && <Badge size="sm" tone="accent" className="ml-auto">New activity</Badge>}
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {signals.hasCollision && <Icon name="alertCircle" size={10} className="text-red" aria-label="Possible duplicate submission" />}
+                                {signals.hasNotes && <Icon name="edit" size={10} className="text-text3" aria-label="Has notes" />}
+                                {signals.upcomingCallback && <Icon name="callbacks" size={10} className="text-accent" aria-label="Upcoming callback" />}
+                                {c.interview_date && <Icon name="calendar" size={10} className="text-ai" aria-label="Interview scheduled" />}
+                                {c.external_status === 'Offer Extended' && <Icon name="reports" size={10} className="text-yellow" aria-label="Offer extended" />}
+                                <span>{relativeTime(c.updated_at)}</span>
+                              </div>
                             </div>
                           </div>
                         )

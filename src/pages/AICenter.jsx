@@ -295,7 +295,7 @@ export default function AICenter() {
         <div ref={effectiveMode === 'chat' ? listRef : undefined} className="relative flex-1 min-h-0 overflow-y-auto">
           {effectiveMode === 'chat' && (
             showHero ? (
-              <div className="min-h-full flex items-center justify-center px-4 sm:px-6 py-10">
+              <div className="w-full px-4 sm:px-6 pt-3 pb-8 flex flex-col items-center justify-start">
                 <HeroEmptyState onPick={handleSend} recent={recentPromptsList.filter(p => p.length <= 200)} onLaunchCategory={launchCategory} />
               </div>
             ) : (
@@ -732,7 +732,7 @@ function ContextRow({ label, value, muted }) {
 function HeroEmptyState({ onPick, recent, onLaunchCategory }) {
   const featured = AI_CATEGORIES.slice(0, 6)
   return (
-    <div className="w-full max-w-xl mx-auto flex flex-col items-center text-center gap-6">
+    <div className="w-full max-w-xl mx-auto flex flex-col items-center text-center gap-4.5 pt-2">
       <span className="relative">
         <span className="absolute inset-0 rounded-full blur-xl opacity-50 animate-pulse" style={{ background: 'linear-gradient(135deg, var(--accent), var(--ai))' }} />
         <span

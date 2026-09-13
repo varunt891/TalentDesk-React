@@ -1,33 +1,81 @@
 import { cn } from './utils'
 
-// Color config — dot color + text color per tone
+// Color config — soft tinted background + text + border per tone
 const TONES = {
-  neutral: { dot: 'var(--text3)',    text: 'var(--text3)' },
-  accent:  { dot: 'var(--accent)',   text: 'var(--accent)' },
-  green:   { dot: 'var(--green)',    text: 'var(--green)' },
-  yellow:  { dot: 'var(--yellow)',   text: 'var(--yellow)' },
-  orange:  { dot: 'var(--orange)',   text: 'var(--orange)' },
-  red:     { dot: 'var(--red)',      text: 'var(--red)' },
-  ai:      { dot: 'var(--ai)',       text: 'var(--ai)' },
+  neutral: {
+    bg: 'color-mix(in srgb, var(--text3) 12%, var(--surface))',
+    text: 'var(--text2)',
+    border: 'color-mix(in srgb, var(--text3) 25%, transparent)',
+    dot: 'var(--text3)',
+  },
+  accent: {
+    bg: 'color-mix(in srgb, var(--accent) 12%, var(--surface))',
+    text: 'var(--accent)',
+    border: 'color-mix(in srgb, var(--accent) 30%, transparent)',
+    dot: 'var(--accent)',
+  },
+  green: {
+    bg: 'color-mix(in srgb, var(--green) 12%, var(--surface))',
+    text: 'var(--green)',
+    border: 'color-mix(in srgb, var(--green) 30%, transparent)',
+    dot: 'var(--green)',
+  },
+  yellow: {
+    bg: 'color-mix(in srgb, var(--yellow) 14%, var(--surface))',
+    text: 'var(--yellow)',
+    border: 'color-mix(in srgb, var(--yellow) 30%, transparent)',
+    dot: 'var(--yellow)',
+  },
+  orange: {
+    bg: 'color-mix(in srgb, var(--orange) 14%, var(--surface))',
+    text: 'var(--orange)',
+    border: 'color-mix(in srgb, var(--orange) 30%, transparent)',
+    dot: 'var(--orange)',
+  },
+  red: {
+    bg: 'color-mix(in srgb, var(--red) 12%, var(--surface))',
+    text: 'var(--red)',
+    border: 'color-mix(in srgb, var(--red) 30%, transparent)',
+    dot: 'var(--red)',
+  },
+  ai: {
+    bg: 'color-mix(in srgb, var(--ai) 12%, var(--surface))',
+    text: 'var(--ai)',
+    border: 'color-mix(in srgb, var(--ai) 30%, transparent)',
+    dot: 'var(--ai)',
+  },
 }
 
-export default function Badge({ tone = 'neutral', size = 'md', dot = true, className = '', children }) {
+export default function Badge({ tone = 'neutral', size = 'sm', dot = false, className = '', children }) {
   const colors = TONES[tone] || TONES.neutral
-  const textSize = size === 'xs' ? 'text-[9px]' : size === 'sm' ? 'text-[10px]' : 'text-[11px]'
-  const dotSize  = size === 'xs' ? 5 : size === 'sm' ? 6 : 7
+  const sizeClasses =
+    size === 'xs'
+      ? 'text-[10px] px-1.5 py-0.5'
+      : size === 'sm'
+      ? 'text-[11px] px-2.5 py-0.5'
+      : 'text-[12px] px-3 py-1'
+  const dotSize = size === 'xs' ? 5 : 6
 
   return (
     <span
-      className={cn('inline-flex items-center gap-1.5 font-semibold uppercase tracking-wide whitespace-nowrap leading-none', textSize, className)}
-      style={{ color: colors.text }}
+      className={cn(
+        'inline-flex items-center gap-1.5 font-semibold rounded-full border whitespace-nowrap leading-none transition-colors select-none max-w-full shrink-0',
+        sizeClasses,
+        className
+      )}
+      style={{
+        backgroundColor: colors.bg,
+        color: colors.text,
+        borderColor: colors.border,
+      }}
     >
       {dot && (
         <span
           className="shrink-0 rounded-full"
-          style={{ width: dotSize, height: dotSize, background: colors.dot, flexShrink: 0 }}
+          style={{ width: dotSize, height: dotSize, background: colors.dot }}
         />
       )}
-      {children}
+      <span className="truncate max-w-full">{children}</span>
     </span>
   )
 }
@@ -47,28 +95,12 @@ export function statusTone(status) {
   return STATUS_TONE_MAP[key] || 'neutral'
 }
 
-// ── StatusPill (dot + text, no uppercase) ─────────────────────────────────────
-const DOT_COLOR = {
-  green: 'var(--green)', accent: 'var(--accent)', yellow: 'var(--yellow)',
-  orange: 'var(--orange)', red: 'var(--red)', ai: 'var(--ai)', neutral: 'var(--text3)',
-}
-const TEXT_COLOR = {
-  green: 'var(--green)', accent: 'var(--accent)', yellow: 'var(--yellow)',
-  orange: 'var(--orange)', red: 'var(--red)', ai: 'var(--ai)', neutral: 'var(--text3)',
-}
-
+// ── StatusPill ────────────────────────────────────────────────────────────────
 export function StatusPill({ status, label, tone, size = 'sm', className = '' }) {
   const resolvedTone = tone || statusTone(status)
-  const dot  = DOT_COLOR[resolvedTone]  || DOT_COLOR.neutral
-  const text = TEXT_COLOR[resolvedTone] || TEXT_COLOR.neutral
-  const textSize = size === 'xs' ? 'text-[9px]' : size === 'sm' ? 'text-[11px]' : 'text-[12px]'
   return (
-    <span
-      className={cn('inline-flex items-center gap-1.5 font-medium whitespace-nowrap', textSize, className)}
-      style={{ color: text }}
-    >
-      <span className="rounded-full shrink-0" style={{ width: 7, height: 7, background: dot }} />
+    <Badge tone={resolvedTone} size={size} className={className}>
       {label || status}
-    </span>
+    </Badge>
   )
 }

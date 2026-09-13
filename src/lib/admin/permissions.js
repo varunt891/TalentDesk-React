@@ -73,3 +73,67 @@ export function getPermission(role, moduleName) {
 export function hasPermission(role, moduleName, minLevel = VIEW) {
   return ORDER.indexOf(getPermission(role, moduleName)) >= ORDER.indexOf(minLevel)
 }
+
+// ─── Settings Center tab access ──────────────────────────────────────────────
+// Returns a map of tab id → 'full' | 'view' | 'none' for every tab in
+// SettingsCenter. 'full' = can see + mutate, 'view' = can see read-only,
+// 'none' = tab is hidden entirely. This is the single source of truth used
+// by SettingsCenter.jsx to filter the tab bar and pass read-only flags down.
+const SETTINGS_TAB_MATRIX = {
+  // tab id          OWNER/SUPERADMIN/ADMIN   MANAGERS*    RECRUITER/HR   EMPLOYEE/VIEWER
+  general:        { high: 'full', mid: 'full',  low: 'full',  min: 'full'  },
+  organization:   { high: 'full', mid: 'view',  low: 'none',  min: 'none'  },
+  teams:          { high: 'full', mid: 'full',  low: 'full',  min: 'none'  },
+  users:          { high: 'full', mid: 'view',  low: 'none',  min: 'none'  },
+  roles:          { high: 'full', mid: 'view',  low: 'none',  min: 'none'  },
+  ai:             { high: 'full', mid: 'full',  low: 'full',  min: 'none'  },
+  notifications:  { high: 'full', mid: 'full',  low: 'full',  min: 'full'  },
+  workspace:      { high: 'full', mid: 'full',  low: 'full',  min: 'full'  },
+  activity:       { high: 'full', mid: 'view',  low: 'none',  min: 'none'  },
+  security:       { high: 'full', mid: 'none',  low: 'none',  min: 'none'  },
+  integrations:   { high: 'full', mid: 'view',  low: 'none',  min: 'none'  },
+  billing:        { high: 'full', mid: 'none',  low: 'none',  min: 'none'  },
+}
+
+function _settingsTier(role) {
+  const k = (role || '').toUpperCase()
+  if (['OWNER', 'SUPERADMIN', 'ADMIN'].includes(k)) return 'high'
+  if (['RECRUITMENT_MANAGER', 'ACCOUNT_MANAGER', 'OPERATIONS_MANAGER', 'MANAGER'].includes(k)) return 'mid'
+  if (['RECRUITER', 'HR_MANAGER', 'HR_TEAM'].includes(k)) return 'low'
+  return 'min' // EMPLOYEE, VIEWER
+}
+
+/**
+ * Returns an object mapping each SettingsCenter tab id to its access level:
+ *   'full'  — tab visible, all actions enabled
+ *   'view'  — tab visible, destructive actions hidden
+ *   'none'  — tab hidden from the sidebar entirely
+ */
+export function getSettingsTabAccess(role) {
+  const tier = _settingsTier(role)
+  return Object.fromEntries(
+    Object.entries(SETTINGS_TAB_MATRIX).map(([tab, levels]) => [tab, levels[tier]])
+  )
+}
+
+// ─── Fine-grained action gates ────────────────────────────────────────────────
+// canDoAction(role, action) → boolean
+// Actions: 'inviteMember' | 'changeRole' | 'removeMember' | 'toggleActive'
+//          | 'editOrg' | 'changePlan' | 'viewAuditLog' | 'viewSecurity'
+//          | 'revokeInvite'
+const ACTION_TIERS = {
+  inviteMember:  ['OWNER', 'SUPERADMIN', 'ADMIN'],
+  changeRole:    ['OWNER', 'SUPERADMIN', 'ADMIN'],
+  removeMember:  ['OWNER', 'SUPERADMIN'],
+  toggleActive:  ['OWNER', 'SUPERADMIN', 'ADMIN'],
+  revokeInvite:  ['OWNER', 'SUPERADMIN', 'ADMIN'],
+  editOrg:       ['OWNER', 'SUPERADMIN', 'ADMIN'],
+  changePlan:    ['OWNER', 'SUPERADMIN'],
+  viewAuditLog:  ['OWNER', 'SUPERADMIN', 'ADMIN'],
+  viewSecurity:  ['OWNER', 'SUPERADMIN', 'ADMIN'],
+}
+
+export function canDoAction(role, action) {
+  const k = (role || '').toUpperCase()
+  return (ACTION_TIERS[action] || []).includes(k)
+}

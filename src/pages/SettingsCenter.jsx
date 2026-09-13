@@ -7,7 +7,7 @@ import {
   Switch, FormField, Badge, Avatar, AvatarGroup, Modal, useToast, cn, SearchBar, Icon,
 } from '../components/ui'
 import { SettingsCard, StatusBadge, InfoBanner, ProfileCard, PermissionMatrix, AIUsageSection } from '../components/admin'
-import { ROLES, MODULES, getRole } from '../lib/admin/permissions'
+import { ROLES, MODULES, getRole, getSettingsTabAccess, canDoAction } from '../lib/admin/permissions'
 import { useOrgPreferences } from '../lib/admin/orgPreferences'
 import { useNotificationPreferences, NOTIFICATION_CATEGORIES } from '../lib/admin/notificationPreferences'
 import { fetchNotifications, markNotificationRead, markNotificationsRead, deleteNotification } from '../lib/admin/notifications'
@@ -222,12 +222,31 @@ export default function SettingsCenter({ initialTab = 'general', onNavigate }) {
   const isSuperAdmin = isSuperAdminRole(role)
   const isOwnerOrAdmin = isOwnerOrAdminRole(role)
 
-  const [activeTab, setActiveTab] = useState(initialTab)
+  // ── RBAC ── single-source derived from permissions.js ──────────────────────
+  const tabAccess = getSettingsTabAccess(role)
+  const can = {
+    inviteMember: canDoAction(role, 'inviteMember'),
+    changeRole:   canDoAction(role, 'changeRole'),
+    removeMember: canDoAction(role, 'removeMember'),
+    toggleActive: canDoAction(role, 'toggleActive'),
+    revokeInvite: canDoAction(role, 'revokeInvite'),
+    editOrg:      canDoAction(role, 'editOrg'),
+    changePlan:   canDoAction(role, 'changePlan'),
+  }
+  // Visible tabs: filter out 'none' access; also exclude superadmin-only items for non-superadmins
+  const visibleTabs = TABS.filter(t => tabAccess[t.id] !== 'none')
+
+  // If the initialTab is restricted for this role, silently fall back to 'general'
+  const safeInitialTab = tabAccess[initialTab] !== 'none' ? initialTab : 'general'
+  const [activeTab, setActiveTab] = useState(safeInitialTab)
+  const [restrictedBanner, setRestrictedBanner] = useState(safeInitialTab !== initialTab)
   useEffect(() => {
     const flag = sessionStorage.getItem(SETTINGS_TAB_FLAG)
     if (flag) {
       sessionStorage.removeItem(SETTINGS_TAB_FLAG)
-      setActiveTab(flag)
+      const safeFlag = tabAccess[flag] !== 'none' ? flag : 'general'
+      setActiveTab(safeFlag)
+      if (safeFlag !== flag) setRestrictedBanner(true)
     }
   }, [])
 
@@ -495,8 +514,14 @@ export default function SettingsCenter({ initialTab = 'general', onNavigate }) {
     <PageContainer>
       <PageHeader eyebrow="Administration" title="Settings" subtitle="Organization, team, role, and workspace configuration for TalentDesk." />
 
+      {restrictedBanner && (
+        <InfoBanner tone="warn" className="mt-4" onClose={() => setRestrictedBanner(false)}>
+          You don't have permission to access that settings section. Showing General instead.
+        </InfoBanner>
+      )}
+
       <div className="mt-5">
-        <Tabs items={TABS} value={activeTab} onChange={setActiveTab} />
+        <Tabs items={visibleTabs} value={activeTab} onChange={tab => { setActiveTab(tab); setRestrictedBanner(false) }} />
       </div>
 
       <div className="pt-6">
@@ -514,20 +539,22 @@ export default function SettingsCenter({ initialTab = 'general', onNavigate }) {
             {activeTab === 'organization' && (
               <OrganizationTab
                 org={org} form={orgForm} setForm={setOrgForm} onSave={handleSaveOrg} saving={saving}
-                isOwnerOrAdmin={isOwnerOrAdmin} preferences={orgPrefs} updatePreferences={updateOrgPrefs}
+                canEdit={can.editOrg} isReadOnly={tabAccess['organization'] === 'view'}
+                preferences={orgPrefs} updatePreferences={updateOrgPrefs}
                 members={members}
               />
             )}
-            {activeTab === 'teams' && <TeamsTab members={members} />}
+            {activeTab === 'teams' && <TeamsTab members={members} isReadOnly={tabAccess['teams'] === 'view'} />}
             {activeTab === 'users' && (
               <UsersTab
-                members={members} invitations={invitations} isOwnerOrAdmin={isOwnerOrAdmin}
+                members={members} invitations={invitations}
+                can={can} isReadOnly={tabAccess['users'] === 'view'}
                 onRoleChange={handleRoleChange} onToggleActive={handleToggleActive} onRemove={handleRemoveMember}
                 onOpenInvite={() => { setCreatedInviteUrl(''); setInviteEmail(''); setShowInviteModal(true) }}
                 onRevoke={handleRevokeInvite}
               />
             )}
-            {activeTab === 'roles' && <RolesTab />}
+            {activeTab === 'roles' && <RolesTab isReadOnly={tabAccess['roles'] === 'view'} />}
             {activeTab === 'ai' && <AITab orgId={orgId} org={org} members={members} onNavigate={onNavigate} />}
             {activeTab === 'notifications' && (
               <NotificationsTab
@@ -550,7 +577,7 @@ export default function SettingsCenter({ initialTab = 'general', onNavigate }) {
                 description="Connections to ATS, HRIS, calendar, and email providers will appear here once backend support exists."
               />
             )}
-            {activeTab === 'billing' && <BillingTab org={org} isOwnerOrAdmin={isOwnerOrAdmin} saving={saving} onPlanChange={handlePlanChange} />}
+            {activeTab === 'billing' && <BillingTab org={org} canChangePlan={can.changePlan} saving={saving} onPlanChange={handlePlanChange} />}
           </>
         )}
       </div>
@@ -733,7 +760,7 @@ function GeneralTab({ org, allOrgs, isSuperAdmin, switchingId, onSwitchWorkspace
   )
 }
 
-function OrganizationTab({ org, form, setForm, onSave, saving, isOwnerOrAdmin, preferences, updatePreferences, members }) {
+function OrganizationTab({ org, form, setForm, onSave, saving, canEdit, isReadOnly, preferences, updatePreferences, members }) {
   const activeMarket = getMarketConfig(preferences.market)
   const handleMarketChange = (marketId) => {
     const market = getMarketConfig(marketId)
@@ -748,53 +775,75 @@ function OrganizationTab({ org, form, setForm, onSave, saving, isOwnerOrAdmin, p
     <div className="flex flex-col gap-6">
       <Card>
         <CardHeader title="Company Profile" subtitle={`Real fields stored on the organization record. Tenant ID: ${org?.id || '—'}`} />
+        {isReadOnly && (
+          <InfoBanner tone="info" className="mb-4">
+            You have view-only access to organization settings. Contact an Owner or Admin to make changes.
+          </InfoBanner>
+        )}
         <form onSubmit={onSave} className="flex flex-col gap-4">
           <div className="grid sm:grid-cols-2 gap-4">
             <FormField label="Company Name" required>
-              <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} disabled={!isOwnerOrAdmin} required />
+              <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} disabled={!canEdit} required />
             </FormField>
             <FormField label="Primary Domain">
-              <Input value={form.domain} onChange={e => setForm(f => ({ ...f, domain: e.target.value }))} disabled={!isOwnerOrAdmin} placeholder="company.com" />
+              <Input value={form.domain} onChange={e => setForm(f => ({ ...f, domain: e.target.value }))} disabled={!canEdit} placeholder="company.com" />
             </FormField>
             <FormField label="Website">
-              <Input type="url" value={form.website} onChange={e => setForm(f => ({ ...f, website: e.target.value }))} disabled={!isOwnerOrAdmin} placeholder="https://www.company.com" />
+              <Input type="url" value={form.website} onChange={e => setForm(f => ({ ...f, website: e.target.value }))} disabled={!canEdit} placeholder="https://www.company.com" />
             </FormField>
             <FormField label="Industry">
-              <Input value={form.industry} onChange={e => setForm(f => ({ ...f, industry: e.target.value }))} disabled={!isOwnerOrAdmin} />
+              <Input value={form.industry} onChange={e => setForm(f => ({ ...f, industry: e.target.value }))} disabled={!canEdit} />
             </FormField>
             <FormField label="Company Size">
-              <Input value={form.company_size} onChange={e => setForm(f => ({ ...f, company_size: e.target.value }))} disabled={!isOwnerOrAdmin} placeholder="10-50" />
+              <Input value={form.company_size} onChange={e => setForm(f => ({ ...f, company_size: e.target.value }))} disabled={!canEdit} placeholder="10-50" />
             </FormField>
             <FormField label="Logo URL">
-              <Input type="url" value={form.logo_url} onChange={e => setForm(f => ({ ...f, logo_url: e.target.value }))} disabled={!isOwnerOrAdmin} />
+              <Input type="url" value={form.logo_url} onChange={e => setForm(f => ({ ...f, logo_url: e.target.value }))} disabled={!canEdit} />
             </FormField>
             <FormField label="Timezone">
-              <Select value={form.timezone} onChange={v => setForm(f => ({ ...f, timezone: v }))} options={TIMEZONE_OPTIONS} disabled={!isOwnerOrAdmin} />
+              <Select value={form.timezone} onChange={v => setForm(f => ({ ...f, timezone: v }))} options={TIMEZONE_OPTIONS} disabled={!canEdit} />
             </FormField>
           </div>
-          {isOwnerOrAdmin && <Button type="submit" loading={saving} className="self-start">Save changes</Button>}
+          {canEdit && <Button type="submit" loading={saving} className="self-start">Save changes</Button>}
         </form>
       </Card>
 
       <AIUsageSection org={org} members={members} orgId={org?.id} />
 
+      {/* ── Org-level: admin-only ───────────────────────────────────────── */}
       <Card>
-        <CardHeader title="Regional & Recruiting Preferences" subtitle="Tune TalentDesk for the staffing market this workspace serves." />
+        <CardHeader
+          title="Regional &amp; Recruiting Preferences"
+          subtitle="Org-wide market configuration — set at onboarding and managed by Owners &amp; Admins."
+          action={!canEdit ? (
+            <span className="flex items-center gap-1.5 text-xs font-medium text-text3">
+              <Icon name="lock" size={13} />
+              Admin only
+            </span>
+          ) : null}
+        />
+        {!canEdit && (
+          <InfoBanner tone="info" className="mb-4">
+            These are org-level settings configured by your Owner or Admin. Contact them to request a change.
+          </InfoBanner>
+        )}
         <InfoBanner tone="info" className="mb-4">
           These preferences are saved locally to your browser for this organization. They are not yet synced across devices or enforced server-side.
         </InfoBanner>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
+        <div className={cn('grid grid-cols-1 md:grid-cols-2 gap-3 mb-5', !canEdit && 'pointer-events-none opacity-60 select-none')}>
           {Object.values(MARKET_CONFIGS).map(market => {
             const active = activeMarket.id === market.id
             return (
               <button
                 key={market.id}
                 type="button"
-                onClick={() => handleMarketChange(market.id)}
+                disabled={!canEdit}
+                onClick={() => canEdit && handleMarketChange(market.id)}
                 className={cn(
                   'text-left rounded-[var(--radius-md)] border p-4 transition-all duration-[var(--duration-fast)] bg-surface2/50',
-                  'hover:border-accent/40 hover:bg-surface2 focus:outline-none focus:ring-2 focus:ring-accent/20',
-                  active ? 'border-accent/60 ring-1 ring-accent/20 shadow-[0_12px_28px_-18px_color-mix(in_srgb,var(--accent)_45%,transparent)]' : 'border-border'
+                  canEdit && 'hover:border-accent/40 hover:bg-surface2 focus:outline-none focus:ring-2 focus:ring-accent/20',
+                  active ? 'border-accent/60 ring-1 ring-accent/20 shadow-[0_12px_28px_-18px_color-mix(in_srgb,var(--accent)_45%,transparent)]' : 'border-border',
+                  !canEdit && 'cursor-not-allowed'
                 )}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -820,27 +869,35 @@ function OrganizationTab({ org, form, setForm, onSave, saving, isOwnerOrAdmin, p
             )
           })}
         </div>
-        <div className="grid sm:grid-cols-2 gap-4 mb-5">
+        <div className="grid sm:grid-cols-2 gap-4">
           <FormField label="Market">
-            <Select value={preferences.market} onChange={handleMarketChange} options={MARKET_OPTIONS} />
+            <Select value={preferences.market} onChange={handleMarketChange} options={MARKET_OPTIONS} disabled={!canEdit} />
           </FormField>
           <FormField label="Currency">
-            <Select value={preferences.currency} onChange={v => updatePreferences({ currency: v })} options={CURRENCY_OPTIONS} />
+            <Select value={preferences.currency} onChange={v => updatePreferences({ currency: v })} options={CURRENCY_OPTIONS} disabled={!canEdit} />
           </FormField>
           <FormField label="Date Format">
-            <Select value={preferences.dateFormat} onChange={v => updatePreferences({ dateFormat: v })} options={DATE_FORMAT_OPTIONS} />
+            <Select value={preferences.dateFormat} onChange={v => updatePreferences({ dateFormat: v })} options={DATE_FORMAT_OPTIONS} disabled={!canEdit} />
           </FormField>
           <FormField label="Language">
-            <Select value={preferences.language} onChange={v => updatePreferences({ language: v })} options={LANGUAGE_OPTIONS} />
+            <Select value={preferences.language} onChange={v => updatePreferences({ language: v })} options={LANGUAGE_OPTIONS} disabled={!canEdit} />
           </FormField>
           <FormField label="Business Hours">
             <div className="flex items-center gap-2">
-              <Input type="time" value={preferences.businessHours.start} onChange={e => updatePreferences({ businessHours: { start: e.target.value } })} />
+              <Input type="time" value={preferences.businessHours.start} onChange={e => updatePreferences({ businessHours: { start: e.target.value } })} disabled={!canEdit} />
               <span className="text-text3 text-xs">to</span>
-              <Input type="time" value={preferences.businessHours.end} onChange={e => updatePreferences({ businessHours: { end: e.target.value } })} />
+              <Input type="time" value={preferences.businessHours.end} onChange={e => updatePreferences({ businessHours: { end: e.target.value } })} disabled={!canEdit} />
             </div>
           </FormField>
         </div>
+      </Card>
+
+      {/* ── Personal defaults: editable by all roles ─────────────────────── */}
+      <Card>
+        <CardHeader
+          title="Personal Defaults"
+          subtitle="Your own templates used across recruiting actions — editable by every team member."
+        />
         <div className="grid sm:grid-cols-2 gap-4">
           <FormField label="Default Email Signature">
             <Textarea rows={3} value={preferences.emailSignature} onChange={e => updatePreferences({ emailSignature: e.target.value })} placeholder={'Best regards,\nThe Recruiting Team'} />
@@ -855,18 +912,24 @@ function OrganizationTab({ org, form, setForm, onSave, saving, isOwnerOrAdmin, p
 }
 
 const DEPT_CONFIG = {
-  Healthcare: { icon: 'heart', color: 'var(--red)', bg: 'color-mix(in srgb, var(--red) 15%, transparent)' },
-  IT: { icon: 'code', color: 'var(--blue)', bg: 'color-mix(in srgb, var(--blue) 15%, transparent)' },
-  PMO: { icon: 'briefcase', color: 'var(--purple)', bg: 'color-mix(in srgb, var(--purple) 15%, transparent)' },
-  'E-care': { icon: 'shield', color: 'var(--cyan)', bg: 'color-mix(in srgb, var(--cyan) 15%, transparent)' },
-  Onboarding: { icon: 'userCheck', color: 'var(--amber)', bg: 'color-mix(in srgb, var(--amber) 15%, transparent)' },
-  Helpdesk: { icon: 'headphones', color: 'var(--indigo)', bg: 'color-mix(in srgb, var(--indigo) 15%, transparent)' },
-  Operations: { icon: 'cpu', color: 'var(--accent)', bg: 'color-mix(in srgb, var(--accent) 15%, transparent)' },
-  Unassigned: { icon: 'helpCircle', color: 'var(--yellow)', bg: 'color-mix(in srgb, var(--yellow) 15%, transparent)' },
+  Healthcare: { icon: 'heart', color: 'var(--red)', bg: 'color-mix(in srgb, var(--red) 15%, var(--surface))' },
+  'Healthcare Staffing': { icon: 'heart', color: 'var(--red)', bg: 'color-mix(in srgb, var(--red) 15%, var(--surface))' },
+  IT: { icon: 'code', color: 'var(--accent2)', bg: 'color-mix(in srgb, var(--accent2) 15%, var(--surface))' },
+  'Technology Staffing': { icon: 'code', color: 'var(--accent2)', bg: 'color-mix(in srgb, var(--accent2) 15%, var(--surface))' },
+  PMO: { icon: 'briefcase', color: 'var(--ai)', bg: 'color-mix(in srgb, var(--ai) 15%, var(--surface))' },
+  'Client Success': { icon: 'layers', color: 'var(--accent)', bg: 'color-mix(in srgb, var(--accent) 15%, var(--surface))' },
+  'BFSI Staffing': { icon: 'briefcase', color: 'var(--ai)', bg: 'color-mix(in srgb, var(--ai) 15%, var(--surface))' },
+  'E-care': { icon: 'shield', color: 'var(--accent2)', bg: 'color-mix(in srgb, var(--accent2) 15%, var(--surface))' },
+  Onboarding: { icon: 'userCheck', color: 'var(--orange)', bg: 'color-mix(in srgb, var(--orange) 15%, var(--surface))' },
+  Helpdesk: { icon: 'headphones', color: 'var(--ai)', bg: 'color-mix(in srgb, var(--ai) 15%, var(--surface))' },
+  Operations: { icon: 'cpu', color: 'var(--green)', bg: 'color-mix(in srgb, var(--green) 15%, var(--surface))' },
+  Unassigned: { icon: 'helpCircle', color: 'var(--orange)', bg: 'color-mix(in srgb, var(--orange) 15%, var(--surface))' },
 }
 
-function TeamsTab({ members }) {
+
+function TeamsTab({ members, isReadOnly }) {
   const [selectedDept, setSelectedDept] = useState(null)
+  const [modalSearch, setModalSearch] = useState('')
 
   const groups = useMemo(() => {
     const map = new Map()
@@ -881,91 +944,190 @@ function TeamsTab({ members }) {
   const managers = useMemo(() => members.filter(m => !m.manager_id), [members])
   const unassignedCount = groups.find(([name]) => name === 'Unassigned')?.[1].length || 0
 
+  // Modal filtered list
+  const modalFiltered = useMemo(() => {
+    if (!selectedDept) return []
+    const q = modalSearch.trim().toLowerCase()
+    if (!q) return selectedDept.list
+    return selectedDept.list.filter(m =>
+      `${m.full_name || ''} ${m.email || ''} ${m.role || ''} ${m.team || ''}`.toLowerCase().includes(q)
+    )
+  }, [selectedDept, modalSearch])
+
+  // Role breakdown for a dept list
+  const getRoleBreakdown = (list) => {
+    const counts = {}
+    for (const m of list) {
+      const label = getRole(m.role)?.label || m.role || 'Unknown'
+      counts[label] = (counts[label] || 0) + 1
+    }
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3)
+  }
+
   return (
     <div className="flex flex-col gap-6">
+
+      {/* ── KPI row ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <KPICard label="Departments / Teams" value={groups.length} icon="layers" />
-        <KPICard label="Active Members" value={members.filter(m => m.is_active !== false).length} icon="users" />
-        <KPICard label="Managers" value={managers.length} icon="users" />
-        <KPICard label="Unassigned" value={unassignedCount} icon="users" tone={unassignedCount > 0 ? 'yellow' : 'accent'} />
+        <KPICard label="Active Members" value={members.filter(m => m.is_active !== false).length} icon="users" tone="accent" />
+        <KPICard label="Managers / Leads" value={managers.length} icon="briefcase" />
+        <KPICard label="Unassigned" value={unassignedCount} icon="helpCircle" tone={unassignedCount > 0 ? 'yellow' : 'green'} />
       </div>
 
+      {/* ── Department cards ─────────────────────────────────────────────── */}
       <Card>
-        <CardHeader title="Departments & Teams" subtitle="Grouped from real recruiter profile data (department / team fields)." />
+        <CardHeader
+          title="Departments & Teams"
+          subtitle={`${groups.length} group${groups.length === 1 ? '' : 's'} · derived from recruiter profile data`}
+        />
         {groups.length === 0 ? (
-          <EmptyState title="No team members yet" description="Invite recruiters from the Users tab to see team groupings here." />
+          <EmptyState
+            icon="users"
+            title="No team members yet"
+            description="Invite recruiters from the Users tab to see team groupings here."
+          />
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
             {groups.map(([name, list]) => {
               const activeCount = list.filter(m => m.is_active !== false).length
               const percentActive = list.length > 0 ? Math.round((activeCount / list.length) * 100) : 0
               const cfg = DEPT_CONFIG[name] || { icon: 'layers', color: 'var(--accent)', bg: 'color-mix(in srgb, var(--accent) 15%, transparent)' }
+              const roleBreakdown = getRoleBreakdown(list)
 
               return (
-                <div
+                <button
                   key={name}
-                  className="group/card relative rounded-[var(--radius-md)] border border-border/70 bg-surface2/30 hover:bg-surface2/60 p-4 transition-all duration-200 flex flex-col justify-between gap-4 shadow-2xs hover:shadow-md hover:border-accent/30"
+                  type="button"
+                  onClick={() => { setModalSearch(''); setSelectedDept({ name, list }) }}
+                  className="group/card text-left relative flex flex-col justify-between p-4 rounded-xl border border-border/70 bg-surface/50 hover:bg-surface2/60 hover:border-accent/40 hover:shadow-md transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-accent/30 gap-3"
                 >
-                  {/* Top row: Dept icon + Name + Active badge */}
+                  {/* Top Row: Icon + Name & Count + Active Badge */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <div
-                        className="w-10 h-10 rounded-[var(--radius-sm)] flex items-center justify-center shrink-0 shadow-2xs group-hover/card:scale-105 transition-transform"
+                        className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-xs group-hover/card:scale-105 transition-transform"
                         style={{ background: cfg.bg, color: cfg.color }}
                       >
                         <Icon name={cfg.icon} size={20} />
                       </div>
                       <div className="min-w-0">
-                        <div className="text-sm font-bold text-text truncate group-hover/card:text-accent transition-colors">
+                        <div className="text-sm font-bold text-text group-hover/card:text-accent transition-colors truncate">
                           {name}
                         </div>
-                        <div className="text-xs text-text3 mt-0.5 font-medium">
-                          {list.length} member{list.length === 1 ? '' : 's'} · {activeCount} active
+                        <div className="text-xs text-text3 font-medium mt-0.5">
+                          {list.length} member{list.length === 1 ? '' : 's'}
                         </div>
                       </div>
                     </div>
-
-                    <Badge tone={percentActive === 100 ? 'green' : 'yellow'} size="sm" className="shrink-0 font-semibold">
-                      {percentActive}% Active
+                    <Badge
+                      tone={percentActive === 100 ? 'green' : percentActive >= 80 ? 'accent' : 'yellow'}
+                      size="sm"
+                      className="shrink-0 font-semibold tabular-nums"
+                    >
+                      {percentActive}%
                     </Badge>
                   </div>
 
                   {/* Progress bar */}
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex justify-between items-center text-[11px] font-semibold text-text3">
-                      <span>Team Active Capacity</span>
-                      <span>{activeCount} / {list.length}</span>
-                    </div>
-                    <div className="w-full h-1.5 rounded-full bg-surface3 overflow-hidden">
+                  <div className="flex flex-col gap-1.5 pt-1">
+                    <div className="w-full h-1.5 rounded-full bg-surface3/80 overflow-hidden">
                       <div
                         className="h-full rounded-full transition-all duration-500 ease-out"
-                        style={{
-                          width: `${percentActive}%`,
-                          background: cfg.color,
-                        }}
+                        style={{ width: `${percentActive}%`, background: cfg.color }}
                       />
+                    </div>
+                    <div className="flex justify-between text-[11px] text-text3 font-medium">
+                      <span>{activeCount} active</span>
+                      {list.length - activeCount > 0 && (
+                        <span>{list.length - activeCount} inactive</span>
+                      )}
                     </div>
                   </div>
 
-                  {/* Bottom row: Avatar stack + View Members button */}
-                  <div className="flex items-center justify-between gap-3 pt-2 border-t border-border/40">
+                  {/* Role breakdown pills */}
+                  <div className="flex flex-wrap gap-1.5 py-0.5">
+                    {roleBreakdown.map(([label, count]) => (
+                      <Badge key={label} tone="neutral" size="xs">
+                        {label} · {count}
+                      </Badge>
+                    ))}
+                  </div>
+
+                  {/* Footer: Avatar stack + View button */}
+                  <div className="flex items-center justify-between gap-3 pt-2.5 border-t border-border/40 mt-auto">
                     <AvatarGroup
                       members={list}
                       max={5}
                       size="sm"
-                      onOverflowClick={() => setSelectedDept({ name, list })}
-                      onMemberClick={() => setSelectedDept({ name, list })}
                     />
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      rightIcon="chevronRight"
-                      onClick={() => setSelectedDept({ name, list })}
-                      className="text-text3 hover:text-text shrink-0"
-                    >
-                      View Team
-                    </Button>
+                    <span className="flex items-center gap-1 text-xs font-semibold text-text3 group-hover/card:text-accent transition-colors shrink-0">
+                      View
+                      <Icon name="chevronRight" size={14} className="group-hover/card:translate-x-0.5 transition-transform" />
+                    </span>
                   </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </Card>
+
+      {/* ── Manager Hierarchy ────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader
+          title="Manager Hierarchy"
+          subtitle="Reporting structure from recruiter profiles (manager_id field)."
+        />
+        {managers.length === 0 ? (
+          <EmptyState icon="users" title="No managers on record" description="Managers appear here when recruiter profiles have a manager_id set." />
+        ) : (
+          <div className="flex flex-col gap-2 pt-1">
+            {managers.map(m => {
+              const reports = members.filter(r => r.manager_id === m.user_id)
+              return (
+                <div key={m.id} className="rounded-xl border border-border/50 bg-surface2/20 p-3.5 flex flex-col gap-3">
+                  {/* Manager row */}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Avatar name={m.full_name || m.email} className="shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold text-text leading-snug truncate" title={m.full_name || 'Unnamed'}>
+                        {m.full_name || 'Unnamed'}
+                      </div>
+                      <div className="text-xs text-text3 truncate leading-snug block w-full" title={m.email}>{m.email}</div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge tone="accent" size="sm">{getRole(m.role)?.label || m.role}</Badge>
+                      <StatusBadge status={m.is_active === false ? 'inactive' : 'active'} />
+                    </div>
+                  </div>
+                  {/* Direct reports */}
+                  {reports.length > 0 && (
+                    <div className="pl-4 border-l-2 border-border/60 flex flex-col gap-2">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-text3">
+                        {reports.length} direct report{reports.length === 1 ? '' : 's'}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {reports.slice(0, 4).map(r => (
+                          <div key={r.id} className="flex items-center gap-2 min-w-0 bg-surface2/30 p-2 rounded-lg border border-border/40">
+                            <Avatar name={r.full_name || r.email} size="xs" className="shrink-0" />
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs text-text font-medium leading-snug truncate" title={r.full_name || r.email}>
+                                {r.full_name || r.email}
+                              </div>
+                              <div className="text-[11px] text-text3 truncate block w-full" title={r.email}>
+                                {r.email}
+                              </div>
+                            </div>
+                            <Badge tone="neutral" size="sm" className="shrink-0">{getRole(r.role)?.label || r.role}</Badge>
+                          </div>
+                        ))}
+                      </div>
+                      {reports.length > 4 && (
+                        <span className="text-xs text-text3 font-medium">+{reports.length - 4} more direct reports</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -973,51 +1135,84 @@ function TeamsTab({ members }) {
         )}
       </Card>
 
-      <Card>
-        <CardHeader title="Manager Hierarchy" subtitle="Real reporting structure from recruiter profiles (manager_id)." />
-        {managers.length === 0 ? (
-          <EmptyState title="No managers on record" />
-        ) : (
-          <div className="flex flex-col divide-y divide-border">
-            {managers.map(m => {
-              const reports = members.filter(r => r.manager_id === m.user_id)
-              return (
-                <ProfileCard
-                  key={m.id} name={m.full_name} email={m.email} roleLabel={getRole(m.role)?.label || m.role}
-                  status={m.is_active === false ? 'inactive' : 'active'}
-                  actions={<span className="text-xs text-text3 whitespace-nowrap">{reports.length} direct report{reports.length === 1 ? '' : 's'}</span>}
-                />
-              )
-            })}
-          </div>
-        )}
-      </Card>
-
       <InfoBanner tone="warn">
-        Office locations, territory assignment rules, and structured recruiter skill tags are not yet part of the data model — they will appear here once that backend support exists rather than being shown with invented values.
+        Office locations, territory assignment rules, and structured recruiter skill tags are not yet part of the data model — they will appear here once that backend support exists.
       </InfoBanner>
 
-      {/* Modal for inspecting full team members */}
+      {/* ── Department member modal ───────────────────────────────────────── */}
       <Modal
         open={Boolean(selectedDept)}
-        onClose={() => setSelectedDept(null)}
-        title={selectedDept ? `${selectedDept.name} Department` : ''}
-        subtitle={selectedDept ? `${selectedDept.list.length} team member${selectedDept.list.length === 1 ? '' : 's'}` : ''}
-        size="md"
+        onClose={() => { setSelectedDept(null); setModalSearch('') }}
+        title={selectedDept ? selectedDept.name : ''}
+        subtitle={selectedDept ? `${selectedDept.list.length} member${selectedDept.list.length === 1 ? '' : 's'}` : ''}
+        size="lg"
       >
         {selectedDept && (
-          <div className="flex flex-col gap-3 max-h-[60vh] overflow-y-auto pr-1">
-            {selectedDept.list.map(m => (
-              <ProfileCard
-                key={m.id}
-                name={m.full_name}
-                email={m.email}
-                roleLabel={getRole(m.role)?.label || m.role}
-                status={m.is_active === false ? 'inactive' : 'active'}
-                department={m.department}
-                team={m.team}
+          <div className="flex flex-col gap-4">
+            {/* Search inside modal */}
+            {selectedDept.list.length > 4 && (
+              <SearchBar
+                value={modalSearch}
+                onChange={setModalSearch}
+                placeholder="Search members..."
               />
-            ))}
+            )}
+
+            {/* Member grid */}
+            {modalFiltered.length === 0 ? (
+              <div className="py-10 text-center text-sm text-text3">No members match your search.</div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-1">
+                {modalFiltered.map(m => {
+                  const roleLabel = getRole(m.role)?.label || m.role
+                  const isActive = m.is_active !== false
+
+                  return (
+                    <div
+                      key={m.id}
+                      className="flex items-start gap-3 rounded-xl border border-border/60 bg-surface2/30 p-3.5 hover:bg-surface2/60 hover:border-accent/30 transition-all duration-150 min-w-0"
+                    >
+                      {/* Avatar */}
+                      <Avatar name={m.full_name || m.email} className="shrink-0 mt-0.5" />
+
+                      {/* Info */}
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold text-text leading-snug truncate" title={m.full_name || 'Unnamed User'}>
+                          {m.full_name || 'Unnamed User'}
+                        </div>
+                        <div className="text-xs text-text3 mt-0.5 truncate block w-full leading-snug" title={m.email}>
+                          {m.email}
+                        </div>
+                        {m.team && m.team !== selectedDept.name && (
+                          <div className="text-[10px] text-text3 mt-1 font-medium truncate">{m.team}</div>
+                        )}
+                      </div>
+
+                      {/* Badges */}
+                      <div className="flex flex-col items-end gap-1.5 shrink-0 pt-0.5">
+                        <Badge tone="accent" size="sm">{roleLabel}</Badge>
+                        <span className={cn(
+                          'inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full',
+                          isActive
+                            ? 'bg-green/15 text-green'
+                            : 'bg-surface3 text-text3'
+                        )}>
+                          <span className={cn('w-1.5 h-1.5 rounded-full', isActive ? 'bg-green' : 'bg-text3')} />
+                          {isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Footer count */}
+            {modalSearch && (
+              <div className="text-xs text-text3 text-center pt-1">
+                {modalFiltered.length} of {selectedDept.list.length} members
+              </div>
+            )}
           </div>
         )}
       </Modal>
@@ -1025,7 +1220,7 @@ function TeamsTab({ members }) {
   )
 }
 
-function UsersTab({ members, invitations, isOwnerOrAdmin, onRoleChange, onToggleActive, onRemove, onOpenInvite, onRevoke }) {
+function UsersTab({ members, invitations, can, isReadOnly, onRoleChange, onToggleActive, onRemove, onOpenInvite, onRevoke }) {
   const [search, setSearch] = useState('')
 
   const filtered = useMemo(() => {
@@ -1038,6 +1233,11 @@ function UsersTab({ members, invitations, isOwnerOrAdmin, onRoleChange, onToggle
 
   return (
     <div className="flex flex-col gap-6">
+      {isReadOnly && (
+        <InfoBanner tone="info">
+          You have view-only access to team members. Contact an Owner or Admin to invite, remove, or change roles.
+        </InfoBanner>
+      )}
       {/* Header row: stats + search + invite button */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="text-sm text-text3 shrink-0">
@@ -1050,7 +1250,7 @@ function UsersTab({ members, invitations, isOwnerOrAdmin, onRoleChange, onToggle
             placeholder="Search by name, email, role..."
           />
         </div>
-        {isOwnerOrAdmin && <Button size="sm" leftIcon="plus" onClick={onOpenInvite} className="shrink-0">Invite User</Button>}
+        {can.inviteMember && <Button size="sm" leftIcon="plus" onClick={onOpenInvite} className="shrink-0">Invite User</Button>}
       </div>
 
       <Card>
@@ -1081,17 +1281,17 @@ function UsersTab({ members, invitations, isOwnerOrAdmin, onRoleChange, onToggle
                 </div>
                 {/* Controls row: role select + toggle + remove */}
                 <div className="flex items-center gap-2 flex-wrap pl-0 sm:pl-11">
-                  {isOwnerOrAdmin ? (
+                  {can.changeRole ? (
                     <div className="flex-1 min-w-[140px] max-w-[200px]"><Select size="sm" value={m.role} onChange={v => onRoleChange(m.id, v)} options={ALL_ROLES} /></div>
                   ) : (
                     <Badge tone="accent" size="sm">{m.role}</Badge>
                   )}
-                  {isOwnerOrAdmin ? (
+                  {can.toggleActive ? (
                     <Switch checked={m.is_active !== false} onChange={v => onToggleActive(m.user_id, v)} label={m.is_active !== false ? 'Active' : 'Inactive'} />
                   ) : (
                     <StatusBadge status={m.is_active !== false ? 'active' : 'inactive'} />
                   )}
-                  {isOwnerOrAdmin && <Button size="sm" variant="ghost" onClick={() => onRemove(m.id, m.full_name)} className="text-red ml-auto">Remove</Button>}
+                  {can.removeMember && <Button size="sm" variant="ghost" onClick={() => onRemove(m.id, m.full_name)} className="text-red ml-auto">Remove</Button>}
                 </div>
               </div>
             ))}
@@ -1109,7 +1309,10 @@ function UsersTab({ members, invitations, isOwnerOrAdmin, onRoleChange, onToggle
                   <div className="text-sm font-semibold text-text">{inv.email}</div>
                   <div className="text-xs text-text3 mt-0.5">{inv.role} · Expires {new Date(inv.expires_at).toLocaleDateString()}</div>
                 </div>
-                <Button size="sm" variant="ghost" className="text-red" onClick={() => onRevoke(inv.id)}>Revoke</Button>
+                {can.revokeInvite
+                  ? <Button size="sm" variant="ghost" className="text-red" onClick={() => onRevoke(inv.id)}>Revoke</Button>
+                  : <Badge tone="yellow" size="sm">Pending</Badge>
+                }
               </div>
             ))}
           </div>
@@ -1119,9 +1322,14 @@ function UsersTab({ members, invitations, isOwnerOrAdmin, onRoleChange, onToggle
   )
 }
 
-function RolesTab() {
+function RolesTab({ isReadOnly }) {
   return (
     <div className="flex flex-col gap-5">
+      {isReadOnly && (
+        <InfoBanner tone="info">
+          You have view-only access to the permission matrix. Role configuration can only be modified by an Owner or Admin.
+        </InfoBanner>
+      )}
       <InfoBanner tone="info">
         This matrix is the single source of truth for what each role can do across TalentDesk (src/lib/admin/permissions.js). It currently governs UI presentation only — there is no Role/Permission table in the database yet, so nothing here is enforced server-side. It exists as reusable configuration so real backend authorization can be layered in later without a UI rewrite.
       </InfoBanner>
@@ -1282,7 +1490,8 @@ function PlaceholderTab({ title, description }) {
   )
 }
 
-function BillingTab({ org, isOwnerOrAdmin, saving, onPlanChange }) {
+function BillingTab({ org, canChangePlan, saving, onPlanChange }) {
+  const isOwnerOrAdmin = canChangePlan // kept for the AI usage fetch guard below
   const candidateUsagePercent = Math.min(100, Math.round(((org?.stats?.candidates || 0) / (org?.candidate_limit || 15000)) * 100))
   const currentPlanId = org?.subscription_plan || 'Growth'
 
@@ -1477,7 +1686,7 @@ function BillingTab({ org, isOwnerOrAdmin, saving, onPlanChange }) {
                       <Icon name="checkCircle" size={14} />
                       Current Active Plan
                     </div>
-                  ) : isOwnerOrAdmin ? (
+                  ) : canChangePlan ? (
                     <Button
                       size="md"
                       variant={isEnterprise ? 'ai' : isPopular ? 'primary' : 'secondary'}
@@ -1489,7 +1698,7 @@ function BillingTab({ org, isOwnerOrAdmin, saving, onPlanChange }) {
                     </Button>
                   ) : (
                     <div className="w-full py-2.5 text-center text-xs text-text3 font-medium">
-                      Contact your admin to switch
+                      Contact your Owner to switch plans
                     </div>
                   )}
                 </div>
