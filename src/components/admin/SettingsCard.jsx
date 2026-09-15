@@ -9,11 +9,11 @@ import { cn } from '../ui/utils'
  */
 export default function SettingsCard({ title, description, control, children, className = '' }) {
   return (
-    <div className={cn('py-4 border-b border-border last:border-0', className)}>
-      <div className="flex items-center justify-between gap-5 flex-wrap">
-        <div className="min-w-0">
+    <div className={cn('py-3.5 border-b border-border last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0', className)}>
+      <div className="flex items-center justify-between gap-4 flex-nowrap">
+        <div className="min-w-0 flex-1 pr-2">
           <div className="text-[13px] font-semibold text-text tracking-tight">{title}</div>
-          {description && <div className="text-xs text-text3 mt-1 leading-relaxed">{description}</div>}
+          {description && <div className="text-xs text-text3 mt-0.5 leading-relaxed">{description}</div>}
         </div>
         {control && <div className="shrink-0">{control}</div>}
       </div>

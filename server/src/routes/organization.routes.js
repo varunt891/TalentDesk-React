@@ -5,6 +5,33 @@ import { requireAuth, requireAdmin } from '../auth.js'
 
 const router = Router()
 
+const MARKET_DEFAULTS = {
+  US: {
+    timezone: 'America/New_York',
+    currency: 'USD',
+    date_format: 'MM/DD/YYYY',
+    language: 'en',
+    business_hours_start: '09:00',
+    business_hours_end: '18:00',
+  },
+  IN: {
+    timezone: 'Asia/Kolkata',
+    currency: 'INR',
+    date_format: 'DD/MM/YYYY',
+    language: 'en',
+    business_hours_start: '09:30',
+    business_hours_end: '18:30',
+  },
+}
+
+function normalizeMarket(value) {
+  return value === 'IN' ? 'IN' : 'US'
+}
+
+function marketDefaults(market) {
+  return MARKET_DEFAULTS[normalizeMarket(market)]
+}
+
 // POST /api/organization/switch - Switch active organization workspace
 router.post('/switch', requireAuth, async (req, res, next) => {
   try {
@@ -110,7 +137,7 @@ function getFrontendClientOrigin(req) {
 // POST /api/organization/onboard - Superadmin Onboard New Organization
 router.post('/onboard', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const { name, domain, website, industry, subscription_plan = 'Growth', candidate_limit = 15000, ai_credit_limit = 1000, owner_name, owner_email, slug: inputSlug } = req.body
+    const { name, domain, website, industry, subscription_plan = 'Growth', candidate_limit = 15000, ai_credit_limit = 1000, owner_name, owner_email, slug: inputSlug, market = 'US', timezone, currency, date_format, language, business_hours_start, business_hours_end } = req.body
 
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Organization name is required' })
@@ -120,6 +147,8 @@ router.post('/onboard', requireAuth, requireAdmin, async (req, res, next) => {
     const cleanDomain = domain ? domain.trim().toLowerCase() : null
     const customSlug = inputSlug && inputSlug.trim() ? inputSlug.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^\w\-]+/g, '') : null
     const slug = customSlug || (cleanName.toLowerCase().replace(/\s+/g, '-').replace(/[^\w\-]+/g, '') + '-' + Math.floor(1000 + Math.random() * 9000))
+    const cleanMarket = normalizeMarket(market)
+    const defaults = marketDefaults(cleanMarket)
 
     const org = await prisma.organization.create({
       data: {
@@ -133,6 +162,13 @@ router.post('/onboard', requireAuth, requireAdmin, async (req, res, next) => {
         subscription_plan,
         candidate_limit: Number(candidate_limit),
         ai_credit_limit: Number(ai_credit_limit),
+        market: cleanMarket,
+        timezone: timezone || defaults.timezone,
+        currency: currency || defaults.currency,
+        date_format: date_format || defaults.date_format,
+        language: language || defaults.language,
+        business_hours_start: business_hours_start || defaults.business_hours_start,
+        business_hours_end: business_hours_end || defaults.business_hours_end,
       },
     })
 
@@ -307,7 +343,7 @@ router.get('/', requireAuth, async (req, res, next) => {
 // PUT /api/organization - Update company profile (Owner/Admin)
 router.put('/', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const { name, website, domain, logo_url, industry, company_size, primary_color, timezone, subscription_plan } = req.body
+    const { name, website, domain, logo_url, industry, company_size, primary_color, timezone, subscription_plan, market, currency, date_format, language, business_hours_start, business_hours_end } = req.body
 
     let planData = {}
     if (subscription_plan) {
@@ -329,7 +365,13 @@ router.put('/', requireAuth, requireAdmin, async (req, res, next) => {
         ...(industry !== undefined ? { industry: industry.trim() } : {}),
         ...(company_size !== undefined ? { company_size } : {}),
         ...(primary_color !== undefined ? { primary_color } : {}),
+        ...(market !== undefined ? { market: normalizeMarket(market) } : {}),
         ...(timezone !== undefined ? { timezone } : {}),
+        ...(currency !== undefined ? { currency } : {}),
+        ...(date_format !== undefined ? { date_format } : {}),
+        ...(language !== undefined ? { language } : {}),
+        ...(business_hours_start !== undefined ? { business_hours_start } : {}),
+        ...(business_hours_end !== undefined ? { business_hours_end } : {}),
         ...planData,
       },
     })

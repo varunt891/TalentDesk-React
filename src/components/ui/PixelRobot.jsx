@@ -599,10 +599,10 @@ export default function PixelRobot({
   }
 
   return (
-    <div className="relative w-full h-full flex items-center select-none overflow-visible">
+    <div className="relative w-full h-full flex items-end select-none overflow-visible">
       {/* 1. EXTREME LEFT PIXELATED JOB APPLICANT (EXACT SAME SIZE AS ROBOT: w-8 h-8 / 32x32px) */}
       <div
-        className="absolute top-[40%] -translate-y-1/2 flex items-center gap-1.5 cursor-pointer group z-[15] transition-all duration-150 ease-out"
+        className="absolute bottom-0 flex items-center gap-1.5 cursor-pointer group z-[15] transition-all duration-150 ease-out"
         style={{ left: `${appPosX}%` }}
         onClick={handleApplicantClick}
         title="Job Candidate — Click to trigger interview & hire!"
@@ -737,7 +737,7 @@ export default function PixelRobot({
             scale-x-[-1] when facing left, and a bubble nested inside it would
             get mirrored (backwards text) along with the character. */}
         {showApplicantSpeech && (
-          <div className="absolute top-[calc(100%+2px)] left-0 px-2 py-1 bg-surface border border-blue-400/40 shadow-xs rounded-full text-[10.5px] font-medium text-text whitespace-nowrap z-[100] animate-in fade-in slide-in-from-top-1 duration-150 flex items-center gap-1 shrink-0 pointer-events-none">
+          <div className="absolute bottom-[calc(100%+4px)] left-0 px-2 py-1 bg-surface border border-blue-400/40 shadow-xs rounded-full text-[10.5px] font-medium text-text whitespace-nowrap z-[100] animate-in fade-in slide-in-from-bottom-1 duration-150 flex items-center gap-1 shrink-0 pointer-events-none">
             <span className="text-[8px] font-bold uppercase tracking-wide text-blue-500 shrink-0">Candidate</span>
             <span className="text-[10px]">{applicantSpeech.emoji || '📄'}</span>
             <span className="tracking-tight max-w-[220px] sm:max-w-[300px] truncate">{applicantSpeech.text}</span>
@@ -747,7 +747,7 @@ export default function PixelRobot({
 
       {/* 2. RECRUITMENT PIXEL ROBOT & INLINE HORIZONTAL SPEECH PILL (EXACT SAME SIZE: w-8 h-8 / 32x32px) */}
       <div
-        className="absolute top-[40%] -translate-y-1/2 flex items-center gap-2 cursor-pointer transition-all duration-150 ease-out z-[20]"
+        className="absolute bottom-0 flex items-center gap-2 cursor-pointer transition-all duration-150 ease-out z-[20]"
         style={{ left: `${posX}%` }}
         onClick={handleRobotClick}
         onMouseEnter={() => {
@@ -966,7 +966,7 @@ export default function PixelRobot({
             edge / sidebar toggle; there's much more room to the right (the
             rest of the topbar) than to the left. */}
         {(showRobotSpeech || isHovered) && (
-          <div className="absolute top-[calc(100%+2px)] left-0 z-[100] animate-in fade-in slide-in-from-top-1 duration-150 pointer-events-auto">
+          <div className="absolute bottom-[calc(100%+4px)] left-0 z-[100] animate-in fade-in slide-in-from-bottom-1 duration-150 pointer-events-auto">
             {robotSpeech.path ? (
               <button
                 type="button"

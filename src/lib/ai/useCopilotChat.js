@@ -159,9 +159,27 @@ export function useCopilotChat({ orgId, userId, orgName, userName, role, current
     })
   }
 
+  const addMessage = (msg) => {
+    if (!activeId) return
+    mutateConversations(prev => prev.map(c => c.id === activeId
+      ? { ...c, messages: [...c.messages, msg], title: c.messages.length === 0 ? (msg.content || '').slice(0, 60) : c.title, updatedAt: new Date().toISOString() }
+      : c))
+  }
+
+  const updateMessage = (msgId, updater) => {
+    if (!activeId) return
+    mutateConversations(prev => prev.map(c => c.id === activeId
+      ? {
+          ...c,
+          messages: c.messages.map(m => m.id === msgId ? (typeof updater === 'function' ? updater(m) : { ...m, ...updater }) : m),
+          updatedAt: new Date().toISOString()
+        }
+      : c))
+  }
+
   return {
     conversations, sortedConversations, activeConversation, activeId, messages,
     streaming, streamingText, errorMsg, recentPromptsList, setRecentPromptsList,
-    sendMessage, regenerate, stopStreaming, newChat, switchConversation, togglePin, renameConversation, deleteConversation,
+    sendMessage, addMessage, updateMessage, regenerate, stopStreaming, newChat, switchConversation, togglePin, renameConversation, deleteConversation,
   }
 }

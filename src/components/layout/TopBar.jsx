@@ -218,7 +218,7 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
 
   return (
     <header
-      className="app-topbar h-[72px] shrink-0 flex items-center justify-between gap-3 px-4 sm:px-5 border-b border-border bg-surface/90 backdrop-blur-xl shadow-xs relative z-[var(--z-sticky)]"
+      className="app-topbar h-16 shrink-0 flex items-center justify-between gap-3 px-4 sm:px-5 border-b border-border bg-surface/90 backdrop-blur-xl shadow-xs relative z-[var(--z-sticky)]"
       style={searchOpen ? { zIndex: 100000 } : undefined}
     >
       {/* Left section: Mobile menu button + Pixel Robot Playground in left TopBar area */}
@@ -235,7 +235,7 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
         </button>
 
         {/* Pixel Robot playground inside the left TopBar space */}
-        <div className="hidden sm:flex w-36 sm:w-56 h-full relative items-center overflow-visible">
+        <div className="hidden sm:flex w-36 sm:w-56 h-full relative items-end overflow-visible">
           {currentPage !== 'ai_center' && (
             <PixelRobot
               currentPage={currentPage}

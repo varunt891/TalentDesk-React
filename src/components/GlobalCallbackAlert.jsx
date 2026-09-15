@@ -2,82 +2,14 @@ import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { db } from '../lib/api'
 import { Button, Icon } from './ui'
+import { normalizeTimezone, scheduledLocalToUtcMs, timezoneShortName } from '../lib/timezone'
 
-const TZ_MAP = {
-  EST: 'America/New_York',
-  EDT: 'America/New_York',
-  ET: 'America/New_York',
-  CST: 'America/Chicago',
-  CDT: 'America/Chicago',
-  CT: 'America/Chicago',
-  MST: 'America/Denver',
-  MDT: 'America/Denver',
-  MT: 'America/Denver',
-  PST: 'America/Los_Angeles',
-  PDT: 'America/Los_Angeles',
-  PT: 'America/Los_Angeles',
-  IST: 'Asia/Kolkata',
-  UTC: 'UTC',
-  GMT: 'UTC',
-}
-
-function parseTime(timeStr) {
-  if (!timeStr) return { hours: 9, minutes: 0 }
-  const clean = String(timeStr).trim().toUpperCase()
-  const isPM = clean.includes('PM')
-  const isAM = clean.includes('AM')
-  const match = clean.match(/(\d{1,2}):(\d{2})/)
-  if (!match) return { hours: 9, minutes: 0 }
-  let hours = parseInt(match[1], 10)
-  const minutes = parseInt(match[2], 10)
-  if (isPM && hours < 12) hours += 12
-  if (isAM && hours === 12) hours = 0
-  return { hours, minutes }
-}
-
-function getTargetUtcTimestamp(dateStr, timeStr, tzAbbr) {
-  if (!dateStr) return null
-  const { hours, minutes } = parseTime(timeStr)
-  const parts = dateStr.slice(0, 10).split('-').map(Number)
-  if (parts.length !== 3 || parts.some(isNaN)) return null
-  const [y, m, d] = parts
-
-  const tzUpper = String(tzAbbr || 'EST').trim().toUpperCase()
-  const ianaName = TZ_MAP[tzUpper] || 'America/New_York'
-
-  try {
-    const testUtc = new Date(Date.UTC(y, m - 1, d, hours, minutes, 0))
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: ianaName,
-      timeZoneName: 'shortOffset',
-      year: 'numeric', month: 'numeric', day: 'numeric',
-      hour: 'numeric', minute: 'numeric', second: 'numeric',
-      hour12: false
-    })
-    
-    const formattedParts = formatter.formatToParts(testUtc)
-    const tzPart = formattedParts.find(p => p.type === 'timeZoneName')?.value || ''
-    
-    let offsetMinutes = -240
-    const offsetMatch = tzPart.match(/(GMT|UTC)?([+-])(\d{1,2})(?::(\d{2}))?/)
-    if (offsetMatch) {
-      const sign = offsetMatch[2] === '-' ? -1 : 1
-      const offsetHours = parseInt(offsetMatch[3], 10)
-      const offsetMins = parseInt(offsetMatch[4] || '0', 10)
-      offsetMinutes = sign * (offsetHours * 60 + offsetMins)
-    }
-
-    return Date.UTC(y, m - 1, d, hours, minutes, 0) - offsetMinutes * 60000
-  } catch {
-    let offsetMins = -240
-    if (['PST', 'PDT', 'PT'].includes(tzUpper)) offsetMins = -420
-    else if (['CST', 'CDT', 'CT'].includes(tzUpper)) offsetMins = -300
-    else if (['MST', 'MDT', 'MT'].includes(tzUpper)) offsetMins = -360
-    else if (tzUpper === 'IST') offsetMins = 330
-    else if (['UTC', 'GMT'].includes(tzUpper)) offsetMins = 0
-
-    return Date.UTC(y, m - 1, d, hours, minutes, 0) - offsetMins * 60000
+function getTargetUtcTimestamp(callback) {
+  if (callback?.scheduled_at_utc) {
+    const parsed = new Date(callback.scheduled_at_utc).getTime()
+    if (!Number.isNaN(parsed)) return parsed
   }
+  return scheduledLocalToUtcMs(callback?.date, callback?.time, callback?.timezone)
 }
 
 function isSnoozed(cb, now = new Date()) {
@@ -149,7 +81,7 @@ export default function GlobalCallbackAlert() {
         if (isSnoozed(cb, now)) return false
         const key = getAlertKey(cb)
         if (dismissedAlertsRef.current.has(key)) return false
-        const targetUtc = getTargetUtcTimestamp(cb.date, cb.time, cb.timezone)
+        const targetUtc = getTargetUtcTimestamp(cb)
         if (!targetUtc) return false
         const diffMs = targetUtc - now.getTime()
         // Trigger popup ONLY when scheduled time has arrived or passed
@@ -243,7 +175,10 @@ export default function GlobalCallbackAlert() {
             Scheduled Target Time
           </div>
           <div className="text-base font-black text-text">
-            {activeAlert.time || '10:00 AM'} <span className="text-xs text-accent font-bold">{activeAlert.timezone || 'EST'}</span>
+            {activeAlert.time || '10:00 AM'} <span className="text-xs text-accent font-bold">{timezoneShortName(activeAlert.timezone)}</span>
+          </div>
+          <div className="text-[10px] text-text3 font-semibold">
+            {normalizeTimezone(activeAlert.timezone)}
           </div>
           {activeAlert.date && (
             <div className="text-[11px] text-text3 font-semibold">

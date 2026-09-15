@@ -11,7 +11,7 @@ import { PageContainer } from '../components/layout/PageContainer'
 import { computeJobHealth } from '../lib/jobHealth'
 import {
   Button, Badge, StatusPill, Card, CardHeader,
-  KPICard, PageHeader, Table, Modal, Icon, Avatar, Menu, MenuTrigger, EmptyState, Switch, useToast,
+  KPICard, PageHeader, Table, Modal, Icon, Avatar, Menu, MenuTrigger, EmptyState, Switch, useToast, cn,
 } from '../components/ui'
 import { WorkspaceSearch, FilterWorkspace, EntityDrawer } from '../components/workspace'
 import AIInsightCard from '../components/ai/AIInsightCard'
@@ -21,6 +21,7 @@ import { runAiAction } from '../lib/ai/aiClient'
 import { logUsageEvent } from '../lib/ai/usage'
 import MarkdownView from '../components/MarkdownView'
 import { normalizeAiPlainText } from '../lib/aiTextFormat'
+import { useOrgPreferences } from '../lib/admin/orgPreferences'
 
 function ensureArray(val) {
   if (Array.isArray(val)) return val
@@ -125,6 +126,7 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
   const { candidates } = useCandidates({ allOrgs: isSuperAdmin && allOrgsView })
   const orgId = organization?.id || profile?.org_id
   const userId = user?.id
+  const { preferences: orgPrefs } = useOrgPreferences(orgId)
   const { settings: aiSettings } = useAIGovernance(orgId)
   const aiEnabled = aiSettings.workspaces.jobs !== false
   const [jobs, setJobs] = useState([])
@@ -133,6 +135,11 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
   const [filters, setFilters] = useState({ status: [], priority: [], type: [], recruiter: [], job: [], location: [] })
   const [selected, setSelected] = useState([])
   const [showDetail, setShowDetail] = useState(null)
+  const [viewMode, setViewMode] = useState(() => orgPrefs.defaultJobView || 'table')
+
+  useEffect(() => {
+    if (orgPrefs.defaultJobView) setViewMode(orgPrefs.defaultJobView)
+  }, [orgPrefs.defaultJobView])
   useAISetContext(showDetail ? { currentJob: showDetail.title, jobClient: showDetail.client, jobStatus: showDetail.status } : null)
   const [previewTab, setPreviewTab] = useState('overview')
   const [lastUpdatedJob, setLastUpdatedJob] = useState(null)
@@ -517,65 +524,158 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
         ))}
       </div>
 
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-text3">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <span className="text-xs text-text3 font-medium">
           {filtered.length !== jobs.length ? `${filtered.length} / ${jobs.length} shown` : `${jobs.length} roles`}
         </span>
+        <div className="flex items-center gap-1 bg-surface2/80 p-0.5 rounded-lg border border-border">
+          <button
+            type="button"
+            onClick={() => setViewMode('table')}
+            className={cn("px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer", viewMode === 'table' ? "bg-surface text-accent shadow-xs border border-border/80" : "text-text3 hover:text-text")}
+          >
+            <Icon name="list" size={13} /> Table
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('board')}
+            className={cn("px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer", viewMode === 'board' ? "bg-surface text-accent shadow-xs border border-border/80" : "text-text3 hover:text-text")}
+          >
+            <Icon name="grid" size={13} /> Grid / Board
+          </button>
+        </div>
       </div>
 
-      <Table
-        columns={jobColumns}
-        data={jobsWithHealth}
-        loading={loading}
-        resizable
-        selectable
-        selectedIds={selected}
-        onSelectionChange={setSelected}
-        onRowClick={(j) => { setShowDetail(j); setPreviewTab('overview') }}
-        emptyState={
-          <EmptyState
-            icon="jobs"
-            title={hasFilters ? 'No jobs match your filters' : 'No jobs yet'}
-            description={!hasFilters ? "Create your first job requisition to start tracking client demand." : undefined}
-            action={!hasFilters ? <Button variant="primary" leftIcon="plus" onClick={openAdd}>New Job</Button> : undefined}
-          />
-        }
-        bulkActions={
-          <>
-            <Menu
-              align="start"
-              trigger={({ toggle }) => <Button size="sm" variant="secondary" onClick={toggle}>Change Status</Button>}
-              items={['Open', 'Filled', 'On Hold', 'Closed'].map(s => ({
-                label: s,
-                onClick: async () => { for (const id of selected) await db.from('jobs').update({ status: s }).eq('id', id); showToast(`${selected.length} jobs updated to "${s}"`); setSelected([]); fetchJobs() },
-              }))}
+      {viewMode === 'board' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 mb-6">
+          {jobsWithHealth.length === 0 ? (
+            <div className="col-span-full">
+              <EmptyState
+                icon="jobs"
+                title={hasFilters ? 'No jobs match your filters' : 'No jobs yet'}
+                description={!hasFilters ? "Create your first job requisition to start tracking client demand." : undefined}
+                action={!hasFilters ? <Button variant="primary" leftIcon="plus" onClick={openAdd}>New Job</Button> : undefined}
+              />
+            </div>
+          ) : (
+            jobsWithHealth.map(j => {
+              const matches = getMatchingCandidates(j, candidates, aiScores)
+              return (
+                <Card
+                  key={j.id}
+                  hoverable
+                  onClick={() => { setShowDetail(j); setPreviewTab('overview') }}
+                  className="p-4 flex flex-col justify-between gap-3 group relative border-border/80 hover:border-accent/40"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-mono text-accent font-bold shrink-0">{j.job_id || 'ID'}</span>
+                        <span className="text-xs text-text3 font-medium truncate">{j.client || 'Client'}</span>
+                      </div>
+                      <h4 className="font-bold text-sm text-text truncate group-hover:text-accent transition-colors mt-0.5">
+                        {j.title || 'Untitled role'}
+                      </h4>
+                    </div>
+                    <StatusPill status={j.status || 'Open'} tone={STATUS_TONE[j.status] || 'neutral'} size="sm" />
+                  </div>
+
+                  <div className="bg-surface2/50 p-2.5 rounded-[var(--radius-md)] border border-border/40 text-xs flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between text-[11.5px] text-text2">
+                      <span>Location: <strong className="font-semibold text-text">{j.location || 'Remote/n/a'}</strong></span>
+                      <span>Target: <strong className="font-semibold text-text">{j.target_date || 'ASAP'}</strong></span>
+                    </div>
+                    {j.health && (
+                      <div className="flex items-center justify-between text-[11px] text-text3 pt-1 border-t border-border/40">
+                        <span>Pipeline Health</span>
+                        <span className="font-bold text-accent">{j.health.score}% {j.health.label}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {ensureArray(j.skills).length > 0 && (
+                    <div className="flex flex-wrap gap-1 max-h-12 overflow-hidden">
+                      {ensureArray(j.skills).slice(0, 3).map((sk, idx) => (
+                        <Badge key={idx} size="sm" tone="neutral">{sk}</Badge>
+                      ))}
+                      {ensureArray(j.skills).length > 3 && (
+                        <span className="text-[10px] font-semibold text-text3 self-center">+{ensureArray(j.skills).length - 3}</span>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-2 border-t border-border/50 text-[11px] text-text3" onClick={e => e.stopPropagation()}>
+                    <span className="font-medium text-accent flex items-center gap-1">
+                      <Icon name="users" size={12} /> {matches.length} matched candidates
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Button size="xs" variant="ghost" onClick={() => openEdit(j)}>Edit</Button>
+                      <Button size="xs" variant="secondary" onClick={() => openFullPage(j)}>View</Button>
+                    </div>
+                  </div>
+                </Card>
+              )
+            })
+          )}
+        </div>
+      ) : (
+        <Table
+          columns={jobColumns}
+          data={jobsWithHealth}
+          loading={loading}
+          resizable
+          selectable
+          selectedIds={selected}
+          onSelectionChange={setSelected}
+          compact={orgPrefs.tableDensity === 'compact'}
+          defaultPageSize={orgPrefs.pageSize || 25}
+          pageSizeOptions={[10, 25, 50, 100, 'All']}
+          onRowClick={(j) => { setShowDetail(j); setPreviewTab('overview') }}
+          emptyState={
+            <EmptyState
+              icon="jobs"
+              title={hasFilters ? 'No jobs match your filters' : 'No jobs yet'}
+              description={!hasFilters ? "Create your first job requisition to start tracking client demand." : undefined}
+              action={!hasFilters ? <Button variant="primary" leftIcon="plus" onClick={openAdd}>New Job</Button> : undefined}
             />
-            <Button size="sm" variant="danger" onClick={() => setDeleteId('bulk')}>Delete</Button>
-          </>
-        }
-        rowActions={(j) => (
-          <Menu
-            align="end"
-            trigger={(p) => <MenuTrigger {...p} />}
-            items={[
-              { label: 'Quick preview', icon: 'eye', onClick: () => { setShowDetail(j); setPreviewTab('overview') } },
-              { label: 'View full details', icon: 'arrowUpRight', onClick: () => openFullPage(j) },
-              { label: 'View pipeline / matches', icon: 'pipeline', onClick: () => { setShowDetail(j); setPreviewTab('pipeline') } },
-              { label: 'Edit job', icon: 'edit', onClick: () => openEdit(j) },
-              'divider',
-              { label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleteId(j.id) },
-            ]}
-          />
-        )}
-        contextMenuItems={(j) => [
-          { label: 'Quick preview', icon: 'eye', onClick: () => { setShowDetail(j); setPreviewTab('overview') } },
-          { label: 'View full details', icon: 'arrowUpRight', onClick: () => openFullPage(j) },
-          { label: 'View pipeline / matches', icon: 'pipeline', onClick: () => { setShowDetail(j); setPreviewTab('pipeline') } },
-          { label: 'Edit job', icon: 'edit', onClick: () => openEdit(j) },
-          'divider',
-          { label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleteId(j.id) },
-        ]}
-      />
+          }
+          bulkActions={
+            <>
+              <Menu
+                align="start"
+                trigger={({ toggle }) => <Button size="sm" variant="secondary" onClick={toggle}>Change Status</Button>}
+                items={['Open', 'Filled', 'On Hold', 'Closed'].map(s => ({
+                  label: s,
+                  onClick: async () => { for (const id of selected) await db.from('jobs').update({ status: s }).eq('id', id); showToast(`${selected.length} jobs updated to "${s}"`); setSelected([]); fetchJobs() },
+                }))}
+              />
+              <Button size="sm" variant="danger" onClick={() => setDeleteId('bulk')}>Delete</Button>
+            </>
+          }
+          rowActions={(j) => (
+            <Menu
+              align="end"
+              trigger={(p) => <MenuTrigger {...p} />}
+              items={[
+                { label: 'Quick preview', icon: 'eye', onClick: () => { setShowDetail(j); setPreviewTab('overview') } },
+                { label: 'View full details', icon: 'arrowUpRight', onClick: () => openFullPage(j) },
+                { label: 'View pipeline / matches', icon: 'pipeline', onClick: () => { setShowDetail(j); setPreviewTab('pipeline') } },
+                { label: 'Edit job', icon: 'edit', onClick: () => openEdit(j) },
+                'divider',
+                { label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleteId(j.id) },
+              ]}
+            />
+          )}
+          contextMenuItems={(j) => [
+            { label: 'Quick preview', icon: 'eye', onClick: () => { setShowDetail(j); setPreviewTab('overview') } },
+            { label: 'View full details', icon: 'arrowUpRight', onClick: () => openFullPage(j) },
+            { label: 'View pipeline / matches', icon: 'pipeline', onClick: () => { setShowDetail(j); setPreviewTab('pipeline') } },
+            { label: 'Edit job', icon: 'edit', onClick: () => openEdit(j) },
+            'divider',
+            { label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleteId(j.id) },
+          ]}
+        />
+      )}
 
       <JobFormDrawer
         jobForm={jobForm}

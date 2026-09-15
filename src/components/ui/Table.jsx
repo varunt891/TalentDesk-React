@@ -431,7 +431,7 @@ export default function Table({
           <div className="flex items-center gap-3 sm:gap-4 sm:ml-auto flex-wrap">
             <div className="flex items-center gap-1.5">
               <span className="text-text3 text-[11.5px] font-semibold">Rows per page:</span>
-              <div className="flex items-center gap-1 bg-surface2 p-0.5 rounded-md border border-border">
+              <div className="flex items-center gap-0.5 bg-surface2 p-0.5 rounded-full border border-border/80 shadow-2xs">
                 {pageSizeOptions.map((opt) => (
                   <button
                     key={String(opt)}
@@ -441,10 +441,10 @@ export default function Table({
                       setCurrentPage(1)
                     }}
                     className={cn(
-                      "px-2 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer",
+                      "px-2.5 py-0.5 rounded-full text-[11px] font-bold transition-all duration-150 cursor-pointer select-none",
                       pageSize === opt
-                        ? "bg-surface text-accent shadow-2xs border border-border/80"
-                        : "text-text3 hover:text-text hover:bg-surface3/50"
+                        ? "bg-surface text-accent shadow-2xs border border-border/80 font-extrabold"
+                        : "text-text3 hover:text-text hover:bg-surface3/60 border border-transparent"
                     )}
                   >
                     {opt}

@@ -22,6 +22,8 @@ import { computeJobHealth } from '../lib/jobHealth'
 import { useAISetContext } from '../lib/ai/context'
 import { runAiAction } from '../lib/ai/aiClient'
 import { logUsageEvent } from '../lib/ai/usage'
+import { syncInterviewCallback } from '../lib/interviewScheduling'
+import { executeCrmAction, extractInterviewDate, extractInterviewTime } from '../lib/executeCrmAction'
 import { useAuth } from '../context/AuthContext'
 import { useCandidates } from '../hooks/useCandidates'
 import { normalizeAiPlainText } from '../lib/aiTextFormat'
@@ -364,356 +366,18 @@ export default function Dashboard({ onNavigate }) {
     fetchDashboardData()
   }, [])
 
-  // Dedicated CRM Action Executor conforming to Prisma/REST API 4-step pattern
+  // Dedicated CRM Action Executor — delegates to shared executeCrmAction
   const executeCrmOperation = async (pendingAction) => {
-    const { type, entityId, entityName, params, successMessage } = pendingAction || {}
-    const searchName = (entityName || '').toLowerCase().trim()
-
-    try {
-      if (type === 'close_job' || type === 'archive_job') {
-        let targetJobs = []
-        if (entityId) {
-          targetJobs = safeJobs.filter(j => String(j.id) === String(entityId))
-        } else if (searchName && searchName !== 'all' && searchName !== 'all open jobs' && searchName !== 'active jobs') {
-          targetJobs = safeJobs.filter(j => (j.title || '').toLowerCase().includes(searchName))
-        } else {
-          targetJobs = safeJobs.filter(j => j.status === 'Open')
-        }
-
-        if (!targetJobs.length) {
-          return { success: false, error: `The specified job requisition could not be found.` }
-        }
-
-        for (const job of targetJobs) {
-          const res = await db.from('jobs').update({ status: 'Closed' }).eq('id', job.id)
-          if (res.error) throw res.error
-        }
-        fetchDashboardData()
-
-        return {
-          success: true,
-          message: successMessage || `Requisition updated to Closed.`,
-          actionTitle: 'Job Requisition Closed',
-          actionEntityName: targetJobs.map(j => j.title).join(', '),
-          updatedEntity: targetJobs
-        }
-
-      } else if (type === 'reopen_job') {
-        let targetJobs = []
-        if (entityId) {
-          targetJobs = safeJobs.filter(j => String(j.id) === String(entityId))
-        } else if (searchName) {
-          targetJobs = safeJobs.filter(j => (j.title || '').toLowerCase().includes(searchName))
-        } else {
-          targetJobs = safeJobs.filter(j => j.status === 'Closed' || j.status === 'On Hold')
-        }
-
-        if (!targetJobs.length) {
-          return { success: false, error: `The selected closed job could not be found.` }
-        }
-
-        for (const job of targetJobs) {
-          const res = await db.from('jobs').update({ status: 'Open' }).eq('id', job.id)
-          if (res.error) throw res.error
-        }
-        fetchDashboardData()
-
-        return {
-          success: true,
-          message: successMessage || `Requisition status updated to Open.`,
-          actionTitle: 'Job Requisition Reopened',
-          actionEntityName: targetJobs.map(j => j.title).join(', '),
-          updatedEntity: targetJobs
-        }
-
-      } else if (type === 'update_candidate_stage' || type === 'schedule_interview' || type === 'archive_candidate' || type === 'assign_recruiter') {
-        let targetCandidates = []
-        if (entityId) {
-          targetCandidates = candidates.filter(c => String(c.id) === String(entityId))
-        } else if (searchName) {
-          targetCandidates = candidates.filter(c =>
-            `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase().includes(searchName) ||
-            (c.email && c.email.toLowerCase().includes(searchName))
-          )
-        }
-
-        if (!targetCandidates.length && candidates.length > 0) {
-          targetCandidates = [candidates[0]]
-        }
-
-        if (!targetCandidates.length) {
-          return { success: false, error: `The requested candidate record could not be found.` }
-        }
-
-        let targetStage = params?.stage
-        if (!targetStage) {
-          if (type === 'schedule_interview') targetStage = 'Interview Scheduled'
-          else if (type === 'archive_candidate') targetStage = 'Rejected'
-          else targetStage = 'Screening'
-        }
-
-        for (const candidate of targetCandidates) {
-          const updateData = { internal_status: targetStage, external_status: targetStage }
-          if (params?.recruiter_name) updateData.recruiter_name = params.recruiter_name
-          const res = await db.from('candidates').update(updateData).eq('id', candidate.id)
-          if (res.error) throw res.error
-        }
-        fetchDashboardData()
-
-        return {
-          success: true,
-          message: successMessage || `Candidate stage updated to ${targetStage}.`,
-          actionTitle: 'Candidate Stage Updated',
-          actionEntityName: targetCandidates.map(c => `${c.first_name || ''} ${c.last_name || ''}`).join(', '),
-          updatedEntity: targetCandidates
-        }
-
-      } else if (type === 'delete_candidate' || type === 'remove_candidate') {
-        let targetCandidates = []
-        if (entityId) {
-          targetCandidates = candidates.filter(c => String(c.id) === String(entityId))
-        } else if (searchName) {
-          targetCandidates = candidates.filter(c =>
-            `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase().includes(searchName) ||
-            (c.email && c.email.toLowerCase().includes(searchName))
-          )
-        }
-
-        if (!targetCandidates.length) {
-          return { success: false, error: `The candidate record "${entityName || 'specified'}" could not be found.` }
-        }
-
-        for (const candidate of targetCandidates) {
-          const res = await db.from('candidates').delete().eq('id', candidate.id)
-          if (res.error) throw res.error
-        }
-        fetchDashboardData()
-
-        return {
-          success: true,
-          message: successMessage || `Candidate record permanently removed.`,
-          actionTitle: 'Candidate Removed',
-          actionEntityName: targetCandidates.map(c => `${c.first_name || ''} ${c.last_name || ''}`).join(', '),
-          updatedEntity: null
-        }
-
-      } else if (type === 'delete_job' || type === 'remove_job') {
-        let targetJobs = []
-        if (entityId) {
-          targetJobs = safeJobs.filter(j => String(j.id) === String(entityId))
-        } else if (searchName) {
-          targetJobs = safeJobs.filter(j => (j.title || '').toLowerCase().includes(searchName))
-        }
-
-        if (!targetJobs.length) {
-          return { success: false, error: `The job requisition "${entityName || 'specified'}" could not be found.` }
-        }
-
-        for (const job of targetJobs) {
-          const res = await db.from('jobs').delete().eq('id', job.id)
-          if (res.error) throw res.error
-        }
-        fetchDashboardData()
-
-        return {
-          success: true,
-          message: successMessage || `Job requisition permanently deleted.`,
-          actionTitle: 'Job Requisition Deleted',
-          actionEntityName: targetJobs.map(j => j.title).join(', '),
-          updatedEntity: null
-        }
-
-      } else if (type === 'hold_job' || type === 'fill_job') {
-        const newStatus = type === 'hold_job' ? 'On Hold' : 'Filled'
-        let targetJobs = safeJobs.filter(j => (j.title || '').toLowerCase().includes(searchName))
-        if (!targetJobs.length && safeJobs.length > 0) targetJobs = [safeJobs[0]]
-
-        for (const job of targetJobs) {
-          const res = await db.from('jobs').update({ status: newStatus }).eq('id', job.id)
-          if (res.error) throw res.error
-        }
-        fetchDashboardData()
-
-        return {
-          success: true,
-          message: `Job requisition status updated to ${newStatus}.`,
-          actionTitle: `Job Requisition Updated`,
-          actionEntityName: targetJobs.map(j => j.title).join(', '),
-          updatedEntity: targetJobs
-        }
-
-      } else if (type === 'add_candidate' || type === 'create_candidate') {
-        const nameParts = (params?.name || entityName || 'New Candidate').split(' ')
-        const firstName = nameParts[0] || 'New'
-        const lastName = nameParts.slice(1).join(' ') || 'Candidate'
-
-        const newCand = {
-          first_name: firstName,
-          last_name: lastName,
-          email: params?.email || `${firstName.toLowerCase()}.${lastName.toLowerCase()}@example.com`,
-          job_title: params?.job_title || 'Software Developer',
-          client: params?.client || 'Internal Client',
-          internal_status: params?.stage || 'Submitted',
-          external_status: params?.stage || 'Submitted',
-          submission_date: new Date().toISOString().slice(0, 10),
-          recruiter_name: profile?.full_name || 'AI Copilot'
-        }
-
-        const res = await db.from('candidates').insert([newCand]).select()
-        if (res.error) throw res.error
-        fetchDashboardData()
-
-        return {
-          success: true,
-          message: `Candidate ${firstName} ${lastName} added successfully.`,
-          actionTitle: 'Candidate Added',
-          actionEntityName: `${firstName} ${lastName}`,
-          updatedEntity: res.data ? res.data[0] : newCand
-        }
-
-      } else if (type === 'complete_callback' || type === 'delete_callback') {
-        let cb = safeCallbacks.find(c => (c.candidate_name || '').toLowerCase().includes(searchName))
-        if (!cb && safeCallbacks.length > 0) cb = safeCallbacks[0]
-
-        if (cb) {
-          if (type === 'complete_callback') {
-            await db.from('callbacks').update({ status: 'done' }).eq('id', cb.id)
-          } else {
-            await db.from('callbacks').delete().eq('id', cb.id)
-          }
-          fetchDashboardData()
-        }
-
-        return {
-          success: true,
-          message: type === 'complete_callback' ? 'Callback marked as completed.' : 'Callback removed.',
-          actionTitle: 'Callback Updated',
-          actionEntityName: searchName || 'Candidate Callback',
-          updatedEntity: null
-        }
-
-      } else if (type === 'create_followup' || type === 'complete_followup' || type === 'delete_followup') {
-        if (type === 'create_followup') {
-          await db.from('followups').insert({
-            title: entityName || 'Follow up with candidate',
-            date: new Date().toISOString().slice(0, 10),
-            status: 'pending'
-          })
-        } else if (type === 'complete_followup' && safeFollowups.length > 0) {
-          await db.from('followups').update({ status: 'done' }).eq('id', safeFollowups[0].id)
-        } else if (type === 'delete_followup' && safeFollowups.length > 0) {
-          await db.from('followups').delete().eq('id', safeFollowups[0].id)
-        }
-        fetchDashboardData()
-
-        return {
-          success: true,
-          message: 'Follow-up task updated successfully.',
-          actionTitle: 'Follow-up Updated',
-          actionEntityName: entityName || 'Follow-up',
-          updatedEntity: null
-        }
-
-      } else if (type === 'create_task' || type === 'create_note') {
-        const taskText = params?.text || entityName || 'New Recruiter Task'
-        const newNote = {
-          id: Date.now(),
-          text: taskText,
-          done: false,
-          tag: params?.tag || 'Follow-up',
-          priority: 'High',
-          candidate: 'Recruiter Task',
-          job: 'General'
-        }
-        setDailyNotes(prev => {
-          const updated = [newNote, ...prev]
-          if (profile) localStorage.setItem(`${storagePrefix}_daily_notes`, JSON.stringify(updated))
-          return updated
-        })
-
-        return {
-          success: true,
-          message: successMessage || `New task created.`,
-          actionTitle: 'Task Created Successfully',
-          actionEntityName: taskText,
-          updatedEntity: newNote
-        }
-
-      } else if (type === 'log_callback') {
-        const candidateName = params?.candidateName || entityName || 'Candidate'
-        const res = await db.from('callbacks').insert({
-          candidate_name: candidateName,
-          date: new Date().toISOString().slice(0, 10),
-          status: 'pending'
-        })
-        if (res.error) throw res.error
-        fetchDashboardData()
-
-        return {
-          success: true,
-          message: successMessage || `Scheduled callback logged.`,
-          actionTitle: 'Callback Logged Successfully',
-          actionEntityName: candidateName,
-          updatedEntity: { candidate_name: candidateName }
-        }
-
-      } else if (type === 'create_job' || type === 'post_job' || type === 'add_job') {
-        const jobTitle = params?.title || entityName || 'New Job Requisition'
-        const newJobData = {
-          job_id: params?.job_id || `JOB-${Math.floor(100 + Math.random() * 900)}`,
-          title: jobTitle,
-          client: params?.client || 'Internal Client',
-          location: params?.location || 'Remote',
-          type: params?.type || 'Full-time',
-          status: params?.status || 'Open',
-          rate: params?.rate || 'Competitive',
-          open_date: params?.open_date || new Date().toISOString().slice(0, 10),
-          priority: params?.priority || 'Medium',
-          fe: params?.fe || profile?.full_name || 'AI Copilot',
-          description: params?.description || `Posted via AI Action Copilot`,
-          user_id: authContext?.user?.id
-        }
-
-        const res = await db.from('jobs').insert([newJobData]).select()
-        if (res.error) throw res.error
-        fetchDashboardData()
-
-        return {
-          success: true,
-          message: successMessage || `Job requisition "${jobTitle}" posted successfully.`,
-          actionTitle: 'Job Requisition Posted',
-          actionEntityName: jobTitle,
-          updatedEntity: res.data ? res.data[0] : newJobData
-        }
-
-      } else if (type === 'delete_note') {
-        let deleted = false
-        if (entityId) {
-          handleDeleteNote(Number(entityId))
-          deleted = true
-        } else if (dailyNotes.length > 0) {
-          handleDeleteNote(dailyNotes[0].id)
-          deleted = true
-        }
-
-        if (!deleted) {
-          return { success: false, error: 'No matching tasks found to remove.' }
-        }
-
-        return {
-          success: true,
-          message: successMessage || 'Task removed successfully.',
-          actionTitle: 'Task Removed',
-          actionEntityName: 'Recruiter Mission Checklist',
-          updatedEntity: null
-        }
-      } else {
-        return { success: true, message: successMessage || 'Operation completed.', actionTitle: 'Action Executed', updatedEntity: null }
-      }
-    } catch (err) {
-      console.error('CRM operation error:', err)
-      return { success: false, error: 'Unable to complete the operation right now. Please try again in a few moments.' }
-    }
+    return executeCrmAction(pendingAction, {
+      candidates: safeCandidates,
+      jobs: safeJobs,
+      callbacks: safeCallbacks,
+      followups: safeFollowups,
+      userId: authContext?.user?.id,
+      orgId: profile?.org_id,
+      profile,
+      onRefresh: fetchDashboardData,
+    })
   }
 
   // Execute Action Call Handler
@@ -854,7 +518,8 @@ Detect if the user wants to perform an operation such as:
 - Reopen Job ("reopen lead devops", "reopen it")
 - Create Task / Add Note ("remind me to call Alex tomorrow", "add task review submittals")
 - Log Callback ("log callback for Sarah Jenkins")
-- Update Candidate Stage / Schedule Interview ("move Alex Rivera to Interview stage", "schedule interview for Sarah")
+- Update Candidate Stage / Schedule Interview ("move Alex Rivera to Interview stage", "schedule interview for Sarah", "schedule phone interview for John on 2026-09-20 at 2:00 PM", "set up video interview for Alex tomorrow at 10am")
+- Schedule Interview (when the user says "schedule interview" with a date/time, use type=schedule_interview and populate interview_date, interview_time, interview_type in params)
 - Delete Task / Note ("delete note #1")
 
 For Action Requests, set isAction = true and populate pendingAction:
@@ -862,11 +527,12 @@ For Action Requests, set isAction = true and populate pendingAction:
   "summary": "Short explanation of the requested operation.",
   "isAction": true,
   "pendingAction": {
-    "type": "create_job | close_job | reopen_job | create_task | log_callback | update_candidate_stage | delete_note",
+    "type": "create_job | close_job | reopen_job | create_task | log_callback | update_candidate_stage | schedule_interview | delete_note",
     "entity": "job | candidate | callback | task",
     "entityId": "matched_id_string_or_null",
     "entityName": "name_or_title_or_text",
-    "params": { "title": "Job Title", "client": "Client Name", "location": "City/Remote", "type": "Full-time", "status": "Open", "rate": "$ salary or rate", "priority": "High", "description": "Job details", "stage": "Interview Scheduled", "text": "description" },
+    "params": { "title": "Job Title", "client": "Client Name", "location": "City/Remote", "type": "Full-time", "status": "Open", "rate": "$ salary or rate", "priority": "High", "description": "Job details", "stage": "Interview Scheduled", "text": "description", "interview_date": "YYYY-MM-DD (extract from user message, e.g. tomorrow = next date, or null)", "interview_time": "HH:MM 24h or natural like '2:00 PM' (extract from user message or null)", "interview_type": "Phone | Video | In-Person | Panel (extract from user message or default to Phone)" },
+    // IMPORTANT: For schedule_interview actions, ALWAYS populate interview_date, interview_time, interview_type in params if the user provides them. This creates the callback automatically.
     "requiresConfirmation": true,
     "confirmTitle": "Confirmation Required Title",
     "confirmPrompt": "Clear prompt asking user if they want to execute this operation.",
@@ -946,24 +612,47 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
             requiresConfirmation: false,
             successMessage: `Scheduled callback logged for ${candName || 'Candidate'}.`
           }
+        } else if (lowerQ.includes('schedule interview') || lowerQ.includes('schedule a interview') || lowerQ.includes('book interview') || lowerQ.includes('set up interview')) {
+          const nameMatch = q.match(/(?:for|with)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)/i)
+          const candName = nameMatch ? nameMatch[1].trim() : 'Candidate'
+          const interviewDate = extractInterviewDate(q)
+          const interviewTime = extractInterviewTime(q)
+          const typeMatch = q.match(/\b(phone|video|in-?person|panel)\b/i)
+          const iType = typeMatch ? typeMatch[1].charAt(0).toUpperCase() + typeMatch[1].slice(1).toLowerCase().replace('-', '') : 'Phone'
+          fallbackAction = {
+            type: 'schedule_interview',
+            entity: 'candidate',
+            entityName: candName,
+            params: {
+              stage: 'Interview Scheduled',
+              interview_date: interviewDate,
+              interview_time: interviewTime,
+              interview_type: iType,
+            },
+            requiresConfirmation: true,
+            confirmTitle: 'Confirm Interview Scheduling',
+            confirmPrompt: `Schedule a ${iType} interview for "${candName}"${interviewDate ? ` on ${interviewDate}` : ''}${interviewTime ? ` at ${interviewTime}` : ''}?`,
+            successMessage: `Interview scheduled for ${candName}. Callback created automatically.`
+          }
         } else if (lowerQ.includes('move candidate') || lowerQ.includes('to offer extended') || lowerQ.includes('to interview') || lowerQ.includes('to rejected')) {
           const candMatch = q.match(/candidate\s+([A-Za-z\s]+?)\s+to/i) || q.match(/move\s+([A-Za-z\s]+?)\s+to/i)
           const candName = candMatch ? candMatch[1].trim() : 'Candidate'
           let stage = 'Screening'
+          const isInterviewStage = lowerQ.includes('interview')
           if (lowerQ.includes('offer')) stage = 'Offer Extended'
-          else if (lowerQ.includes('interview')) stage = 'Interview Scheduled'
+          else if (isInterviewStage) stage = 'Interview Scheduled'
           else if (lowerQ.includes('reject')) stage = 'Rejected'
           else if (lowerQ.includes('hired')) stage = 'Hired'
 
           fallbackAction = {
-            type: 'update_candidate_stage',
+            type: isInterviewStage ? 'schedule_interview' : 'update_candidate_stage',
             entity: 'candidate',
             entityName: candName,
             params: { stage },
             requiresConfirmation: true,
-            confirmTitle: 'Confirm Candidate Stage Update',
-            confirmPrompt: `Move candidate "${candName}" to ${stage}?`,
-            successMessage: `Candidate "${candName}" moved to ${stage}.`
+            confirmTitle: isInterviewStage ? 'Confirm Interview Scheduling' : 'Confirm Candidate Stage Update',
+            confirmPrompt: isInterviewStage ? `Schedule interview for "${candName}"?` : `Move candidate "${candName}" to ${stage}?`,
+            successMessage: isInterviewStage ? `Interview scheduled for ${candName}. Callback created.` : `Candidate "${candName}" moved to ${stage}.`
           }
         }
 
@@ -2165,12 +1854,12 @@ Workspace Metrics: Candidates (${candidates.length}), Active Jobs (${openJobsCou
                     )
                   }
                 },
-                { key: 'submissions', header: 'Sub', sortable: true, align: 'right', width: '44px' },
-                { key: 'interviews', header: 'Int', sortable: true, align: 'right', width: '44px' },
-                { key: 'offers', header: 'Offers', sortable: true, align: 'right', width: '52px' },
-                { key: 'hires', header: 'Hires', sortable: true, align: 'right', width: '52px', render: row => <b className="text-green">{row.hires}</b> },
-                { key: 'fillRate', header: 'Yield %', sortable: true, align: 'right', width: '68px', render: row => <Badge tone="green" size="sm">{row.fillRate}%</Badge> },
-                { key: 'aiScore', header: 'AI Score', sortable: true, align: 'right', width: '72px', render: row => <span className="text-ai font-bold text-xs">⚡{row.aiScore}</span> },
+                { key: 'submissions', header: 'Sub', sortable: true, align: 'right', width: '56px' },
+                { key: 'interviews', header: 'Int', sortable: true, align: 'right', width: '56px' },
+                { key: 'offers', header: 'Offers', sortable: true, align: 'right', width: '60px' },
+                { key: 'hires', header: 'Hires', sortable: true, align: 'right', width: '60px', render: row => <b className="text-green">{row.hires}</b> },
+                { key: 'fillRate', header: 'Yield %', sortable: true, align: 'right', width: '88px', render: row => <Badge tone="green" size="sm" className="tabular-nums font-mono">{row.fillRate}%</Badge> },
+                { key: 'aiScore', header: 'AI Score', sortable: true, align: 'right', width: '80px', render: row => <span className="text-ai font-bold text-xs">⚡{row.aiScore}</span> },
               ]}
               data={sortedRecruiterData}
               getRowId={row => row.name}

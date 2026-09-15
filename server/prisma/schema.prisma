@@ -20,6 +20,12 @@ model Organization {
   primary_color     String   @default("#4f7cff")
   logo_url          String?
   timezone          String   @default("America/New_York")
+  market            String   @default("US")
+  currency          String   @default("USD")
+  date_format       String   @default("MM/DD/YYYY")
+  language          String   @default("en")
+  business_hours_start String @default("09:00")
+  business_hours_end   String @default("18:00")
   plan              String   @default("starter")
   subscription_plan String   @default("Growth")
   ai_credit_limit   Int      @default(1000)
@@ -195,6 +201,7 @@ model Callback {
   date           String?
   time           String?
   timezone       String?
+  scheduled_at_utc DateTime?
   snoozed_until  DateTime?
   interest       String?
   notes          String?

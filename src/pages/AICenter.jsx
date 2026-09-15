@@ -19,6 +19,7 @@ import { loadSavedPrompts, savePrompt, deleteSavedPrompt, togglePinSavedPrompt, 
 import { useAIGovernance, RESPONSE_STYLE_INSTRUCTIONS, isOverDailyLimit } from '../lib/ai/governance'
 import { AI_CATEGORIES } from '../lib/ai/categories'
 import { getAiAction } from '../lib/ai/prompts'
+import { executeCrmAction, parseCrmActionFromText } from '../lib/executeCrmAction'
 
 const ACTION_GROUPS = [
   { label: 'Write', ids: ['draft', 'rewrite', 'translate'] },
@@ -96,7 +97,7 @@ export default function AICenter() {
   })
   const {
     sortedConversations, activeId, messages, streaming, streamingText, errorMsg, recentPromptsList, setRecentPromptsList,
-    sendMessage, regenerate, stopStreaming, newChat, switchConversation, togglePin, renameConversation, deleteConversation,
+    sendMessage, addMessage, updateMessage, regenerate, stopStreaming, newChat, switchConversation, togglePin, renameConversation, deleteConversation,
   } = chat
 
   const [centerMode, setCenterMode] = useState('chat')
@@ -105,6 +106,56 @@ export default function AICenter() {
   const [convSearch, setConvSearch] = useState('')
   const [historyOpen, setHistoryOpen] = useState(false)
   const [contextOpen, setContextOpen] = useState(false)
+
+  const snapshotRef = useRef(null)
+
+  // Fetch a fresh workspace snapshot for CRM execution context
+  const getSnapshot = async () => {
+    if (snapshotRef.current && (Date.now() - snapshotRef.current.ts) < 90000) return snapshotRef.current.data
+    const snap = await fetchWorkspaceSnapshot()
+    snapshotRef.current = { data: snap, ts: Date.now() }
+    return snap
+  }
+
+  const handleExecuteCrmAction = async (msgId, action) => {
+    updateMessage(msgId, { actionStatus: 'executing' })
+    try {
+      const snap = await getSnapshot()
+      const result = await executeCrmAction(action, {
+        candidates: snap.candidates || [],
+        jobs: snap.jobs || [],
+        callbacks: snap.callbacks || [],
+        followups: snap.followups || [],
+        userId,
+        orgId,
+        profile,
+        onRefresh: () => { snapshotRef.current = null },
+      })
+      if (result.success) {
+        updateMessage(msgId, {
+          actionStatus: 'done',
+          actionResult: result,
+          content: `✅ ${result.message}`
+        })
+      } else {
+        updateMessage(msgId, {
+          actionStatus: 'error',
+          actionResult: result,
+          content: `❌ ${result.error}`
+        })
+      }
+    } catch (err) {
+      updateMessage(msgId, {
+        actionStatus: 'error',
+        actionResult: { success: false, error: err.message },
+        content: `❌ ${err.message}`
+      })
+    }
+  }
+
+  const handleCancelCrmAction = (msgId) => {
+    updateMessage(msgId, { actionStatus: 'cancelled', content: 'Operation cancelled.' })
+  }
 
   const [savedPrompts, setSavedPrompts] = useState([])
   const [favoriteTemplates, setFavoriteTemplates] = useState([])
@@ -176,10 +227,37 @@ export default function AICenter() {
   }, [messages, streaming])
 
   const overLimit = isOverDailyLimit(aiSettings, usageSummary.requestsToday)
-  const handleSend = (text) => {
+  const handleSend = async (text) => {
     if (overLimit) return
-    sendMessage(text)
+    const trimmed = (text || '').trim()
+    if (!trimmed) return
     setInput('')
+
+    const detectedAction = parseCrmActionFromText(trimmed)
+    if (detectedAction) {
+      const now = new Date().toISOString()
+      const userMsgId = `u_${Date.now()}`
+      const aiMsgId = `a_${Date.now() + 1}`
+
+      addMessage({
+        id: userMsgId,
+        role: 'user',
+        content: trimmed,
+        createdAt: now,
+      })
+
+      addMessage({
+        id: aiMsgId,
+        role: 'assistant',
+        content: `I've prepared the requested action. Please review and confirm below.`,
+        pendingAction: detectedAction,
+        actionStatus: 'pending',
+        createdAt: now,
+      })
+      return
+    }
+    // ── Normal AI chat ───────────────────────────────────────────────────────
+    sendMessage(trimmed)
   }
 
   const launchCategory = (category) => {
@@ -300,10 +378,82 @@ export default function AICenter() {
               </div>
             ) : (
               <div className="max-w-[760px] mx-auto px-4 sm:px-6 py-8 flex flex-col gap-5">
-                {messages.map((m, i) => (
-                  <MessageBubble key={m.id} message={m} onRegenerate={m.role === 'assistant' && i === messages.length - 1 ? regenerate : undefined} />
-                ))}
+                {messages.map((m, i) => {
+                  const isCrmActionMsg = Boolean(m.pendingAction)
+                  const action = m.pendingAction
+                  const status = m.actionStatus || 'pending'
+                  const result = m.actionResult
+
+                  return (
+                    <div key={m.id} className="flex flex-col gap-3">
+                      <MessageBubble message={m} onRegenerate={m.role === 'assistant' && i === messages.length - 1 && !isCrmActionMsg ? regenerate : undefined} />
+
+                      {isCrmActionMsg && (
+                        <div className="pl-9">
+                          {status === 'pending' && (
+                            <div className="rounded-[var(--radius-md)] border border-accent/30 bg-accent/5 px-4 py-3 flex flex-col gap-3">
+                              <div className="flex items-center gap-2">
+                                <span className="text-base">⚡</span>
+                                <span className="text-[13px] font-bold text-text">{action.confirmTitle || 'CRM Action Ready'}</span>
+                              </div>
+                              <p className="text-[12.5px] text-text2 leading-relaxed">{action.confirmPrompt}</p>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={() => handleExecuteCrmAction(m.id, action)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-sm)] bg-accent text-white text-[12px] font-bold hover:opacity-90 transition-opacity"
+                                >
+                                  <Icon name="check" size={11} /> Confirm &amp; Execute
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCancelCrmAction(m.id)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-sm)] bg-surface2 text-text2 text-[12px] font-bold hover:bg-surface3 transition-colors"
+                                >
+                                  <Icon name="x" size={11} /> Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {status === 'executing' && (
+                            <div className="rounded-[var(--radius-md)] border border-border bg-surface px-4 py-3 flex items-center gap-2">
+                              <div className="flex gap-1">{[0,1,2].map(idx => <span key={idx} className="w-1.5 h-1.5 rounded-full bg-ai animate-bounce" style={{ animationDelay: `${idx*0.15}s` }} />)}</div>
+                              <span className="text-[12px] text-text2">Executing action…</span>
+                            </div>
+                          )}
+
+                          {status === 'done' && result?.success && (
+                            <div className="rounded-[var(--radius-md)] border border-green/30 bg-green/5 px-4 py-3 flex flex-col gap-1.5">
+                              <div className="flex items-center gap-2">
+                                <span className="text-base">✅</span>
+                                <span className="text-[13px] font-bold text-text">{result.actionTitle || 'Done'}</span>
+                              </div>
+                              <p className="text-[12.5px] text-text2">{result.message}</p>
+                              {result.actionEntityName && <p className="text-[11.5px] text-text3">Entity: {result.actionEntityName}</p>}
+                            </div>
+                          )}
+
+                          {(status === 'error' || (status === 'done' && !result?.success)) && (
+                            <div className="rounded-[var(--radius-md)] border border-red/25 bg-red/5 px-4 py-3 flex flex-col gap-1.5">
+                              <div className="flex items-center gap-2">
+                                <Icon name="alertCircle" size={13} className="text-red" />
+                                <span className="text-[13px] font-bold text-red">Action Failed</span>
+                              </div>
+                              <p className="text-[12.5px] text-text2">{result?.error || 'Something went wrong. Please try again.'}</p>
+                            </div>
+                          )}
+
+                          {status === 'cancelled' && (
+                            <p className="text-[12px] text-text3 italic">Operation cancelled.</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
                 {streaming && <MessageBubble message={{ role: 'assistant', content: streamingText }} thinking={!streamingText} streaming />}
+
                 {!streaming && followupSuggestions.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 pl-9">
                     {followupSuggestions.map(q => (

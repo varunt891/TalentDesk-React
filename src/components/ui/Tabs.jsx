@@ -43,13 +43,19 @@ export default function Tabs({ items, value, onChange, className = '' }) {
     }
   }, [checkScroll, items])
 
-  // Scroll active tab into view when selection changes
+  // Scroll active tab into view horizontally inside scrollRef container only
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
     const activeBtn = el.querySelector('[aria-selected="true"]')
     if (activeBtn) {
-      activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+      const elRect = el.getBoundingClientRect()
+      const btnRect = activeBtn.getBoundingClientRect()
+      if (btnRect.left < elRect.left) {
+        el.scrollLeft += (btnRect.left - elRect.left)
+      } else if (btnRect.right > elRect.right) {
+        el.scrollLeft += (btnRect.right - elRect.right)
+      }
       setTimeout(checkScroll, 300)
     }
   }, [value, checkScroll])

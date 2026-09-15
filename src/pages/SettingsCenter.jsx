@@ -6,7 +6,7 @@ import {
   Button, Card, CardHeader, KPICard, PageHeader, Tabs, EmptyState, Select, Input, Textarea,
   Switch, FormField, Badge, Avatar, AvatarGroup, Modal, useToast, cn, SearchBar, Icon,
 } from '../components/ui'
-import { SettingsCard, StatusBadge, InfoBanner, ProfileCard, PermissionMatrix, AIUsageSection } from '../components/admin'
+import { SettingsCard, StatusBadge, InfoBanner, PermissionMatrix, AIUsageSection } from '../components/admin'
 import { ROLES, MODULES, getRole, getSettingsTabAccess, canDoAction } from '../lib/admin/permissions'
 import { useOrgPreferences } from '../lib/admin/orgPreferences'
 import { useNotificationPreferences, NOTIFICATION_CATEGORIES } from '../lib/admin/notificationPreferences'
@@ -15,6 +15,7 @@ import { fetchActivityLog, fetchAuditLog } from '../lib/admin/activity'
 import { useAIGovernance } from '../lib/ai/governance'
 import { SETTINGS_TAB_FLAG } from '../lib/admin/settingsNav'
 import { MARKET_CONFIGS, MARKET_OPTIONS, getMarketConfig } from '../lib/marketConfig'
+import { TIMEZONE_OPTIONS } from '../lib/timezone'
 
 const TABS = [
   { id: 'general', label: 'General' },
@@ -177,12 +178,6 @@ const TRUST_ROW = [
   { icon: 'refresh', label: 'Fast Performance' },
 ]
 
-const TIMEZONE_OPTIONS = [
-  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Sao_Paulo',
-  'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Asia/Calcutta', 'Asia/Dubai', 'Asia/Singapore',
-  'Asia/Shanghai', 'Asia/Tokyo', 'Australia/Sydney', 'UTC',
-].map(tz => ({ value: tz, label: tz.replace(/_/g, ' ') }))
-
 const CURRENCY_OPTIONS = ['USD', 'EUR', 'GBP', 'INR', 'AUD', 'CAD', 'SGD', 'AED', 'JPY'].map(c => ({ value: c, label: c }))
 
 const DATE_FORMAT_OPTIONS = [
@@ -201,8 +196,6 @@ const LANGUAGE_OPTIONS = [
 ]
 
 function isSuperAdminRole(role) { return ['superadmin', 'SUPERADMIN'].includes(role) }
-function isOwnerOrAdminRole(role) { return isSuperAdminRole(role) || ['admin', 'owner', 'ADMIN', 'OWNER'].includes(role) }
-
 /**
  * The unified enterprise Settings experience — Phase 6. Replaces the two
  * separate OrgSettings.jsx / TeamManagement.jsx pages with one tabbed
@@ -220,11 +213,10 @@ export default function SettingsCenter({ initialTab = 'general', onNavigate }) {
   const userId = user?.id
   const role = profile?.role || 'recruiter'
   const isSuperAdmin = isSuperAdminRole(role)
-  const isOwnerOrAdmin = isOwnerOrAdminRole(role)
 
   // ── RBAC ── single-source derived from permissions.js ──────────────────────
-  const tabAccess = getSettingsTabAccess(role)
-  const can = {
+  const tabAccess = useMemo(() => getSettingsTabAccess(role), [role])
+  const can = useMemo(() => ({
     inviteMember: canDoAction(role, 'inviteMember'),
     changeRole:   canDoAction(role, 'changeRole'),
     removeMember: canDoAction(role, 'removeMember'),
@@ -232,7 +224,7 @@ export default function SettingsCenter({ initialTab = 'general', onNavigate }) {
     revokeInvite: canDoAction(role, 'revokeInvite'),
     editOrg:      canDoAction(role, 'editOrg'),
     changePlan:   canDoAction(role, 'changePlan'),
-  }
+  }), [role])
   // Visible tabs: filter out 'none' access; also exclude superadmin-only items for non-superadmins
   const visibleTabs = TABS.filter(t => tabAccess[t.id] !== 'none')
 
@@ -248,7 +240,7 @@ export default function SettingsCenter({ initialTab = 'general', onNavigate }) {
       setActiveTab(safeFlag)
       if (safeFlag !== flag) setRestrictedBanner(true)
     }
-  }, [])
+  }, [tabAccess])
 
   const [org, setOrg] = useState(null)
   const [allOrgs, setAllOrgs] = useState([])
@@ -262,7 +254,7 @@ export default function SettingsCenter({ initialTab = 'general', onNavigate }) {
     name: '', domain: '', website: '', logo_url: '', industry: '', company_size: '', timezone: 'Asia/Calcutta',
   })
 
-  const { preferences: orgPrefs, updatePreferences: updateOrgPrefs } = useOrgPreferences(orgId)
+  const { preferences: orgPrefs, updatePreferences: updateOrgPrefs, savePreferences: saveOrgPrefs } = useOrgPreferences(orgId)
   const { preferences: notifPrefs, updatePreferences: updateNotifPrefs } = useNotificationPreferences(userId)
 
   const [notifications, setNotifications] = useState([])
@@ -540,7 +532,12 @@ export default function SettingsCenter({ initialTab = 'general', onNavigate }) {
               <OrganizationTab
                 org={org} form={orgForm} setForm={setOrgForm} onSave={handleSaveOrg} saving={saving}
                 canEdit={can.editOrg} isReadOnly={tabAccess['organization'] === 'view'}
-                preferences={orgPrefs} updatePreferences={updateOrgPrefs}
+                preferences={orgPrefs} updatePreferences={updateOrgPrefs} savePreferences={saveOrgPrefs}
+                onRegionalOrgUpdate={(updatedOrg) => {
+                  setOrg(prev => ({ ...prev, ...updatedOrg }))
+                  setOrgForm(prev => ({ ...prev, timezone: updatedOrg.timezone || prev.timezone }))
+                  refreshOrg(updatedOrg)
+                }}
                 members={members}
               />
             )}
@@ -687,7 +684,7 @@ function GeneralTab({ org, allOrgs, isSuperAdmin, switchingId, onSwitchWorkspace
 
       <Card>
         <CardHeader title={org?.name || 'Organization'} subtitle={`Tenant ID: ${org?.id || '—'}`} />
-        <div className="grid sm:grid-cols-2">
+        <div className="grid sm:grid-cols-2 gap-x-8 sm:gap-x-12 gap-y-0">
           <SettingsCard title="Domain" description={org?.domain || org?.email_domain || 'Not set'} />
           <SettingsCard title="Industry" description={org?.industry || 'Not set'} />
           <SettingsCard title="Website" description={org?.website || 'Not set'} />
@@ -760,15 +757,47 @@ function GeneralTab({ org, allOrgs, isSuperAdmin, switchingId, onSwitchWorkspace
   )
 }
 
-function OrganizationTab({ org, form, setForm, onSave, saving, canEdit, isReadOnly, preferences, updatePreferences, members }) {
+function OrganizationTab({ org, form, setForm, onSave, saving, canEdit, isReadOnly, preferences, updatePreferences, savePreferences, onRegionalOrgUpdate, members }) {
+  const { toast } = useToast()
+  const [regionalSaving, setRegionalSaving] = useState(false)
   const activeMarket = getMarketConfig(preferences.market)
+  const marketTimezoneOptions = useMemo(() => {
+    const allowed = activeMarket.timezoneOptions || [activeMarket.defaultTimezone]
+    const options = TIMEZONE_OPTIONS.filter(option => allowed.includes(option.value))
+    if (preferences.timezone && !options.some(option => option.value === preferences.timezone)) {
+      const existing = TIMEZONE_OPTIONS.find(option => option.value === preferences.timezone)
+      if (existing) options.push(existing)
+    }
+    return options
+  }, [activeMarket, preferences.timezone])
+
+  const persistRegional = async (partial, successTitle = 'Regional preferences updated') => {
+    if (!canEdit) return
+    updatePreferences(partial)
+    setRegionalSaving(true)
+    try {
+      const result = await savePreferences(partial)
+      if (result?.organization) {
+        onRegionalOrgUpdate?.(result.organization)
+        if (partial.timezone) setForm(f => ({ ...f, timezone: result.organization.timezone || partial.timezone }))
+      }
+      toast({ tone: 'success', title: successTitle })
+    } catch (err) {
+      toast({ tone: 'error', title: 'Failed to save regional preferences', description: err.message })
+    } finally {
+      setRegionalSaving(false)
+    }
+  }
+
   const handleMarketChange = (marketId) => {
     const market = getMarketConfig(marketId)
-    updatePreferences({
+    persistRegional({
       market: market.id,
       currency: market.currency,
       dateFormat: market.dateFormat,
-    })
+      timezone: market.defaultTimezone,
+      businessHours: market.businessHours,
+    }, `${market.label} region applied`)
   }
 
   return (
@@ -828,7 +857,7 @@ function OrganizationTab({ org, form, setForm, onSave, saving, canEdit, isReadOn
           </InfoBanner>
         )}
         <InfoBanner tone="info" className="mb-4">
-          These preferences are saved locally to your browser for this organization. They are not yet synced across devices or enforced server-side.
+          These settings are saved on the organization record and used across candidate forms, callbacks, interviews, reminders, and exports.
         </InfoBanner>
         <div className={cn('grid grid-cols-1 md:grid-cols-2 gap-3 mb-5', !canEdit && 'pointer-events-none opacity-60 select-none')}>
           {Object.values(MARKET_CONFIGS).map(market => {
@@ -854,7 +883,7 @@ function OrganizationTab({ org, form, setForm, onSave, saving, canEdit, isReadOn
                       </span>
                       <div>
                         <div className="text-sm font-bold text-text">{market.label}</div>
-                        <div className="text-[11px] text-text3">{market.currency} · {market.dateFormat}</div>
+                        <div className="text-[11px] text-text3">{market.currency} · {market.dateFormat} · {market.defaultTimezone}</div>
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-1.5 mt-3">
@@ -871,22 +900,30 @@ function OrganizationTab({ org, form, setForm, onSave, saving, canEdit, isReadOn
         </div>
         <div className="grid sm:grid-cols-2 gap-4">
           <FormField label="Market">
-            <Select value={preferences.market} onChange={handleMarketChange} options={MARKET_OPTIONS} disabled={!canEdit} />
+            <Select value={preferences.market} onChange={handleMarketChange} options={MARKET_OPTIONS} disabled={!canEdit || regionalSaving} />
+          </FormField>
+          <FormField label="Timezone" hint="Stored as an IANA timezone so alerts remain accurate through DST and across devices.">
+            <Select
+              value={preferences.timezone}
+              onChange={v => persistRegional({ timezone: v }, 'Timezone updated')}
+              options={marketTimezoneOptions}
+              disabled={!canEdit || regionalSaving}
+            />
           </FormField>
           <FormField label="Currency">
-            <Select value={preferences.currency} onChange={v => updatePreferences({ currency: v })} options={CURRENCY_OPTIONS} disabled={!canEdit} />
+            <Select value={preferences.currency} onChange={v => persistRegional({ currency: v }, 'Currency updated')} options={CURRENCY_OPTIONS} disabled={!canEdit || regionalSaving} />
           </FormField>
           <FormField label="Date Format">
-            <Select value={preferences.dateFormat} onChange={v => updatePreferences({ dateFormat: v })} options={DATE_FORMAT_OPTIONS} disabled={!canEdit} />
+            <Select value={preferences.dateFormat} onChange={v => persistRegional({ dateFormat: v }, 'Date format updated')} options={DATE_FORMAT_OPTIONS} disabled={!canEdit || regionalSaving} />
           </FormField>
           <FormField label="Language">
-            <Select value={preferences.language} onChange={v => updatePreferences({ language: v })} options={LANGUAGE_OPTIONS} disabled={!canEdit} />
+            <Select value={preferences.language} onChange={v => persistRegional({ language: v }, 'Language updated')} options={LANGUAGE_OPTIONS} disabled={!canEdit || regionalSaving} />
           </FormField>
           <FormField label="Business Hours">
             <div className="flex items-center gap-2">
-              <Input type="time" value={preferences.businessHours.start} onChange={e => updatePreferences({ businessHours: { start: e.target.value } })} disabled={!canEdit} />
+              <Input type="time" value={preferences.businessHours.start} onChange={e => persistRegional({ businessHours: { start: e.target.value } }, 'Business hours updated')} disabled={!canEdit || regionalSaving} />
               <span className="text-text3 text-xs">to</span>
-              <Input type="time" value={preferences.businessHours.end} onChange={e => updatePreferences({ businessHours: { end: e.target.value } })} disabled={!canEdit} />
+              <Input type="time" value={preferences.businessHours.end} onChange={e => persistRegional({ businessHours: { end: e.target.value } }, 'Business hours updated')} disabled={!canEdit || regionalSaving} />
             </div>
           </FormField>
         </div>
@@ -966,6 +1003,11 @@ function TeamsTab({ members, isReadOnly }) {
 
   return (
     <div className="flex flex-col gap-6">
+      {isReadOnly && (
+        <InfoBanner tone="info">
+          You have view-only access to team structure. Contact an Owner or Admin to change reporting lines or departments.
+        </InfoBanner>
+      )}
 
       {/* ── KPI row ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -1349,7 +1391,7 @@ function AITab({ orgId, org, members, onNavigate }) {
 
       <Card>
         <CardHeader title="Current AI Governance" action={<Button size="sm" variant="secondary" onClick={() => onNavigate?.('ai_center')}>Open AI Center Settings</Button>} />
-        <div className="grid sm:grid-cols-2">
+        <div className="grid sm:grid-cols-2 gap-x-8 sm:gap-x-12 gap-y-0">
           <SettingsCard title="Chat" description={settings.features.chat ? 'Enabled' : 'Disabled'} />
           <SettingsCard title="Actions" description={settings.features.actions ? 'Enabled' : 'Disabled'} />
           <SettingsCard title="Automations" description={settings.features.automations ? 'Enabled' : 'Disabled'} />
@@ -1397,7 +1439,7 @@ function NotificationsTab({ notifications, loading, preferences, updatePreferenc
 
       <Card>
         <CardHeader title="Notification Categories" subtitle="Choose which categories you want surfaced. Saved to your browser." />
-        <div className="grid sm:grid-cols-2">
+        <div className="grid sm:grid-cols-2 gap-x-8 sm:gap-x-12 gap-y-0">
           {NOTIFICATION_CATEGORIES.map(c => (
             <SettingsCard key={c.id} title={c.label} control={<Switch checked={preferences[c.id] !== false} onChange={v => updatePreferences({ [c.id]: v })} />} />
           ))}
@@ -1412,7 +1454,7 @@ function WorkspaceTab({ preferences, updatePreferences }) {
     <div className="flex flex-col gap-6">
       <Card>
         <CardHeader title="Workspace Defaults" subtitle="Personalize how tables and lists render across TalentDesk." />
-        <div className="grid sm:grid-cols-2">
+        <div className="grid sm:grid-cols-2 gap-x-8 sm:gap-x-12 gap-y-0">
           <SettingsCard
             title="Table Density"
             control={<div className="w-36"><Select size="sm" value={preferences.tableDensity} onChange={v => updatePreferences({ tableDensity: v })} options={[{ value: 'comfortable', label: 'Comfortable' }, { value: 'compact', label: 'Compact' }]} /></div>}

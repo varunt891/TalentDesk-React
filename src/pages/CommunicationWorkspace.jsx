@@ -16,6 +16,8 @@ import { runAiAction } from '../lib/ai/aiClient'
 import { logUsageEvent } from '../lib/ai/usage'
 import { useAISetContext } from '../lib/ai/context'
 import { useAIGovernance } from '../lib/ai/governance'
+import { useOrgPreferences } from '../lib/admin/orgPreferences'
+import { normalizeTimezone, scheduledLocalToIso, scheduledLocalToUtcMs, timezoneShortName, TIMEZONE_OPTIONS } from '../lib/timezone'
 
 const INTERESTS = ['Hot', 'Warm', 'Cold']
 const CB_STATUSES = ['pending', 'done', 'missed']
@@ -29,86 +31,17 @@ const RESUBMIT_STATUSES = ['Rejected', 'Withdrew', 'On Hold']
 const todayStr = () => new Date().toISOString().slice(0, 10)
 function isToday(d) { return Boolean(d) && String(d).slice(0, 10) === todayStr() }
 
-const TZ_MAP = {
-  EST: 'America/New_York',
-  EDT: 'America/New_York',
-  ET: 'America/New_York',
-  CST: 'America/Chicago',
-  CDT: 'America/Chicago',
-  CT: 'America/Chicago',
-  MST: 'America/Denver',
-  MDT: 'America/Denver',
-  MT: 'America/Denver',
-  PST: 'America/Los_Angeles',
-  PDT: 'America/Los_Angeles',
-  PT: 'America/Los_Angeles',
-  IST: 'Asia/Kolkata',
-  UTC: 'UTC',
-  GMT: 'UTC',
-}
-
-function parseTime(timeStr) {
-  if (!timeStr) return { hours: 9, minutes: 0 }
-  const clean = String(timeStr).trim().toUpperCase()
-  const isPM = clean.includes('PM')
-  const isAM = clean.includes('AM')
-  const match = clean.match(/(\d{1,2}):(\d{2})/)
-  if (!match) return { hours: 9, minutes: 0 }
-  let hours = parseInt(match[1], 10)
-  const minutes = parseInt(match[2], 10)
-  if (isPM && hours < 12) hours += 12
-  if (isAM && hours === 12) hours = 0
-  return { hours, minutes }
-}
-
-function getTargetUtcTimestamp(dateStr, timeStr, tzAbbr) {
-  if (!dateStr) return null
-  const { hours, minutes } = parseTime(timeStr)
-  const parts = dateStr.slice(0, 10).split('-').map(Number)
-  if (parts.length !== 3 || parts.some(isNaN)) return null
-  const [y, m, d] = parts
-
-  const tzUpper = String(tzAbbr || 'EST').trim().toUpperCase()
-  const ianaName = TZ_MAP[tzUpper] || 'America/New_York'
-
-  try {
-    const testUtc = new Date(Date.UTC(y, m - 1, d, hours, minutes, 0))
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: ianaName,
-      timeZoneName: 'shortOffset',
-      year: 'numeric', month: 'numeric', day: 'numeric',
-      hour: 'numeric', minute: 'numeric', second: 'numeric',
-      hour12: false
-    })
-
-    const formattedParts = formatter.formatToParts(testUtc)
-    const tzPart = formattedParts.find(p => p.type === 'timeZoneName')?.value || ''
-
-    let offsetMinutes = -240
-    const offsetMatch = tzPart.match(/(GMT|UTC)?([+-])(\d{1,2})(?::(\d{2}))?/)
-    if (offsetMatch) {
-      const sign = offsetMatch[2] === '-' ? -1 : 1
-      const offsetHours = parseInt(offsetMatch[3], 10)
-      const offsetMins = parseInt(offsetMatch[4] || '0', 10)
-      offsetMinutes = sign * (offsetHours * 60 + offsetMins)
-    }
-
-    return Date.UTC(y, m - 1, d, hours, minutes, 0) - offsetMinutes * 60000
-  } catch {
-    let offsetMins = -240
-    if (['PST', 'PDT', 'PT'].includes(tzUpper)) offsetMins = -420
-    else if (['CST', 'CDT', 'CT'].includes(tzUpper)) offsetMins = -300
-    else if (['MST', 'MDT', 'MT'].includes(tzUpper)) offsetMins = -360
-    else if (tzUpper === 'IST') offsetMins = 330
-    else if (['UTC', 'GMT'].includes(tzUpper)) offsetMins = 0
-
-    return Date.UTC(y, m - 1, d, hours, minutes, 0) - offsetMins * 60000
+function getTargetUtcTimestamp(dateStr, timeStr, timezone, scheduledAtUtc) {
+  if (scheduledAtUtc) {
+    const parsed = new Date(scheduledAtUtc).getTime()
+    if (!Number.isNaN(parsed)) return parsed
   }
+  return scheduledLocalToUtcMs(dateStr, timeStr, timezone)
 }
 
-function getCallbackCountdown(dateStr, timeStr, tzStr, now = new Date()) {
+function getCallbackCountdown(dateStr, timeStr, tzStr, now = new Date(), scheduledAtUtc = null) {
   if (!dateStr) return null
-  const targetUtcMs = getTargetUtcTimestamp(dateStr, timeStr, tzStr)
+  const targetUtcMs = getTargetUtcTimestamp(dateStr, timeStr, tzStr, scheduledAtUtc)
   if (!targetUtcMs) return null
 
   const diffMs = targetUtcMs - now.getTime()
@@ -190,13 +123,15 @@ const initialFilters = {
   dateFrom: '', dateTo: '', completed: false, overdue: false,
 }
 const initialResubmitFilters = { recruiter: [], client: [], skills: [] }
-const emptyCbForm = { candidate_name: '', phone: '', job: '', date: todayStr(), time: '10:00', timezone: 'EST', interest: 'Warm', notes: '', status: 'pending' }
+const emptyCbForm = (timezone = 'America/New_York') => ({ candidate_name: '', phone: '', job: '', date: todayStr(), time: '10:00 AM', timezone, interest: 'Warm', notes: '', status: 'pending' })
 const emptyFuForm = { candidate_name: '', date: todayStr(), type: 'General Check-in', status: 'pending', priority: 'Medium', notes: '', next_action: '' }
 
 export default function CommunicationWorkspace({ defaultView = 'callbacks', onNavigate }) {
   const { user, profile, organization } = useAuth()
   const orgId = organization?.id || profile?.org_id
   const userId = user?.id
+  const { preferences: orgPrefs } = useOrgPreferences(orgId)
+  const defaultTimezone = normalizeTimezone(orgPrefs.timezone || organization?.timezone || 'America/New_York')
   const { settings: aiSettings } = useAIGovernance(orgId)
   const aiEnabled = aiSettings.workspaces.communication !== false
   const { candidates } = useCandidates()
@@ -258,7 +193,7 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
   const showToast = (msg, type = 'success') => pushToast({ tone: type === 'error' ? 'error' : 'success', title: msg })
 
   const [formKind, setFormKind] = useState('callback')
-  const [cbForm, setCbForm] = useState(emptyCbForm)
+  const [cbForm, setCbForm] = useState(() => emptyCbForm(defaultTimezone))
   const [fuForm, setFuForm] = useState(emptyFuForm)
   const [editingId, setEditingId] = useState(null)
   const [showForm, setShowForm] = useState(false)
@@ -486,7 +421,7 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
       if (item.status === 'done') { completed.push(item); return }
       if (isSnoozed(item, now)) { upcoming.push(item); return }
       if (!item.date) { upcoming.push(item); return }
-      const targetUtc = getTargetUtcTimestamp(item.date, item.time, item.timezone)
+      const targetUtc = getTargetUtcTimestamp(item.date, item.time, item.timezone, item.scheduled_at_utc)
       const isTimeOverdue = targetUtc ? targetUtc < currentMs : false
       if (item.date < todayStr() || (item.date === todayStr() && isTimeOverdue)) {
         overdue.push(item)
@@ -504,10 +439,10 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
   const openDrawer = (item, kind) => setShowDetail({ item, kind })
   const openCandidateDrawer = (candidate) => { setShowCandidateDetail(candidate); setCandidatePreviewTab('overview') }
 
-  const openCreateCb = (prefill = {}) => { setCbForm({ ...emptyCbForm, ...prefill }); setEditingId(null); setFormKind('callback'); setShowForm(true) }
+  const openCreateCb = (prefill = {}) => { setCbForm({ ...emptyCbForm(defaultTimezone), ...prefill, timezone: normalizeTimezone(prefill.timezone || defaultTimezone) }); setEditingId(null); setFormKind('callback'); setShowForm(true) }
   const openCreateFu = (prefill = {}) => { setFuForm({ ...emptyFuForm, ...prefill }); setEditingId(null); setFormKind('followup'); setShowForm(true) }
   const openEditItem = (item, kind) => {
-    if (kind === 'callback') setCbForm({ candidate_name: item.candidate_name || '', phone: item.phone || '', job: item.job || '', date: item.date || todayStr(), time: item.time || '10:00', timezone: item.timezone || 'EST', interest: item.interest || 'Warm', notes: item.notes || '', status: 'pending' })
+    if (kind === 'callback') setCbForm({ candidate_name: item.candidate_name || '', phone: item.phone || '', job: item.job || '', date: item.date || todayStr(), time: item.time || '10:00 AM', timezone: normalizeTimezone(item.timezone || defaultTimezone), interest: item.interest || 'Warm', notes: item.notes || '', status: 'pending' })
     else setFuForm({ candidate_name: item.candidate_name || '', date: item.date || todayStr(), type: item.type || 'General Check-in', status: 'pending', priority: item.priority || 'Medium', notes: item.notes || '', next_action: item.next_action || '' })
     setEditingId(item.id)
     setFormKind(kind)
@@ -521,7 +456,17 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
       if (!cbForm.candidate_name) return showToast('Candidate name required', 'error')
       if (!cbForm.date || !cbForm.time) return showToast('Date and time required', 'error')
       setSaving(true)
-      const payload = { ...cbForm, status: 'pending', date: cbForm.date || null, snoozed_until: null, user_id: user?.id, org_id: currentOrgId }
+      const normalizedTimezone = normalizeTimezone(cbForm.timezone || defaultTimezone)
+      const payload = {
+        ...cbForm,
+        timezone: normalizedTimezone,
+        scheduled_at_utc: scheduledLocalToIso(cbForm.date, cbForm.time, normalizedTimezone),
+        status: 'pending',
+        date: cbForm.date || null,
+        snoozed_until: null,
+        user_id: user?.id,
+        org_id: currentOrgId,
+      }
       if (editingId) {
         const { error } = await db.from('callbacks').update(payload).eq('id', editingId)
         setSaving(false)
@@ -875,7 +820,7 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
         >
           <div className="flex flex-col gap-4">
             {detailKind === 'callback' && detailItem.status !== 'done' && (() => {
-              const timer = getCallbackCountdown(detailItem.date, detailItem.time, detailItem.timezone)
+              const timer = getCallbackCountdown(detailItem.date, detailItem.time, detailItem.timezone, new Date(), detailItem.scheduled_at_utc)
               if (!timer) return null
               return (
                 <div
@@ -908,7 +853,7 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
             <DetailCard
               title={detailKind === 'callback' ? 'Callback' : 'Follow-up'}
               rows={detailKind === 'callback'
-                ? [['Date', detailItem.date], ['Time', `${detailItem.time || ''} ${detailItem.timezone || ''}`.trim()], ['Interest', detailItem.interest], ['Status', detailItem.status], ['Phone', detailItem.phone]]
+                ? [['Date', detailItem.date], ['Time', `${detailItem.time || ''} ${timezoneShortName(detailItem.timezone)} (${normalizeTimezone(detailItem.timezone)})`.trim()], ['Interest', detailItem.interest], ['Status', detailItem.status], ['Phone', detailItem.phone]]
                 : [['Date', detailItem.date], ['Type', detailItem.type], ['Priority', detailItem.priority], ['Status', detailItem.status], ['Next Action', detailItem.next_action]]}
             />
             {(detailItem._jobTitle || detailItem._client || detailItem._recruiter) && (
@@ -1064,7 +1009,9 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
               <FormField label="Status"><Select value={cbForm.status} onChange={v => setCbForm(f => ({ ...f, status: v }))} options={CB_STATUSES.map(o => ({ value: o, label: o }))} /></FormField>
               <FormField label="Date" required><Input type="date" value={cbForm.date} onChange={e => setCbForm(f => ({ ...f, date: e.target.value }))} /></FormField>
               <FormField label="Time" required><TimePicker value={cbForm.time} onChange={v => setCbForm(f => ({ ...f, time: v }))} /></FormField>
-              <FormField label="Timezone"><Select value={cbForm.timezone} onChange={v => setCbForm(f => ({ ...f, timezone: v }))} options={['EST', 'CST', 'MST', 'PST', 'IST'].map(o => ({ value: o, label: o }))} /></FormField>
+              <FormField label="Timezone" hint="Uses org default; stored as a real IANA timezone.">
+                <Select value={cbForm.timezone} onChange={v => setCbForm(f => ({ ...f, timezone: v }))} options={TIMEZONE_OPTIONS} />
+              </FormField>
             </div>
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
@@ -1151,7 +1098,7 @@ function CommCard({ item, kind, onOpen, onToggleDone, onContextMenu, actionsFor 
 
   const snoozed = isCallback && isSnoozed(item, now)
   const snoozedUntil = snoozed ? new Date(item.snoozed_until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null
-  const timer = isCallback && !isDone && !snoozed ? getCallbackCountdown(item.date, item.time, item.timezone, now) : null
+  const timer = isCallback && !isDone && !snoozed ? getCallbackCountdown(item.date, item.time, item.timezone, now, item.scheduled_at_utc) : null
 
   return (
     <div
@@ -1198,7 +1145,7 @@ function CommCard({ item, kind, onOpen, onToggleDone, onContextMenu, actionsFor 
         </div>
         <strong className={cn('text-[13px] font-bold text-text block truncate', isDone && 'line-through text-text3')}>{item.candidate_name}</strong>
         <div className="flex items-center gap-2.5 flex-wrap mt-1 text-[10.5px] text-text3">
-          <span>{isCallback ? `${relativeDate(item.date)}${item.time ? ` · ${item.time} ${item.timezone || ''}` : ''}` : `${relativeDate(item.date)}${item.type ? ` · ${item.type}` : ''}`}</span>
+          <span>{isCallback ? `${relativeDate(item.date)}${item.time ? ` · ${item.time} ${timezoneShortName(item.timezone)}` : ''}` : `${relativeDate(item.date)}${item.type ? ` · ${item.type}` : ''}`}</span>
           {item._jobTitle && <span className="truncate max-w-[140px]"><Icon name="jobs" size={10} className="inline mr-0.5 -mt-0.5" />{item._jobTitle}</span>}
           {item._recruiter && <span className="inline-flex items-center gap-1"><Avatar name={item._recruiter} size="xs" />{item._recruiter}</span>}
         </div>

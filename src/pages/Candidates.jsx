@@ -11,7 +11,7 @@ import * as XLSX from 'xlsx'
 import { PageContainer } from '../components/layout/PageContainer'
 import {
   Button, Badge, StatusPill, Card, CardHeader,
-  KPICard, PageHeader, Table, Modal, Switch, Icon, Avatar, Menu, MenuTrigger, EmptyState, useToast,
+  KPICard, PageHeader, Table, Modal, Switch, Icon, Avatar, Menu, MenuTrigger, EmptyState, useToast, cn,
 } from '../components/ui'
 import { WorkspaceSearch, FilterWorkspace, EntityDrawer } from '../components/workspace'
 import { ensureArray, STATUS_TONE, computeScore } from '../lib/candidateHealth'
@@ -22,6 +22,7 @@ import { runAiAction } from '../lib/ai/aiClient'
 import { logUsageEvent } from '../lib/ai/usage'
 import MarkdownView from '../components/MarkdownView'
 import { normalizeAiPlainText } from '../lib/aiTextFormat'
+import { useOrgPreferences } from '../lib/admin/orgPreferences'
 
 const STATUSES = ['Pending', 'Submitted', 'Shortlisted', 'Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired', 'Rejected', 'On Hold', 'Withdrew']
 const FEEDBACK = ['Awaiting', 'Positive', 'Negative', 'No Response']
@@ -30,6 +31,7 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
   const { profile, organization, user } = useAuth()
   const orgId = organization?.id || profile?.org_id
   const userId = user?.id
+  const { preferences: orgPrefs } = useOrgPreferences(orgId)
   const { settings: aiSettings } = useAIGovernance(orgId)
   const aiEnabled = aiSettings.workspaces.candidates !== false
   const isSuperAdmin = profile?.role === 'superadmin' || profile?.role === 'SUPERADMIN'
@@ -40,6 +42,11 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({ status: [], fe: [], job: [], location: [], feedback: [], org: [], recruiter: [], priority: [] })
   const [showModal, setShowModal] = useState(false)
+  const [viewMode, setViewMode] = useState(() => orgPrefs.defaultCandidateView || 'table')
+
+  useEffect(() => {
+    if (orgPrefs.defaultCandidateView) setViewMode(orgPrefs.defaultCandidateView)
+  }, [orgPrefs.defaultCandidateView])
   const [showBulkUpload, setShowBulkUpload] = useState(false)
   const [showDetail, setShowDetail] = useState(null)
   useAISetContext(showDetail ? {
@@ -386,67 +393,154 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
         ))}
       </div>
 
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-text3">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <span className="text-xs text-text3 font-medium">
           {filtered.length !== candidates.length ? `${filtered.length} / ${candidates.length} shown` : `${candidates.length} records`}
         </span>
+        <div className="flex items-center gap-1 bg-surface2/80 p-0.5 rounded-lg border border-border">
+          <button
+            type="button"
+            onClick={() => setViewMode('table')}
+            className={cn("px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer", viewMode === 'table' ? "bg-surface text-accent shadow-xs border border-border/80" : "text-text3 hover:text-text")}
+          >
+            <Icon name="list" size={13} /> Table
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('board')}
+            className={cn("px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer", viewMode === 'board' ? "bg-surface text-accent shadow-xs border border-border/80" : "text-text3 hover:text-text")}
+          >
+            <Icon name="grid" size={13} /> Grid / Board
+          </button>
+        </div>
       </div>
 
-      <Table
-        columns={columns}
-        data={filtered}
-        loading={loading}
-        resizable
-        selectable
-        selectedIds={selected}
-        onSelectionChange={setSelected}
-        onRowClick={(c) => { setShowDetail(c); setPreviewTab('overview') }}
-        emptyState={
-          <EmptyState
-            icon="users"
-            title={hasFilters ? 'No candidates match your filters' : 'No candidates yet'}
-            action={!hasFilters ? <Button variant="primary" leftIcon="plus" onClick={openAdd}>Add Candidate</Button> : undefined}
-          />
-        }
-        bulkActions={
-          <>
-            <Menu
-              align="start"
-              trigger={({ toggle }) => <Button size="sm" variant="secondary" onClick={toggle}>Change Status</Button>}
-              items={STATUSES.map(s => ({ label: s, onClick: () => bulkSetStatus(s) }))}
+      {viewMode === 'board' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5 mb-6">
+          {filtered.length === 0 ? (
+            <div className="col-span-full">
+              <EmptyState
+                icon="users"
+                title={hasFilters ? 'No candidates match your filters' : 'No candidates yet'}
+                action={!hasFilters ? <Button variant="primary" leftIcon="plus" onClick={openAdd}>Add Candidate</Button> : undefined}
+              />
+            </div>
+          ) : (
+            filtered.map(c => (
+              <Card
+                key={c.id}
+                hoverable
+                onClick={() => { setShowDetail(c); setPreviewTab('overview') }}
+                className="p-4 flex flex-col justify-between gap-3 group relative border-border/80 hover:border-accent/40"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Avatar name={`${c.first_name || ''} ${c.last_name || ''}`.trim() || '?'} size="sm" className="shrink-0" />
+                    <div className="min-w-0">
+                      <div className="font-bold text-sm text-text truncate group-hover:text-accent transition-colors">
+                        {c.first_name} {c.last_name}
+                      </div>
+                      <div className="text-[11px] text-text3 truncate leading-tight mt-0.5">
+                        {c.work_auth || c.email || 'No email'}
+                      </div>
+                    </div>
+                  </div>
+                  <StatusPill status={c.internal_status} tone={STATUS_TONE[c.internal_status] || 'neutral'} size="sm" />
+                </div>
+
+                <div className="bg-surface2/50 p-2.5 rounded-[var(--radius-md)] border border-border/40 text-xs flex flex-col gap-1">
+                  <div className="flex items-center justify-between gap-1 text-text font-semibold truncate">
+                    <span className="truncate">{c.job_title || 'Role n/a'}</span>
+                    <span className="text-[10px] font-mono text-accent shrink-0">{c.job_id || ''}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-text3">
+                    <span className="truncate">{c.location || 'Location n/a'}</span>
+                    <span className="shrink-0 font-medium">{c.rate || ''}</span>
+                  </div>
+                </div>
+
+                {ensureArray(c.skills).length > 0 && (
+                  <div className="flex flex-wrap gap-1 max-h-12 overflow-hidden">
+                    {ensureArray(c.skills).slice(0, 3).map((sk, idx) => (
+                      <Badge key={idx} size="sm" tone="neutral">{sk}</Badge>
+                    ))}
+                    {ensureArray(c.skills).length > 3 && (
+                      <span className="text-[10px] font-semibold text-text3 self-center">+{ensureArray(c.skills).length - 3}</span>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-2 border-t border-border/50 text-[11px] text-text3" onClick={e => e.stopPropagation()}>
+                  <span>Submitted {c.submission_date || '—'}</span>
+                  <div className="flex items-center gap-1">
+                    <Button size="xs" variant="ghost" onClick={() => openEdit(c)}>Edit</Button>
+                    <Button size="xs" variant="secondary" onClick={() => { setShowDetail(c); setPreviewTab('overview') }}>View</Button>
+                  </div>
+                </div>
+              </Card>
+            ))
+          )}
+        </div>
+      ) : (
+        <Table
+          columns={columns}
+          data={filtered}
+          loading={loading}
+          resizable
+          selectable
+          selectedIds={selected}
+          onSelectionChange={setSelected}
+          compact={orgPrefs.tableDensity === 'compact'}
+          defaultPageSize={orgPrefs.pageSize || 25}
+          pageSizeOptions={[10, 25, 50, 100, 'All']}
+          onRowClick={(c) => { setShowDetail(c); setPreviewTab('overview') }}
+          emptyState={
+            <EmptyState
+              icon="users"
+              title={hasFilters ? 'No candidates match your filters' : 'No candidates yet'}
+              action={!hasFilters ? <Button variant="primary" leftIcon="plus" onClick={openAdd}>Add Candidate</Button> : undefined}
             />
-            <Button size="sm" variant="secondary" onClick={bulkExport}>Export</Button>
-            {aiEnabled && selected.length >= 2 && selected.length <= 5 && (
-              <Button size="sm" variant="ai" leftIcon="compare" onClick={runComparison}>AI Compare</Button>
-            )}
-            <Button size="sm" variant="danger" onClick={() => setDeleteId('bulk')}>Delete</Button>
-          </>
-        }
-        rowActions={(c) => (
-          <Menu
-            align="end"
-            trigger={(p) => <MenuTrigger {...p} />}
-            items={[
-              { label: 'Quick preview', icon: 'eye', onClick: () => { setShowDetail(c); setPreviewTab('overview') } },
-              { label: 'View full details', icon: 'arrowUpRight', onClick: () => onNavigate ? onNavigate('candidate_detail', { candidateId: c.id }) : (() => { setShowDetail(c); setPreviewTab('overview') })() },
-              { label: 'Edit candidate', icon: 'edit', onClick: () => openEdit(c) },
-              { label: 'Deep AI Fit', icon: 'sparkles', onClick: () => openAiMatchForCandidate(c) },
-              { label: '1-Click Packet', icon: 'arrowUpRight', onClick: () => openPacketForCandidate(c) },
-              'divider',
-              { label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleteId(c.id) },
-            ]}
-          />
-        )}
-        contextMenuItems={(c) => [
-          { label: 'Quick preview', icon: 'eye', onClick: () => { setShowDetail(c); setPreviewTab('overview') } },
-          { label: 'View full details', icon: 'arrowUpRight', onClick: () => onNavigate ? onNavigate('candidate_detail', { candidateId: c.id }) : (() => { setShowDetail(c); setPreviewTab('overview') })() },
-          { label: 'Edit candidate', icon: 'edit', onClick: () => openEdit(c) },
-          { label: 'Deep AI Fit', icon: 'sparkles', onClick: () => openAiMatchForCandidate(c) },
-          { label: '1-Click Packet', icon: 'arrowUpRight', onClick: () => openPacketForCandidate(c) },
-          'divider',
-          { label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleteId(c.id) },
-        ]}
-      />
+          }
+          bulkActions={
+            <>
+              <Menu
+                align="start"
+                trigger={({ toggle }) => <Button size="sm" variant="secondary" onClick={toggle}>Change Status</Button>}
+                items={STATUSES.map(s => ({ label: s, onClick: () => bulkSetStatus(s) }))}
+              />
+              <Button size="sm" variant="secondary" onClick={bulkExport}>Export</Button>
+              {aiEnabled && selected.length >= 2 && selected.length <= 5 && (
+                <Button size="sm" variant="ai" leftIcon="compare" onClick={runComparison}>AI Compare</Button>
+              )}
+              <Button size="sm" variant="danger" onClick={() => setDeleteId('bulk')}>Delete</Button>
+            </>
+          }
+          rowActions={(c) => (
+            <Menu
+              align="end"
+              trigger={(p) => <MenuTrigger {...p} />}
+              items={[
+                { label: 'Quick preview', icon: 'eye', onClick: () => { setShowDetail(c); setPreviewTab('overview') } },
+                { label: 'View full details', icon: 'arrowUpRight', onClick: () => onNavigate ? onNavigate('candidate_detail', { candidateId: c.id }) : (() => { setShowDetail(c); setPreviewTab('overview') })() },
+                { label: 'Edit candidate', icon: 'edit', onClick: () => openEdit(c) },
+                { label: 'Deep AI Fit', icon: 'sparkles', onClick: () => openAiMatchForCandidate(c) },
+                { label: '1-Click Packet', icon: 'arrowUpRight', onClick: () => openPacketForCandidate(c) },
+                'divider',
+                { label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleteId(c.id) },
+              ]}
+            />
+          )}
+          contextMenuItems={(c) => [
+            { label: 'Quick preview', icon: 'eye', onClick: () => { setShowDetail(c); setPreviewTab('overview') } },
+            { label: 'View full details', icon: 'arrowUpRight', onClick: () => onNavigate ? onNavigate('candidate_detail', { candidateId: c.id }) : (() => { setShowDetail(c); setPreviewTab('overview') })() },
+            { label: 'Edit candidate', icon: 'edit', onClick: () => openEdit(c) },
+            { label: 'Deep AI Fit', icon: 'sparkles', onClick: () => openAiMatchForCandidate(c) },
+            { label: '1-Click Packet', icon: 'arrowUpRight', onClick: () => openPacketForCandidate(c) },
+            'divider',
+            { label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleteId(c.id) },
+          ]}
+        />
+      )}
 
       {/* Preview drawer */}
       {showDetail && (() => {

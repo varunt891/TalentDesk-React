@@ -82,7 +82,7 @@ export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggle
       )}
     >
       {/* Header */}
-      <div className={cn('flex items-center h-14 border-b border-border shrink-0', isCollapsed ? 'justify-center px-2' : 'justify-between px-4')}>
+      <div className={cn('flex items-center h-16 border-b border-border shrink-0', isCollapsed ? 'justify-center px-2' : 'justify-between px-4')}>
         {isCollapsed ? (
           <button
             type="button"

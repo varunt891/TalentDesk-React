@@ -1,4 +1,5 @@
 import { db } from './api'
+import { normalizeTimezone, scheduledLocalToIso } from './timezone'
 
 export const INTERVIEW_SCHEDULED_STATUS = 'Interview Scheduled'
 export const INTERVIEW_CALLBACK_MARKER = 'TalentDesk interview callback'
@@ -11,19 +12,12 @@ export function getCandidateDisplayName(candidate = {}) {
   return `${candidate.first_name || ''} ${candidate.last_name || ''}`.trim()
 }
 
-function timezoneForCallback(timezone) {
-  const value = String(timezone || '').toLowerCase()
-  if (value.includes('kolkata') || value.includes('calcutta') || value === 'ist') return 'IST'
-  if (value.includes('chicago') || value.includes('central')) return 'CT'
-  if (value.includes('denver') || value.includes('mountain')) return 'MT'
-  if (value.includes('los_angeles') || value.includes('pacific')) return 'PT'
-  return 'ET'
-}
-
 export function buildInterviewCallbackPayload(candidate = {}, context = {}) {
   const name = getCandidateDisplayName(candidate)
   const interviewType = candidate.interview_type || 'Interview'
   const job = [candidate.job_id, candidate.job_title].filter(Boolean).join(' - ') || candidate.job_title || 'Interview'
+  const timezone = normalizeTimezone(context.timezone || candidate.timezone || 'America/New_York')
+  const time = candidate.interview_time || context.time || '10:00 AM'
   const noteLines = [
     `${INTERVIEW_CALLBACK_MARKER}: ${interviewType}`,
     candidate.client ? `Client: ${candidate.client}` : null,
@@ -37,8 +31,9 @@ export function buildInterviewCallbackPayload(candidate = {}, context = {}) {
     phone: candidate.phone || '',
     job,
     date: candidate.interview_date || null,
-    time: candidate.interview_time || context.time || '10:00',
-    timezone: timezoneForCallback(context.timezone),
+    time,
+    timezone,
+    scheduled_at_utc: scheduledLocalToIso(candidate.interview_date, time, timezone),
     snoozed_until: null,
     interest: 'Hot',
     notes: noteLines.join('\n'),
