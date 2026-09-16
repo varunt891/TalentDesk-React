@@ -123,7 +123,7 @@ function MainApp() {
       case 'postings': return <Postings />
       case 'directory': return <Directory />
       case 'resubmit': return <Resubmit onNavigate={navigateTo} />
-      case 'collisions': return <Collisions />
+      case 'collisions': return <Collisions onNavigate={navigateTo} />
       case 'org_settings': return <OrgSettings onNavigate={navigateTo} />
       case 'team_management': return <TeamManagement onNavigate={navigateTo} />
       case 'admin': return ['admin', 'superadmin', 'owner', 'ADMIN', 'SUPERADMIN', 'OWNER'].includes(role) ? <Admin /> : <Navigate to="/" />

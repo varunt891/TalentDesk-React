@@ -57,11 +57,23 @@ export default function JobDetail({ jobId, onNavigate }) {
     if (!jobId) return
     setLoading(true)
     setNotFound(false)
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)
+    let jobsQuery = db.from('jobs').select('*').param('all_owners', 'true')
+    if (isUuid) {
+      jobsQuery = jobsQuery.eq('id', jobId)
+    } else {
+      jobsQuery = jobsQuery.eq('job_id', jobId)
+    }
+
     const [jobsRes, profilesRes] = await Promise.all([
-      db.from('jobs').select('*').eq('id', jobId).param('all_owners', 'true'),
+      jobsQuery,
       db.from('profiles').select('*'),
     ])
-    const found = (jobsRes.data || [])[0]
+    let found = (jobsRes.data || [])[0]
+    if (!found && isUuid) {
+      const fallbackRes = await db.from('jobs').select('*').eq('job_id', jobId).param('all_owners', 'true')
+      found = (fallbackRes.data || [])[0]
+    }
     setProfiles(profilesRes.data || [])
 
     if (!found) {

@@ -460,7 +460,7 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
                 </div>
 
                 {ensureArray(c.skills).length > 0 && (
-                  <div className="flex flex-wrap gap-1 max-h-12 overflow-hidden">
+                  <div className="flex flex-wrap gap-1 max-h-[76px] overflow-hidden">
                     {ensureArray(c.skills).slice(0, 3).map((sk, idx) => (
                       <Badge key={idx} size="sm" tone="neutral">{sk}</Badge>
                     ))}

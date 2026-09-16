@@ -638,8 +638,7 @@ export default function PixelRobot({
             {/* APPLICANT CHARACTER BODY */}
             <g className={cn(
               "transition-transform duration-200 origin-bottom",
-              applicantAction === 'coffee' && "rotate-1",
-              applicantAction === 'phone' && "translate-y-0.5"
+              applicantAction === 'coffee' && "rotate-1"
             )}>
               {/* HAIR */}
               <rect x="9" y="3" width="14" height="5" fill="#1e293b" rx="1" />
@@ -762,8 +761,8 @@ export default function PixelRobot({
           className={cn(
             "relative w-8 h-8 shrink-0 flex items-center justify-center transition-all duration-200",
             dir === -1 && "scale-x-[-1]", // Flip horizontally when walking left
-            robotState === 'peek' && "translate-y-2 opacity-90",
-            robotState === 'sit' && "translate-y-0.5",
+            robotState === 'peek' && "-translate-y-0.5 opacity-90",
+            robotState === 'sit' && "translate-y-0",
             robotState === 'hire' && "animate-bounce"
           )}
         >

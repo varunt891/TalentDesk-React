@@ -36,6 +36,15 @@ function ensureArray(val) {
   return []
 }
 
+function formatExp(exp) {
+  if (!exp) return 'Exp n/a'
+  const str = String(exp).trim()
+  if (!str) return 'Exp n/a'
+  if (/exp$/i.test(str)) return str
+  if (/\b(yr|yrs|year|years)\b/i.test(str)) return `${str} exp`
+  return `${str} yrs exp`
+}
+
 const GENERIC_SOFT_SKILLS = ['communication', 'leadership', 'teamwork', 'problem solving', 'agile', 'scrum', 'jira', 'management', 'collaboration']
 
 export function getMatchingCandidates(job, candidates, aiScores = {}) {
@@ -594,7 +603,7 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
                   </div>
 
                   {ensureArray(j.skills).length > 0 && (
-                    <div className="flex flex-wrap gap-1 max-h-12 overflow-hidden">
+                    <div className="flex flex-wrap gap-1 max-h-[76px] overflow-hidden">
                       {ensureArray(j.skills).slice(0, 3).map((sk, idx) => (
                         <Badge key={idx} size="sm" tone="neutral">{sk}</Badge>
                       ))}
@@ -739,11 +748,31 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
                     <span className="text-xs font-bold uppercase tracking-wide text-text2">Job Health</span>
                     <StatusPill status={health.statusTag} tone={health.statusTone === 'amber' ? 'yellow' : health.statusTone} />
                   </div>
-                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2.5">
-                    {[['Submittals', health.submittals], ['Interviews', health.interviews], ['Offers', health.offers], ['Placed', health.hires], ['Age', `${health.openDays}d`]].map(([label, value]) => (
-                      <div key={label} className="text-center">
-                        <div className="text-lg font-extrabold text-text font-mono">{value}</div>
-                        <div className="text-[10px] text-text3 uppercase tracking-wide mt-0.5">{label}</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {[
+                      { label: 'Submittals', value: health.submittals, tone: 'accent' },
+                      { label: 'Interviews', value: health.interviews, tone: 'ai' },
+                      { label: 'Offers', value: health.offers, tone: 'yellow' },
+                      { label: 'Placed', value: health.hires, tone: 'green' },
+                      { label: 'Days Open', value: `${health.openDays}d`, tone: 'neutral' },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        className="flex items-center gap-2.5 p-2 rounded-xl bg-surface/90 border border-border/60 shadow-2xs"
+                      >
+                        <div
+                          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 font-mono font-extrabold text-xs"
+                          style={{
+                            background: `color-mix(in srgb, var(--${item.tone === 'neutral' ? 'text3' : item.tone}) 16%, var(--surface2))`,
+                            color: `var(--${item.tone === 'neutral' ? 'text' : item.tone})`,
+                            border: `1px solid color-mix(in srgb, var(--${item.tone === 'neutral' ? 'text3' : item.tone}) 25%, transparent)`,
+                          }}
+                        >
+                          {item.value}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-bold text-text truncate">{item.label}</div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -806,13 +835,45 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
 
             {previewTab === 'pipeline' && (
               <div className="flex flex-col gap-4">
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5">
-                  {[['Submittals', health.submittals], ['Interviews', health.interviews], ['Offers', health.offers], ['Placed', health.hires], ['Rejected', health.rejected], ['Withdrawn', health.withdrawn]].map(([label, value]) => (
-                    <div key={label} className="bg-surface2 border border-border rounded-[var(--radius-sm)] p-2.5 text-center">
-                      <div className="text-base font-extrabold text-text font-mono">{value}</div>
-                      <div className="text-[10px] text-text3 uppercase tracking-wide mt-0.5">{label}</div>
+                <div className="bg-surface2/50 border border-border/80 rounded-2xl p-3.5 shadow-2xs">
+                  <div className="flex items-center justify-between mb-3 px-0.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+                      <span className="text-xs font-bold uppercase tracking-wider text-text2">Pipeline Stages</span>
                     </div>
-                  ))}
+                    <span className="text-[11px] text-text3 font-medium">{health.submittals} Total Submissions</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                    {[
+                      { label: 'Submittals', value: health.submittals, tone: 'accent', desc: 'Submitted' },
+                      { label: 'Interviews', value: health.interviews, tone: 'ai', desc: 'In progress' },
+                      { label: 'Offers', value: health.offers, tone: 'yellow', desc: 'Extended' },
+                      { label: 'Placed', value: health.hires, tone: 'green', desc: 'Confirmed' },
+                      { label: 'Rejected', value: health.rejected, tone: 'red', desc: 'Declined' },
+                      { label: 'Withdrawn', value: health.withdrawn, tone: 'neutral', desc: 'Opted out' },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        className="flex items-center gap-3 p-2.5 rounded-xl bg-surface border border-border/60 hover:border-border transition-all duration-[var(--duration-fast)] shadow-2xs"
+                      >
+                        <div
+                          className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 font-mono font-extrabold text-sm shadow-2xs"
+                          style={{
+                            background: `color-mix(in srgb, var(--${item.tone === 'neutral' ? 'text3' : item.tone}) 16%, var(--surface2))`,
+                            color: `var(--${item.tone === 'neutral' ? 'text' : item.tone})`,
+                            border: `1px solid color-mix(in srgb, var(--${item.tone === 'neutral' ? 'text3' : item.tone}) 30%, transparent)`,
+                          }}
+                        >
+                          {item.value}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-text truncate">{item.label}</div>
+                          <div className="text-[10px] text-text3 truncate leading-tight mt-0.5">{item.desc}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2 rounded-[var(--radius-md)] bg-ai-soft border border-ai/20 px-3.5 py-2.5">
@@ -836,7 +897,7 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
                                   <strong className="text-sm font-bold text-text">{candidate.first_name} {candidate.last_name}</strong>
                                   {matchByJobId && <Badge tone="accent" size="sm">Job ID Match</Badge>}
                                 </div>
-                                <div className="text-xs text-text3 mt-0.5">{candidate.email || candidate.phone || 'No contact'} · {candidate.location || 'Location n/a'} · {candidate.experience ? `${candidate.experience} yrs exp` : 'Exp n/a'}</div>
+                                <div className="text-xs text-text3 mt-0.5">{candidate.email || candidate.phone || 'No contact'} · {candidate.location || 'Location n/a'} · {formatExp(candidate.experience)}</div>
                               </div>
                             </div>
                             <div className="flex items-center gap-2 flex-wrap">
