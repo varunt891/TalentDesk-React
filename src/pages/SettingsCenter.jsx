@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { organizationApi, db, apiRequest } from '../lib/api'
+import { organizationApi, authApi, db, apiRequest } from '../lib/api'
 import { PageContainer } from '../components/layout/PageContainer'
 import {
   Button, Card, CardHeader, KPICard, PageHeader, Tabs, EmptyState, Select, Input, Textarea,
@@ -217,13 +217,14 @@ export default function SettingsCenter({ initialTab = 'general', onNavigate }) {
   // ── RBAC ── single-source derived from permissions.js ──────────────────────
   const tabAccess = useMemo(() => getSettingsTabAccess(role), [role])
   const can = useMemo(() => ({
-    inviteMember: canDoAction(role, 'inviteMember'),
-    changeRole:   canDoAction(role, 'changeRole'),
-    removeMember: canDoAction(role, 'removeMember'),
-    toggleActive: canDoAction(role, 'toggleActive'),
-    revokeInvite: canDoAction(role, 'revokeInvite'),
-    editOrg:      canDoAction(role, 'editOrg'),
-    changePlan:   canDoAction(role, 'changePlan'),
+    inviteMember:        canDoAction(role, 'inviteMember'),
+    changeRole:          canDoAction(role, 'changeRole'),
+    removeMember:        canDoAction(role, 'removeMember'),
+    toggleActive:        canDoAction(role, 'toggleActive'),
+    revokeInvite:        canDoAction(role, 'revokeInvite'),
+    editOrg:             canDoAction(role, 'editOrg'),
+    changePlan:          canDoAction(role, 'changePlan'),
+    resetMemberPassword: canDoAction(role, 'resetMemberPassword'),
   }), [role])
   // Visible tabs: filter out 'none' access; also exclude superadmin-only items for non-superadmins
   const visibleTabs = TABS.filter(t => tabAccess[t.id] !== 'none')
@@ -562,12 +563,7 @@ export default function SettingsCenter({ initialTab = 'general', onNavigate }) {
             )}
             {activeTab === 'workspace' && <WorkspaceTab preferences={orgPrefs} updatePreferences={updateOrgPrefs} />}
             {activeTab === 'activity' && <ActivityTab activity={activityEvents} auditLog={auditEvents} loading={activityLoading} />}
-            {activeTab === 'security' && (
-              <PlaceholderTab
-                title="Security controls are coming soon"
-                description="SSO, SAML, IP allowlisting, and session policies will appear here once backend support exists. Nothing here is simulated in the meantime."
-              />
-            )}
+            {activeTab === 'security' && <SecurityTab />}
             {activeTab === 'integrations' && (
               <PlaceholderTab
                 title="Integrations are coming soon"
@@ -1262,8 +1258,219 @@ function TeamsTab({ members, isReadOnly }) {
   )
 }
 
+function SecurityTab() {
+  const { toast } = useToast()
+  const { profile } = useAuth()
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [showCurrent, setShowCurrent] = useState(false)
+  const [showNew, setShowNew] = useState(false)
+  const [revokeSelfLoading, setRevokeSelfLoading] = useState(false)
+  const [forceLogoutAllLoading, setForceLogoutAllLoading] = useState(false)
+
+  const roleUpper = (profile?.role || '').toUpperCase()
+  const isOwnerOrSuper = ['OWNER', 'SUPERADMIN', 'admin'].includes(profile?.role) || ['OWNER', 'SUPERADMIN'].includes(roleUpper)
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault()
+    if (!currentPassword || !newPassword) return
+
+    if (newPassword.length < 6) {
+      toast({ tone: 'warn', title: 'Weak password', description: 'New password must be at least 6 characters long.' })
+      return
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast({ tone: 'warn', title: 'Password mismatch', description: 'New password and confirmation password do not match.' })
+      return
+    }
+
+    setLoading(true)
+    try {
+      const res = await authApi.changePassword({ currentPassword, newPassword })
+      toast({ tone: 'success', title: 'Password Updated', description: res.message || 'Your password has been changed successfully.' })
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+    } catch (err) {
+      toast({ tone: 'error', title: 'Update Failed', description: err.message || 'Could not update password.' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleRevokeAllSelf = async () => {
+    if (!window.confirm('Sign out of all devices? You will be logged out of this browser as well.')) return
+    setRevokeSelfLoading(true)
+    try {
+      await authApi.revokeAllSessions()
+      toast({ tone: 'success', title: 'Sessions Revoked', description: 'All active sessions on all devices have been logged out.' })
+      window.location.href = '/login'
+    } catch (err) {
+      toast({ tone: 'error', title: 'Revocation Failed', description: err.message })
+    } finally {
+      setRevokeSelfLoading(false)
+    }
+  }
+
+  const handleForceLogoutAllUsers = async () => {
+    if (!window.confirm('CRITICAL SECURITY ACTION: This will forcibly log out ALL users across ALL devices platform-wide. Proceed?')) return
+    setForceLogoutAllLoading(true)
+    try {
+      const res = await authApi.forceLogoutAllUsers()
+      toast({ tone: 'success', title: 'Global Force Logout', description: res.message || 'All sessions revoked platform-wide.' })
+      window.location.href = '/login'
+    } catch (err) {
+      toast({ tone: 'error', title: 'Action Failed', description: err.message })
+    } finally {
+      setForceLogoutAllLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-6 max-w-3xl">
+      <Card>
+        <CardHeader
+          title="Change Password"
+          subtitle="Update your personal workspace account password securely."
+        />
+        <form onSubmit={handleChangePassword} className="flex flex-col gap-4 p-4 sm:p-5">
+          <FormField label="Current Password" htmlFor="sec-current-pwd">
+            <div className="relative">
+              <Input
+                id="sec-current-pwd"
+                type={showCurrent ? 'text' : 'password'}
+                value={currentPassword}
+                onChange={e => setCurrentPassword(e.target.value)}
+                placeholder="Enter current password"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowCurrent(!showCurrent)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text3 hover:text-text text-xs font-medium"
+              >
+                {showCurrent ? 'Hide' : 'Show'}
+              </button>
+            </div>
+          </FormField>
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <FormField label="New Password (min 6 chars)" htmlFor="sec-new-pwd">
+              <div className="relative">
+                <Input
+                  id="sec-new-pwd"
+                  type={showNew ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="Enter new password"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNew(!showNew)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text3 hover:text-text text-xs font-medium"
+                >
+                  {showNew ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            </FormField>
+
+            <FormField label="Confirm New Password" htmlFor="sec-confirm-pwd">
+              <Input
+                id="sec-confirm-pwd"
+                type="password"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter new password"
+                required
+              />
+            </FormField>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <Button type="submit" loading={loading} disabled={!currentPassword || !newPassword}>
+              Update Password
+            </Button>
+          </div>
+        </form>
+      </Card>
+
+      {/* Multi-Device Session Revocation */}
+      <Card>
+        <CardHeader
+          title="Active Sessions & Multi-Device Logout"
+          subtitle="Invalidate your login sessions across all desktop, laptop, and mobile devices."
+        />
+        <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-t border-border">
+          <div>
+            <div className="text-sm font-semibold text-text">Sign Out Of All Devices</div>
+            <div className="text-xs text-text3 mt-0.5 max-w-md leading-relaxed">
+              Instantly invalidates your active session tokens across all devices and web browsers. You will be prompted to log back in.
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            loading={revokeSelfLoading}
+            onClick={handleRevokeAllSelf}
+            className="text-red border-red/30 hover:bg-red/10 shrink-0"
+          >
+            Sign Out All Devices
+          </Button>
+        </div>
+      </Card>
+
+      {/* Global Force Logout (Owner / Superadmin Only) */}
+      {isOwnerOrSuper && (
+        <Card className="border-red/40 bg-red/[0.02]">
+          <CardHeader
+            title="Global Emergency Force Logout"
+            subtitle="Admin Privilege: Revoke active sessions for EVERY user platform-wide."
+          />
+          <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-t border-border">
+            <div>
+              <div className="text-sm font-semibold text-red">Revoke All Sessions Platform-Wide</div>
+              <div className="text-xs text-text3 mt-0.5 max-w-md leading-relaxed">
+                Emergency security control. Forcibly logs out every single user (Admins, Superadmins, Recruiters) on all devices globally by incrementing system session counters.
+              </div>
+            </div>
+            <Button
+              variant="primary"
+              loading={forceLogoutAllLoading}
+              onClick={handleForceLogoutAllUsers}
+              className="bg-red hover:bg-red/90 text-white shrink-0"
+            >
+              Force Logout All Users
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader title="Security & Session Policy" subtitle="Session invalidation and security best practices." />
+        <div className="p-4 sm:p-5 text-xs text-text3 leading-relaxed flex flex-col gap-3">
+          <div className="flex items-start gap-2 text-text">
+            <Icon name="check" size={15} className="text-green shrink-0 mt-0.5" />
+            <span><strong>Bcrypt Password Hashing:</strong> Passwords are salted and hashed using industry-standard bcrypt before storage.</span>
+          </div>
+          <div className="flex items-start gap-2 text-text">
+            <Icon name="check" size={15} className="text-green shrink-0 mt-0.5" />
+            <span><strong>Multi-Device Token Revocation:</strong> Tokens include a session version counter. Incrementing version invalidates all older tokens instantly across all devices.</span>
+          </div>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
 function UsersTab({ members, invitations, can, isReadOnly, onRoleChange, onToggleActive, onRemove, onOpenInvite, onRevoke }) {
+  const { toast } = useToast()
   const [search, setSearch] = useState('')
+  const [resetTarget, setResetTarget] = useState(null)
+  const [adminNewPassword, setAdminNewPassword] = useState('')
+  const [resetLoading, setResetLoading] = useState(false)
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -1272,6 +1479,36 @@ function UsersTab({ members, invitations, can, isReadOnly, onRoleChange, onToggl
       `${m.full_name || ''} ${m.email || ''} ${m.role || ''} ${m.department || ''} ${m.team || ''}`.toLowerCase().includes(q)
     )
   }, [members, search])
+
+  const handleAdminReset = async (e) => {
+    e.preventDefault()
+    if (!resetTarget || !adminNewPassword) return
+    if (adminNewPassword.length < 6) {
+      toast({ tone: 'warn', title: 'Password Too Short', description: 'Password must be at least 6 characters.' })
+      return
+    }
+    setResetLoading(true)
+    try {
+      const res = await authApi.adminResetPassword(resetTarget.id, adminNewPassword)
+      toast({ tone: 'success', title: 'Password Reset', description: res.message || 'Password updated.' })
+      setResetTarget(null)
+      setAdminNewPassword('')
+    } catch (err) {
+      toast({ tone: 'error', title: 'Reset Failed', description: err.message })
+    } finally {
+      setResetLoading(false)
+    }
+  }
+
+  const handleForceLogoutMember = async (member) => {
+    if (!window.confirm(`Force log out ${member.full_name || member.email} from all their active devices?`)) return
+    try {
+      const res = await authApi.forceLogoutUser(member.id)
+      toast({ tone: 'success', title: 'User Logged Out', description: res.message || `${member.email} sessions revoked.` })
+    } catch (err) {
+      toast({ tone: 'error', title: 'Force Logout Failed', description: err.message })
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -1321,7 +1558,7 @@ function UsersTab({ members, invitations, can, isReadOnly, onRoleChange, onToggl
                   </div>
                   <span className="text-xs text-text3 hidden sm:block shrink-0 truncate max-w-[8rem]">{m.department || m.team || 'General'}</span>
                 </div>
-                {/* Controls row: role select + toggle + remove */}
+                {/* Controls row: role select + toggle + reset password + force logout + remove */}
                 <div className="flex items-center gap-2 flex-wrap pl-0 sm:pl-11">
                   {can.changeRole ? (
                     <div className="flex-1 min-w-[140px] max-w-[200px]"><Select size="sm" value={m.role} onChange={v => onRoleChange(m.id, v)} options={ALL_ROLES} /></div>
@@ -1333,6 +1570,16 @@ function UsersTab({ members, invitations, can, isReadOnly, onRoleChange, onToggl
                   ) : (
                     <StatusBadge status={m.is_active !== false ? 'active' : 'inactive'} />
                   )}
+                  {can.resetMemberPassword && (
+                    <>
+                      <Button size="sm" variant="ghost" onClick={() => setResetTarget(m)}>
+                        Reset Password
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => handleForceLogoutMember(m)} className="text-orange">
+                        Force Logout
+                      </Button>
+                    </>
+                  )}
                   {can.removeMember && <Button size="sm" variant="ghost" onClick={() => onRemove(m.id, m.full_name)} className="text-red ml-auto">Remove</Button>}
                 </div>
               </div>
@@ -1340,6 +1587,37 @@ function UsersTab({ members, invitations, can, isReadOnly, onRoleChange, onToggl
           </div>
         )}
       </Card>
+
+      {/* Admin Reset Password Modal */}
+      <Modal
+        open={Boolean(resetTarget)}
+        onClose={() => setResetTarget(null)}
+        title={`Reset Password for ${resetTarget?.full_name || resetTarget?.email}`}
+        subtitle="Set a new temporary password for this user account."
+      >
+        {resetTarget && (
+          <form onSubmit={handleAdminReset} className="flex flex-col gap-4">
+            <FormField label="New Temporary Password (min 6 chars)" htmlFor="admin-new-pass">
+              <Input
+                id="admin-new-pass"
+                type="text"
+                value={adminNewPassword}
+                onChange={e => setAdminNewPassword(e.target.value)}
+                placeholder="Enter new password"
+                required
+              />
+            </FormField>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="ghost" onClick={() => setResetTarget(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" loading={resetLoading}>
+                Save Password
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
 
       {invitations.length > 0 && (
         <Card>
@@ -1363,6 +1641,7 @@ function UsersTab({ members, invitations, can, isReadOnly, onRoleChange, onToggl
     </div>
   )
 }
+
 
 function RolesTab({ isReadOnly }) {
   return (

@@ -98,6 +98,7 @@ model Profile {
   department   String?
   manager_id   String?  @db.Uuid
   is_active    Boolean  @default(true)
+  token_version Int     @default(0)
   created_at   DateTime @default(now())
   updated_at   DateTime @updatedAt
 

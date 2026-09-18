@@ -6,7 +6,9 @@
 import { ensureArray } from '../candidateHealth'
 import { db } from '../api'
 
-const todayStr = () => new Date().toISOString().slice(0, 10)
+import { getTodayDateString } from '../timezone'
+
+const todayStr = (tz) => getTodayDateString(tz)
 
 export async function fetchWorkspaceSnapshot() {
   const [candRes, jobsRes, tasksRes, cbRes, fuRes] = await Promise.all([

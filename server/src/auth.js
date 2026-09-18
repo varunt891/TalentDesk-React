@@ -14,7 +14,7 @@ const cookieBaseOptions = {
 
 export function signSession(user) {
   return jwt.sign(
-    { sub: user.id, email: user.email },
+    { sub: user.id, email: user.email, tokenVersion: user.token_version ?? user.tokenVersion ?? 0 },
     process.env.JWT_SECRET,
     { expiresIn: '7d' }
   )
@@ -99,6 +99,12 @@ export async function requireAuth(req, res, next) {
 
     if (!profile || profile.is_active === false) {
       return res.status(401).json({ error: 'Account is inactive or missing' })
+    }
+
+    const tokenVersionInJwt = payload.tokenVersion ?? 0
+    const currentTokenVersion = profile.token_version ?? 0
+    if (tokenVersionInJwt < currentTokenVersion) {
+      return res.status(401).json({ error: 'Session revoked. Please log in again.' })
     }
 
     const tenantOrg = await findTenantOrganization(req)

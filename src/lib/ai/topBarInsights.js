@@ -14,8 +14,10 @@ const STAGE_EMOJI = {
   'Interview Done': '✅', 'Offer Extended': '📝', 'Hired': '🎉', 'On Hold': '⏸️',
 }
 
-function todayStr() {
-  return new Date().toISOString().slice(0, 10)
+import { getTodayDateString } from '../timezone'
+
+function todayStr(tz) {
+  return getTodayDateString(tz)
 }
 
 function hoursSince(dateStr) {

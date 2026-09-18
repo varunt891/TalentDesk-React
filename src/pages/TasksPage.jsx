@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../lib/api'
+import { getTodayDateString } from '../lib/timezone'
 import { PageContainer } from '../components/layout/PageContainer'
 import {
   Button, Badge, StatusPill, Card, CardHeader, KPICard, PageHeader, Modal, Input, Select,
@@ -18,22 +19,6 @@ const STATUSES = ['Pending', 'In Progress', 'Completed', 'Overdue']
 const STATUS_TONE = { Pending: 'neutral', 'In Progress': 'accent', Completed: 'green', Overdue: 'red' }
 const CATEGORY_ICON = { 'Daily Calls': 'callbacks', Submissions: 'jobs', Sourcing: 'search', Outreach: 'mail', Interviews: 'calendar', Offers: 'reports', 'Follow-up': 'followups', 'Client Meeting': 'users', Custom: 'tasks' }
 
-const todayStr = () => new Date().toISOString().slice(0, 10)
-function isToday(d) { return Boolean(d) && String(d).slice(0, 10) === todayStr() }
-function daysUntil(dateStr) {
-  if (!dateStr) return null
-  const diff = (new Date(dateStr).getTime() - new Date(todayStr()).getTime()) / 86400000
-  return Math.round(diff)
-}
-function relativeDue(dateStr) {
-  const d = daysUntil(dateStr)
-  if (d === null) return 'No due date'
-  if (d === 0) return 'Due today'
-  if (d === 1) return 'Due tomorrow'
-  if (d < 0) return `${Math.abs(d)}d overdue`
-  if (d < 7) return `Due in ${d}d`
-  return `Due ${dateStr}`
-}
 function relativeTime(dateStr) {
   if (!dateStr) return '—'
   const diff = (new Date().getTime() - new Date(dateStr).getTime()) / 86400000
@@ -48,11 +33,33 @@ const initialFilters = {
   category: [], priority: [], status: [], recruiter: [], assignedBy: [], job: [],
   dueBefore: '', dueToday: false, dueThisWeek: false, completedToday: false,
 }
-const emptyForm = { title: '', category: 'Daily Calls', assigned_to: '', priority: 'Medium', due_date: todayStr(), target_value: '', req_id: '', description: '' }
 
 export default function TasksPage({ onNavigate }) {
   const { user, profile, organization } = useAuth()
   const orgId = organization?.id || profile?.org_id
+  const orgTimezone = organization?.timezone || profile?.organization?.timezone
+  const currentToday = useMemo(() => getTodayDateString(orgTimezone), [orgTimezone])
+
+  const isToday = useCallback((d) => Boolean(d) && String(d).slice(0, 10) === currentToday, [currentToday])
+  const daysUntil = useCallback((dateStr) => {
+    if (!dateStr) return null
+    const diff = (new Date(dateStr).getTime() - new Date(currentToday).getTime()) / 86400000
+    return Math.round(diff)
+  }, [currentToday])
+
+  const relativeDue = useCallback((dateStr) => {
+    const d = daysUntil(dateStr)
+    if (d === null) return 'No due date'
+    if (d === 0) return 'Due today'
+    if (d === 1) return 'Due tomorrow'
+    if (d < 0) return `${Math.abs(d)}d overdue`
+    if (d < 7) return `Due in ${d}d`
+    return `Due ${dateStr}`
+  }, [daysUntil])
+
+  const emptyForm = useMemo(() => ({
+    title: '', category: 'Daily Calls', assigned_to: '', priority: 'Medium', due_date: currentToday, target_value: '', req_id: '', description: ''
+  }), [currentToday])
   const userId = user?.id
   const { settings: aiSettings } = useAIGovernance(orgId)
   const aiEnabled = aiSettings.workspaces.tasks !== false
@@ -125,13 +132,13 @@ export default function TasksPage({ onNavigate }) {
   // previous Tasks page — only the presentation layer changes this phase.
   const processedTasks = useMemo(() => tasks.map(t => {
     let computedStatus = t.status || 'Pending'
-    if (computedStatus !== 'Completed' && t.due_date && t.due_date < todayStr()) computedStatus = 'Overdue'
+    if (computedStatus !== 'Completed' && t.due_date && t.due_date < currentToday) computedStatus = 'Overdue'
     const isTarget = t.target_value !== null && t.target_value !== undefined && t.target_value > 0
     const progressPct = isTarget
       ? Math.min(100, Math.round(((t.current_progress || 0) / t.target_value) * 100))
       : (computedStatus === 'Completed' ? 100 : computedStatus === 'In Progress' ? 50 : 0)
     return { ...t, computedStatus, isTarget, progressPct }
-  }), [tasks])
+  }), [tasks, currentToday])
 
   const teamProfileIds = useMemo(() => new Set(profiles.map(p => p.id)), [profiles])
   const scopedTasks = useMemo(() => processedTasks.filter(t => {
@@ -191,7 +198,7 @@ export default function TasksPage({ onNavigate }) {
   // themselves are the "what needs attention" structure.
   const todayFocus = filtered.filter(t => t.computedStatus !== 'Completed' && t.computedStatus !== 'Overdue' && isToday(t.due_date))
   const overdueList = filtered.filter(t => t.computedStatus === 'Overdue')
-  const upcomingList = filtered.filter(t => t.computedStatus !== 'Completed' && t.computedStatus !== 'Overdue' && t.due_date && t.due_date > todayStr())
+  const upcomingList = filtered.filter(t => t.computedStatus !== 'Completed' && t.computedStatus !== 'Overdue' && t.due_date && t.due_date > currentToday)
   const unscheduledList = filtered.filter(t => t.computedStatus !== 'Completed' && !t.due_date)
   const completedTodayList = filtered.filter(t => t.computedStatus === 'Completed' && isToday(t.updated_at))
 
@@ -211,10 +218,10 @@ export default function TasksPage({ onNavigate }) {
     const taskCompletionPct = total ? Math.round((completedTotal / total) * 100) : 100
 
     const myCandidates = isManager ? candidates : candidates.filter(c => c.user_id === user?.id)
-    const upcomingInterviews = myCandidates.filter(c => c.interview_date && c.interview_date >= todayStr()).length
+    const upcomingInterviews = myCandidates.filter(c => c.interview_date && c.interview_date >= currentToday).length
 
     const myFollowups = isManager ? followups : followups.filter(f => f.user_id === user?.id)
-    const pendingFollowups = myFollowups.filter(f => f.status !== 'Completed' && f.date && f.date <= todayStr()).length
+    const pendingFollowups = myFollowups.filter(f => f.status !== 'Completed' && f.date && f.date <= currentToday).length
 
     const myCallbacks = isManager ? callbacks : callbacks.filter(cb => cb.user_id === user?.id)
     const callsCompletedToday = myCallbacks.filter(cb => cb.status === 'Completed' && isToday(cb.date)).length
@@ -227,7 +234,7 @@ export default function TasksPage({ onNavigate }) {
     const productivityPct = avgTargetPct !== null ? Math.round(taskCompletionPct * 0.5 + avgTargetPct * 0.5) : taskCompletionPct
 
     return { dueToday, completedToday, overdue, upcomingInterviews, pendingFollowups, submissionsToday, submissionTarget, callsCompletedToday, productivityPct }
-  }, [scopedTasks, candidates, followups, callbacks, isManager, user, processedTasks])
+  }, [scopedTasks, candidates, followups, callbacks, isManager, user, processedTasks, currentToday, isToday])
 
   useAISetContext({ workspace: 'Tasks & Targets', tasksDueToday: kpis.dueToday, tasksOverdue: kpis.overdue, currentRecruiter: profile?.full_name || user?.email })
 
@@ -238,7 +245,7 @@ export default function TasksPage({ onNavigate }) {
     const staleOverdue = scopedTasks.filter(t => t.computedStatus === 'Overdue' && Math.abs(daysUntil(t.due_date) || 0) > 3)
     if (staleOverdue.length) list.push({ id: 'stale', tone: 'red', icon: 'alertCircle', text: `${staleOverdue.length} task${staleOverdue.length === 1 ? '' : 's'} overdue more than 3 days`, setStatus: ['Overdue'] })
 
-    const awaitingCallback = candidates.filter(c => c.followup_date && c.followup_date <= todayStr() && !['Hired', 'Rejected'].includes(c.external_status))
+    const awaitingCallback = candidates.filter(c => c.followup_date && c.followup_date <= currentToday && !['Hired', 'Rejected'].includes(c.external_status))
     if (awaitingCallback.length) list.push({ id: 'awaiting', tone: 'yellow', icon: 'callbacks', text: `${awaitingCallback.length} candidate${awaitingCallback.length === 1 ? '' : 's'} awaiting callback`, navigate: 'callbacks' })
 
     const interviewsToday = candidates.filter(c => isToday(c.interview_date))
@@ -261,7 +268,7 @@ export default function TasksPage({ onNavigate }) {
     }
 
     return list
-  }, [scopedTasks, candidates, jobs, isManager])
+  }, [scopedTasks, candidates, jobs, isManager, daysUntil, currentToday, isToday])
 
   const handleInsightClick = (insight) => {
     if (insight.recruiterId) return setFilters(f => ({ ...f, recruiter: [insight.recruiterId] }))
@@ -295,7 +302,7 @@ export default function TasksPage({ onNavigate }) {
   const openEdit = (t) => {
     setForm({
       title: t.title || '', category: t.category || 'Custom', assigned_to: t.assigned_to || '',
-      priority: t.priority || 'Medium', due_date: t.due_date || todayStr(),
+      priority: t.priority || 'Medium', due_date: t.due_date || currentToday,
       target_value: t.target_value != null ? String(t.target_value) : '', req_id: t.req_id || '', description: t.description || '',
     })
     setEditingId(t.id)

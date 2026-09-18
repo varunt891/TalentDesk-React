@@ -97,11 +97,12 @@ function getDescendants(userId, allUsers) {
   return result
 }
 
-function todayStr() { return new Date().toISOString().slice(0, 10) }
+import { getTodayDateString } from '../lib/timezone'
 
-function taskComputedStatus(t) {
+function taskComputedStatus(t, tz) {
   const status = t.status || 'Pending'
-  if (status !== 'Completed' && t.due_date && t.due_date < todayStr()) return 'Overdue'
+  const today = getTodayDateString(tz)
+  if (status !== 'Completed' && t.due_date && t.due_date < today) return 'Overdue'
   return status
 }
 

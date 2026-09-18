@@ -41,6 +41,23 @@ export function normalizeTimezone(timezone, fallback = DEFAULT_TIMEZONE) {
   return TIMEZONE_ALIASES[upper] || TIMEZONE_ALIASES[raw] || raw
 }
 
+/**
+ * Returns today's date string (YYYY-MM-DD) in the specified timezone (or user's browser timezone).
+ * NEVER uses UTC toISOString() which shifts US evening times into tomorrow.
+ */
+export function getTodayDateString(timezone) {
+  try {
+    const tz = timezone ? normalizeTimezone(timezone) : (typeof window !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : DEFAULT_TIMEZONE)
+    return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date())
+  } catch {
+    const d = new Date()
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+}
+
 export function timezoneLabel(timezone) {
   const normalized = normalizeTimezone(timezone)
   return TIMEZONE_OPTIONS.find(option => option.value === normalized)?.label || normalized.replace(/_/g, ' ')

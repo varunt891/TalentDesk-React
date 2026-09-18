@@ -1,16 +1,40 @@
-# React + Vite
+# TalentDesk CRM
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A modern, AI-powered Applicant Tracking System (ATS) and Recruitment CRM built with React, Vite, Express, and Prisma PostgreSQL.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🔒 Copyright & Proprietary Rights
 
-## React Compiler
+Copyright (c) 2026 Varun / TalentDesk. All Rights Reserved.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+This software codebase, database schemas, UI designs, and custom AI integration workflows are proprietary and confidential. Unauthorized copying, distribution, or reproduction of any portion of this repository is strictly prohibited.
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project..
+## 🚀 Key Modules & Capabilities
+
+- **Talent & Candidate Database**: Bulk resume upload, AI resume parsing, candidate search, and match radar.
+- **Job Requisition Management**: Pipeline tracking, submittals, and posting management.
+- **AI Recruiting Desk**: Copilot actions, job description analysis, candidate fit scoring, and automated candidate summaries.
+- **Multi-Device Security & Admin**: Role-Based Access Control (RBAC), multi-device session revocation, password policy management, and audit logs.
+
+---
+
+## ⚙️ Local Setup
+
+1. **Install Dependencies:**
+   ```bash
+   npm install
+   ```
+
+2. **Run Dev Environment:**
+   ```bash
+   npm run dev:all
+   ```
+   *(Starts both Express API server and Vite frontend dev server simultaneously)*
+
+3. **Build for Production:**
+   ```bash
+   npm run build
+   ```

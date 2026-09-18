@@ -120,17 +120,19 @@ export function getSettingsTabAccess(role) {
 // canDoAction(role, action) → boolean
 // Actions: 'inviteMember' | 'changeRole' | 'removeMember' | 'toggleActive'
 //          | 'editOrg' | 'changePlan' | 'viewAuditLog' | 'viewSecurity'
-//          | 'revokeInvite'
+//          | 'revokeInvite' | 'resetMemberPassword'
 const ACTION_TIERS = {
-  inviteMember:  ['OWNER', 'SUPERADMIN', 'ADMIN'],
-  changeRole:    ['OWNER', 'SUPERADMIN', 'ADMIN'],
-  removeMember:  ['OWNER', 'SUPERADMIN'],
-  toggleActive:  ['OWNER', 'SUPERADMIN', 'ADMIN'],
-  revokeInvite:  ['OWNER', 'SUPERADMIN', 'ADMIN'],
-  editOrg:       ['OWNER', 'SUPERADMIN', 'ADMIN'],
-  changePlan:    ['OWNER', 'SUPERADMIN'],
-  viewAuditLog:  ['OWNER', 'SUPERADMIN', 'ADMIN'],
-  viewSecurity:  ['OWNER', 'SUPERADMIN', 'ADMIN'],
+  inviteMember:        ['OWNER', 'SUPERADMIN', 'ADMIN'],
+  changeRole:          ['OWNER', 'SUPERADMIN', 'ADMIN'],
+  removeMember:        ['OWNER', 'SUPERADMIN'],
+  toggleActive:        ['OWNER', 'SUPERADMIN', 'ADMIN'],
+  revokeInvite:        ['OWNER', 'SUPERADMIN', 'ADMIN'],
+  editOrg:             ['OWNER', 'SUPERADMIN', 'ADMIN'],
+  changePlan:          ['OWNER', 'SUPERADMIN'],
+  viewAuditLog:        ['OWNER', 'SUPERADMIN', 'ADMIN'],
+  viewSecurity:        ['OWNER', 'SUPERADMIN', 'ADMIN'],
+  // Recruitment Manager intentionally excluded — password reset is an Owner/Admin-only action
+  resetMemberPassword: ['OWNER', 'SUPERADMIN', 'ADMIN'],
 }
 
 export function canDoAction(role, action) {

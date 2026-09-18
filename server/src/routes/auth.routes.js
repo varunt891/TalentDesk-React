@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import bcrypt from 'bcryptjs'
+import jwt from 'jsonwebtoken'
 import { prisma } from '../prisma.js'
 import { clearSessionCookie, findTenantOrganization, requireAuth, setSessionCookie, signSession, mapProfileRole } from '../auth.js'
 
@@ -142,7 +143,7 @@ router.post('/signup', async (req, res, next) => {
       },
     })
 
-    const user = { id: profile.id, email: profile.email }
+    const user = { id: profile.id, email: profile.email, token_version: profile.token_version }
     const token = signSession(user)
     setSessionCookie(res, token)
 
@@ -191,7 +192,7 @@ router.post('/login', async (req, res, next) => {
 
     const activeRole = activeMembership?.role || mapProfileRole(profile.role)
 
-    const user = { id: profile.id, email: profile.email }
+    const user = { id: profile.id, email: profile.email, token_version: profile.token_version }
     const token = signSession(user)
     setSessionCookie(res, token)
 
@@ -218,4 +219,225 @@ router.post('/logout', (_req, res) => {
   res.json({ ok: true })
 })
 
+// ── Revoke All Active Sessions for Current User ────────────────────────────
+router.post('/revoke-all-sessions', requireAuth, async (req, res, next) => {
+  try {
+    await prisma.profile.update({
+      where: { id: req.user.id },
+      data: { token_version: { increment: 1 } },
+    })
+    clearSessionCookie(res)
+    res.json({ ok: true, message: 'All active sessions across all devices have been logged out.' })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ── Admin Force Logout Specific User ──────────────────────────────────────
+router.post('/force-logout-user', requireAuth, async (req, res, next) => {
+  try {
+    const { memberId } = req.body
+    if (!memberId) return res.status(400).json({ error: 'Member ID is required' })
+
+    const callerRole = (req.memberRole || req.profile?.role || '').toUpperCase()
+    if (!['OWNER', 'ADMIN', 'SUPERADMIN'].includes(callerRole)) {
+      return res.status(403).json({ error: 'Permission denied. Only Admins and Owners can force log out users.' })
+    }
+
+    const targetProfile = await prisma.profile.findFirst({
+      where: {
+        OR: [
+          { id: memberId },
+          { memberships: { some: { id: memberId } } }
+        ]
+      }
+    })
+
+    if (!targetProfile) {
+      return res.status(404).json({ error: 'User member not found' })
+    }
+
+    await prisma.profile.update({
+      where: { id: targetProfile.id },
+      data: { token_version: { increment: 1 } },
+    })
+
+    res.json({ ok: true, message: `All active sessions for ${targetProfile.email} have been revoked.` })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ── Superadmin / Owner Force Logout ALL Users ─────────────────────────────
+router.post('/force-logout-all-users', requireAuth, async (req, res, next) => {
+  try {
+    const callerRole = (req.memberRole || req.profile?.role || '').toUpperCase()
+    if (!['OWNER', 'SUPERADMIN'].includes(callerRole)) {
+      return res.status(403).json({ error: 'Permission denied. Only Owners and Superadmins can perform a global force logout.' })
+    }
+
+    await prisma.profile.updateMany({
+      data: { token_version: { increment: 1 } },
+    })
+
+    clearSessionCookie(res)
+    res.json({ ok: true, message: 'All active sessions for ALL users across all devices have been revoked successfully.' })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ── Change Password (Authenticated User) ──────────────────────────────────
+router.put('/change-password', requireAuth, async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current password and new password are required' })
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters long' })
+    }
+
+    const profile = await prisma.profile.findUnique({
+      where: { id: req.user.id }
+    })
+
+    if (!profile || !profile.passwordHash) {
+      return res.status(404).json({ error: 'User profile not found' })
+    }
+
+    const isValidCurrent = await bcrypt.compare(currentPassword, profile.passwordHash)
+    if (!isValidCurrent) {
+      return res.status(400).json({ error: 'Current password is incorrect' })
+    }
+
+    const newPasswordHash = await bcrypt.hash(newPassword, 12)
+    await prisma.profile.update({
+      where: { id: req.user.id },
+      data: { passwordHash: newPasswordHash }
+    })
+
+    res.json({ ok: true, message: 'Password updated successfully' })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ── Request Forgot Password Reset Token (Public) ──────────────────────────
+router.post('/forgot-password', async (req, res, next) => {
+  try {
+    const { email } = req.body
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' })
+    }
+
+    const normalizedEmail = email.trim().toLowerCase()
+    const profile = await prisma.profile.findUnique({
+      where: { email: normalizedEmail }
+    })
+
+    if (!profile) {
+      // To prevent user enumeration security issues, we return a success response even if email is not found
+      return res.json({
+        ok: true,
+        message: 'If an account exists for this email, password reset instructions have been generated.',
+      })
+    }
+
+    const secret = process.env.JWT_SECRET || 'secret'
+    const token = jwt.sign(
+      { sub: profile.id, email: profile.email, purpose: 'reset-password' },
+      secret,
+      { expiresIn: '1h' }
+    )
+
+    res.json({
+      ok: true,
+      message: 'Password reset token generated successfully',
+      token,
+      email: profile.email,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ── Reset Password with Token (Public) ────────────────────────────────────
+router.post('/reset-password', async (req, res, next) => {
+  try {
+    const { token, newPassword } = req.body
+    if (!token || !newPassword) {
+      return res.status(400).json({ error: 'Token and new password are required' })
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long' })
+    }
+
+    const secret = process.env.JWT_SECRET || 'secret'
+    let payload
+    try {
+      payload = jwt.verify(token, secret)
+    } catch {
+      return res.status(400).json({ error: 'Invalid or expired reset token' })
+    }
+
+    if (payload.purpose !== 'reset-password') {
+      return res.status(400).json({ error: 'Invalid reset token' })
+    }
+
+    const newPasswordHash = await bcrypt.hash(newPassword, 12)
+    await prisma.profile.update({
+      where: { id: payload.sub },
+      data: { passwordHash: newPasswordHash }
+    })
+
+    res.json({ ok: true, message: 'Password has been reset successfully. You can now log in.' })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ── Admin Reset Member Password (Admin / Owner Only) ──────────────────────
+router.post('/admin-reset-password', requireAuth, async (req, res, next) => {
+  try {
+    const { memberId, newPassword } = req.body
+    if (!memberId || !newPassword) {
+      return res.status(400).json({ error: 'Member ID and new password are required' })
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long' })
+    }
+
+    // Check caller permission — Owner / Admin / Superadmin only (Recruitment Manager excluded)
+    const callerRole = (req.memberRole || req.profile?.role || '').toUpperCase()
+    if (!['OWNER', 'ADMIN', 'SUPERADMIN'].includes(callerRole)) {
+      return res.status(403).json({ error: 'Permission denied. Only Admins and Owners can reset user passwords.' })
+    }
+
+    const targetProfile = await prisma.profile.findFirst({
+      where: {
+        OR: [
+          { id: memberId },
+          { memberships: { some: { id: memberId } } }
+        ]
+      }
+    })
+
+    if (!targetProfile) {
+      return res.status(404).json({ error: 'User member not found' })
+    }
+
+    const newPasswordHash = await bcrypt.hash(newPassword, 12)
+    await prisma.profile.update({
+      where: { id: targetProfile.id },
+      data: { passwordHash: newPasswordHash }
+    })
+
+    res.json({ ok: true, message: `Password for ${targetProfile.email} has been updated.` })
+  } catch (err) {
+    next(err)
+  }
+})
+
 export default router
+

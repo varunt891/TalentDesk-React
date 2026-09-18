@@ -216,6 +216,35 @@ export const authApi = {
       setAuthToken(null)
     }
   },
+  async changePassword({ currentPassword, newPassword }) {
+    return apiRequest('/auth/change-password', { method: 'PUT', body: { currentPassword, newPassword } })
+  },
+  async requestPasswordReset(email) {
+    return apiRequest('/auth/forgot-password', { method: 'POST', body: { email } })
+  },
+  async resetPasswordWithToken(token, newPassword) {
+    return apiRequest('/auth/reset-password', { method: 'POST', body: { token, newPassword } })
+  },
+  async adminResetPassword(memberId, newPassword) {
+    return apiRequest('/auth/admin-reset-password', { method: 'POST', body: { memberId, newPassword } })
+  },
+  async revokeAllSessions() {
+    try {
+      return await apiRequest('/auth/revoke-all-sessions', { method: 'POST' })
+    } finally {
+      setAuthToken(null)
+    }
+  },
+  async forceLogoutUser(memberId) {
+    return apiRequest('/auth/force-logout-user', { method: 'POST', body: { memberId } })
+  },
+  async forceLogoutAllUsers() {
+    try {
+      return await apiRequest('/auth/force-logout-all-users', { method: 'POST' })
+    } finally {
+      setAuthToken(null)
+    }
+  },
 }
 
 export const organizationApi = {
@@ -265,6 +294,8 @@ export const organizationApi = {
     return apiRequest(`/organization/invitations/verify/${token}`)
   },
 }
+
+
 
 class QueryBuilder {
   constructor(table) {
