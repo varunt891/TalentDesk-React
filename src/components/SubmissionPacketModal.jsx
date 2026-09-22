@@ -217,7 +217,7 @@ export default function SubmissionPacketModal({ isOpen, onClose, candidate, job 
     <div style={{
       position: 'fixed',
       inset: 0,
-      zIndex: 9999,
+      zIndex: 1000000,
       background: 'rgba(0, 0, 0, 0.65)',
       backdropFilter: 'blur(6px)',
       display: 'flex',

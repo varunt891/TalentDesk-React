@@ -5,6 +5,7 @@ import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Dashboard from './pages/Dashboard'
 import Candidates from './pages/Candidates'
+import SourcedCandidates from './pages/SourcedCandidates'
 import Jobs from './pages/Jobs'
 import JobDetail from './pages/JobDetail'
 import CandidateDetail from './pages/CandidateDetail'
@@ -113,6 +114,7 @@ function MainApp() {
       case 'tasks': return <TasksPage user={profile || user} onNavigate={navigateTo} />
       case 'ai_center': return <AICenter />
       case 'candidates': return <Candidates onNavigate={navigateTo} openEditCandidateId={navParams.editCandidateId} />
+      case 'sourced_candidates': return <SourcedCandidates onNavigate={navigateTo} />
       case 'jobs': return <Jobs onNavigate={navigateTo} openEditJobId={navParams.editJobId} />
       case 'job_detail': return <JobDetail jobId={navParams.jobId} onNavigate={navigateTo} />
       case 'candidate_detail': return <CandidateDetail candidateId={navParams.candidateId} onNavigate={navigateTo} />

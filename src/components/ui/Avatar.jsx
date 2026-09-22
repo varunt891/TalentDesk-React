@@ -31,8 +31,9 @@ function themeFor(seed = '') {
 }
 
 export default function Avatar({ name = '', src, size = 'md', status, className = '' }) {
-  const initials = name.trim().split(/\s+/).slice(0, 2).map(s => s[0]).join('').toUpperCase() || '?'
-  const theme = themeFor(name || 'User')
+  const safeName = typeof name === 'string' ? name : (name ? String(name) : '')
+  const initials = safeName.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0]).join('').toUpperCase() || '?'
+  const theme = themeFor(safeName || 'User')
 
   return (
     <span className={cn('relative inline-flex shrink-0 select-none rounded-full', SIZES[size] || SIZES.md, className)}>

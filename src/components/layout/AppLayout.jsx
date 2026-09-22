@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
 import { db } from '../../lib/api'
+import { useAuth } from '../../context/AuthContext'
 import { cn } from '../ui/utils'
 
 export default function AppLayout({ currentPage, onNavigate, children }) {
+  const { user, profile } = useAuth()
   const [theme, setTheme] = useState(() => localStorage.getItem('td_theme') || 'dark')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('td_sidebar_collapsed') === 'true')
@@ -51,17 +53,39 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
 
   useEffect(() => {
     const checkTasks = async () => {
+      if (!user) {
+        setPendingTasksCount(0)
+        return
+      }
       try {
         const { data } = await db.from('tasks').select('*')
-        if (data) setPendingTasksCount(data.filter(t => t.status !== 'Completed').length)
+        if (data) {
+          const currentToday = new Date().toISOString().slice(0, 10)
+          const isManager = ['admin', 'superadmin', 'manager'].includes(profile?.role)
+
+          const userTasks = data.filter(t => {
+            if (t.status === 'Completed') return false
+            if (!isManager && t.assigned_to !== user.id && t.assigned_by !== user.id) return false
+            if (t.due_date && t.due_date > currentToday) return false
+            return true
+          })
+
+          setPendingTasksCount(userTasks.length)
+        }
       } catch {
         // silent catch
       }
     }
+
     checkTasks()
     const interval = setInterval(checkTasks, 10000)
-    return () => clearInterval(interval)
-  }, [])
+    window.addEventListener('td:tasks-changed', checkTasks)
+
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('td:tasks-changed', checkTasks)
+    }
+  }, [user, profile])
 
   // Disable browser scroll restoration so refresh always starts at the top
   useEffect(() => {

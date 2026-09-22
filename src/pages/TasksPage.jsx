@@ -29,6 +29,23 @@ function relativeTime(dateStr) {
   return `${Math.floor(d / 7)}w ago`
 }
 
+function daysUntil(dateStr, todayStr) {
+  if (!dateStr) return null
+  const today = todayStr || new Date().toISOString().slice(0, 10)
+  const diff = (new Date(dateStr).getTime() - new Date(today).getTime()) / 86400000
+  return Math.round(diff)
+}
+
+function relativeDue(dateStr, todayStr) {
+  const d = daysUntil(dateStr, todayStr)
+  if (d === null) return 'No due date'
+  if (d === 0) return 'Due today'
+  if (d === 1) return 'Due tomorrow'
+  if (d < 0) return `${Math.abs(d)}d overdue`
+  if (d < 7) return `Due in ${d}d`
+  return `Due ${dateStr}`
+}
+
 const initialFilters = {
   category: [], priority: [], status: [], recruiter: [], assignedBy: [], job: [],
   dueBefore: '', dueToday: false, dueThisWeek: false, completedToday: false,
@@ -41,21 +58,8 @@ export default function TasksPage({ onNavigate }) {
   const currentToday = useMemo(() => getTodayDateString(orgTimezone), [orgTimezone])
 
   const isToday = useCallback((d) => Boolean(d) && String(d).slice(0, 10) === currentToday, [currentToday])
-  const daysUntil = useCallback((dateStr) => {
-    if (!dateStr) return null
-    const diff = (new Date(dateStr).getTime() - new Date(currentToday).getTime()) / 86400000
-    return Math.round(diff)
-  }, [currentToday])
-
-  const relativeDue = useCallback((dateStr) => {
-    const d = daysUntil(dateStr)
-    if (d === null) return 'No due date'
-    if (d === 0) return 'Due today'
-    if (d === 1) return 'Due tomorrow'
-    if (d < 0) return `${Math.abs(d)}d overdue`
-    if (d < 7) return `Due in ${d}d`
-    return `Due ${dateStr}`
-  }, [daysUntil])
+  const daysUntilCb = useCallback((dateStr) => daysUntil(dateStr, currentToday), [currentToday])
+  const relativeDueCb = useCallback((dateStr) => relativeDue(dateStr, currentToday), [currentToday])
 
   const emptyForm = useMemo(() => ({
     title: '', category: 'Daily Calls', assigned_to: '', priority: 'Medium', due_date: currentToday, target_value: '', req_id: '', description: ''
@@ -164,12 +168,12 @@ export default function TasksPage({ onNavigate }) {
     if (filters.dueBefore && (!t.due_date || t.due_date > filters.dueBefore)) return false
     if (filters.dueToday && !isToday(t.due_date)) return false
     if (filters.dueThisWeek) {
-      const d = daysUntil(t.due_date)
+      const d = daysUntil(t.due_date, currentToday)
       if (d === null || d < 0 || d > 7) return false
     }
     if (filters.completedToday && !(t.computedStatus === 'Completed' && isToday(t.updated_at))) return false
     return true
-  }), [scopedTasks, search, filters])
+  }), [scopedTasks, search, filters, currentToday, isToday])
 
   const hasFilters = Boolean(search) || Object.values(filters).some(v => Array.isArray(v) ? v.length > 0 : Boolean(v))
   const clearFilters = () => { setSearch(''); setFilters(initialFilters) }
@@ -242,7 +246,7 @@ export default function TasksPage({ onNavigate }) {
   // or jump to the relevant workspace. Never fabricated.
   const insights = useMemo(() => {
     const list = []
-    const staleOverdue = scopedTasks.filter(t => t.computedStatus === 'Overdue' && Math.abs(daysUntil(t.due_date) || 0) > 3)
+    const staleOverdue = scopedTasks.filter(t => t.computedStatus === 'Overdue' && Math.abs(daysUntil(t.due_date, currentToday) || 0) > 3)
     if (staleOverdue.length) list.push({ id: 'stale', tone: 'red', icon: 'alertCircle', text: `${staleOverdue.length} task${staleOverdue.length === 1 ? '' : 's'} overdue more than 3 days`, setStatus: ['Overdue'] })
 
     const awaitingCallback = candidates.filter(c => c.followup_date && c.followup_date <= currentToday && !['Hired', 'Rejected'].includes(c.external_status))
@@ -268,7 +272,7 @@ export default function TasksPage({ onNavigate }) {
     }
 
     return list
-  }, [scopedTasks, candidates, jobs, isManager, daysUntil, currentToday, isToday])
+  }, [scopedTasks, candidates, jobs, isManager, currentToday, isToday])
 
   const handleInsightClick = (insight) => {
     if (insight.recruiterId) return setFilters(f => ({ ...f, recruiter: [insight.recruiterId] }))
@@ -344,6 +348,7 @@ export default function TasksPage({ onNavigate }) {
         return showToast(error.message, 'error')
       }
       setTasks(prev => prev.map(t => String(t.id) === String(editingId) ? { ...t, ...payload } : t))
+      window.dispatchEvent(new Event('td:tasks-changed'))
       if (payload.assigned_to && payload.assigned_to !== user?.id) {
         db.from('notifications').insert({ user_id: payload.assigned_to, title: '📝 Task Updated', message: `${payload.assigned_by_name} updated task: "${payload.title}"`, link: '/tasks' }).catch(() => {})
       }
@@ -358,6 +363,7 @@ export default function TasksPage({ onNavigate }) {
       }
       const created = Array.isArray(data) ? data[0] : (data && data.id ? data : { ...fullPayload, id: Date.now() })
       if (created) setTasks(prev => [created, ...prev])
+      window.dispatchEvent(new Event('td:tasks-changed'))
       if (fullPayload.assigned_to && fullPayload.assigned_to !== user?.id) {
         db.from('notifications').insert({ user_id: fullPayload.assigned_to, title: '🎯 New Task Assigned', message: `${fullPayload.assigned_by_name} assigned you a new task: "${fullPayload.title}"`, link: '/tasks' }).catch(() => {})
       }
@@ -376,6 +382,7 @@ export default function TasksPage({ onNavigate }) {
     }
     setTasks(prev => prev.map(t => String(t.id) === String(taskId) ? { ...t, ...updates } : t))
     await db.from('tasks').update(updates).eq('id', taskId)
+    window.dispatchEvent(new Event('td:tasks-changed'))
     showToast(`Status updated to "${newStatus}"!`)
     if (newStatus === 'Completed' && target.assigned_by && target.assigned_by !== user?.id) {
       db.from('notifications').insert({ user_id: target.assigned_by, title: '✅ Task Completed', message: `${target.assigned_to_name || 'A recruiter'} completed task: "${target.title}"`, link: '/tasks' }).catch(() => {})
@@ -397,12 +404,14 @@ export default function TasksPage({ onNavigate }) {
     const updates = { current_progress: newProgress, status: newStatus }
     setTasks(prev => prev.map(t => String(t.id) === String(taskId) ? { ...t, ...updates } : t))
     await db.from('tasks').update(updates).eq('id', taskId)
+    window.dispatchEvent(new Event('td:tasks-changed'))
     showToast(`Progress: ${newProgress}${targetVal ? ` / ${targetVal}` : ''}`)
   }
 
   const setPriority = async (t, priority) => {
     setTasks(prev => prev.map(x => x.id === t.id ? { ...x, priority } : x))
     await db.from('tasks').update({ priority }).eq('id', t.id)
+    window.dispatchEvent(new Event('td:tasks-changed'))
   }
 
   const openReassign = (t) => { setReassignFor(t); setReassignTo(t.assigned_to || '') }
@@ -412,6 +421,7 @@ export default function TasksPage({ onNavigate }) {
     const updates = { assigned_to: reassignTo, assigned_to_name: p ? (p.full_name || p.email) : 'Recruiter' }
     setTasks(prev => prev.map(t => t.id === reassignFor.id ? { ...t, ...updates } : t))
     await db.from('tasks').update(updates).eq('id', reassignFor.id)
+    window.dispatchEvent(new Event('td:tasks-changed'))
     showToast('Recruiter reassigned!')
     setReassignFor(null)
   }
@@ -419,6 +429,7 @@ export default function TasksPage({ onNavigate }) {
   const confirmDelete = async () => {
     await db.from('tasks').delete().eq('id', deleteId)
     setTasks(prev => prev.filter(t => t.id !== deleteId))
+    window.dispatchEvent(new Event('td:tasks-changed'))
     showToast('Task deleted', 'error')
     setDeleteId(null)
     setShowDetailId(null)
@@ -497,15 +508,11 @@ export default function TasksPage({ onNavigate }) {
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 my-5">
-        <KPICard label="Due Today" value={kpis.dueToday} helper="active tasks" tone="accent" icon="calendar" />
-        <KPICard label="Completed Today" value={kpis.completedToday} helper="nice work" tone="green" icon="checkCircle" />
-        <KPICard label="Overdue" value={kpis.overdue} helper="needs attention" tone="red" icon="alertCircle" />
-        <KPICard label="Upcoming Interviews" value={kpis.upcomingInterviews} helper="scheduled" tone="ai" icon="calendar" />
-        <KPICard label="Pending Follow-ups" value={kpis.pendingFollowups} helper="due or overdue" tone="yellow" icon="followups" />
-        <KPICard label="Submissions Today" value={kpis.submissionsToday} helper={kpis.submissionTarget ? `of ${kpis.submissionTarget.target_value} target` : 'no target set'} tone="accent" icon="jobs" />
-        <KPICard label="Calls Completed" value={kpis.callsCompletedToday} helper="today" tone="accent" icon="callbacks" />
-        <KPICard label="Productivity" value={`${kpis.productivityPct}%`} helper="tasks + targets blend" tone={kpis.productivityPct >= 70 ? 'green' : kpis.productivityPct >= 40 ? 'yellow' : 'red'} icon="trendUp" />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-3.5">
+        <KPICard compact label="Due Today" value={kpis.dueToday} helper="active tasks" tone="accent" icon="calendar" />
+        <KPICard compact label="Overdue" value={kpis.overdue} helper="needs attention" tone="red" icon="alertCircle" />
+        <KPICard compact label="Completed Today" value={kpis.completedToday} helper="nice work" tone="green" icon="checkCircle" />
+        <KPICard compact label="Productivity" value={`${kpis.productivityPct}%`} helper="tasks + targets blend" tone={kpis.productivityPct >= 70 ? 'green' : kpis.productivityPct >= 40 ? 'yellow' : 'red'} icon="trendUp" />
       </div>
 
       {insights.length > 0 && (

@@ -62,7 +62,7 @@ export default function AIMatchModal({ isOpen, onClose, candidate, job, onOpenSu
     <div style={{
       position: 'fixed',
       inset: 0,
-      zIndex: 9999,
+      zIndex: 1000000,
       background: 'rgba(0, 0, 0, 0.65)',
       backdropFilter: 'blur(6px)',
       display: 'flex',

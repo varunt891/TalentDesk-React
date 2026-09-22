@@ -12,17 +12,27 @@ export function AIContextProvider({ currentPage, children }) {
   const [pageContext, setPageContext] = useState({})
 
   const setContext = useCallback((partial) => {
-    setPageContext(prev => ({ ...prev, ...partial }))
+    if (!partial) return
+    setPageContext(prev => {
+      let changed = false
+      for (const [k, v] of Object.entries(partial)) {
+        if (prev[k] !== v) { changed = true; break }
+      }
+      if (!changed) return prev
+      return { ...prev, ...partial }
+    })
   }, [])
 
-  // Removes only the keys a given publisher contributed, rather than
-  // wiping the whole shared context — important once more than one
-  // component on a page publishes context at once (e.g. the page itself
-  // plus an open EntityDrawer), so one unmounting doesn't clobber another.
   const unsetContext = useCallback((partial) => {
+    if (!partial) return
     setPageContext(prev => {
+      let changed = false
+      for (const k of Object.keys(partial)) {
+        if (k in prev) { changed = true; break }
+      }
+      if (!changed) return prev
       const next = { ...prev }
-      Object.keys(partial || {}).forEach(key => { delete next[key] })
+      Object.keys(partial).forEach(key => { delete next[key] })
       return next
     })
   }, [])
@@ -45,11 +55,13 @@ export function useAIWorkspaceContext() {
 // can reason about what the recruiter is looking at without being told.
 export function useAISetContext(partial) {
   const { setContext, unsetContext } = useAIWorkspaceContext()
-  const key = JSON.stringify(partial || {})
+  const serialized = partial ? JSON.stringify(partial) : ''
+
   useEffect(() => {
-    if (!partial) return
+    if (!partial || Object.keys(partial).length === 0) return
     setContext(partial)
-    return () => unsetContext(partial)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key])
+    return () => {
+      unsetContext(partial)
+    }
+  }, [serialized, setContext, unsetContext])
 }

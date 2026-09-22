@@ -33,13 +33,15 @@ export function CardHeader({ title, subtitle, action, className = '' }) {
 
 const TREND_TONE = { up: 'text-green', down: 'text-red', flat: 'text-text3' }
 
-export function KPICard({ label, value, icon, trend, trendValue, tone = 'accent', helper, className = '', compact = false, live = true }) {
+export function KPICard({ label, title, value, icon, trend, trendValue, tone = 'accent', helper, subtitle, className = '', compact = false, live = true }) {
+  const displayLabel = label || title
+  const displayHelper = helper || subtitle
   return (
     <Card
       padding="none"
       className={cn(
         'group relative overflow-hidden transition-all duration-[var(--duration-fast)] ease-[var(--ease-standard)] hover:-translate-y-0.5 hover:shadow-[0_14px_28px_-12px_var(--glow)]',
-        compact ? 'p-2.5 flex flex-col gap-1' : 'p-3 sm:p-3.5 flex flex-col gap-2',
+        compact ? 'p-2 flex flex-col gap-0.5' : 'p-3 flex flex-col gap-1.5',
         className
       )}
       style={{
@@ -53,7 +55,7 @@ export function KPICard({ label, value, icon, trend, trendValue, tone = 'accent'
           {live && (
             <span className="w-1.5 h-1.5 rounded-full shrink-0 animate-pulse" style={{ background: `var(--${tone})` }} title="Live real-time metric" />
           )}
-          <span className="text-[10px] sm:text-[10.5px] font-bold text-text3 uppercase tracking-wider leading-snug truncate" title={label}>{label}</span>
+          <span className="text-[10px] sm:text-[10.5px] font-bold text-text3 uppercase tracking-wider leading-snug truncate" title={displayLabel}>{displayLabel}</span>
         </div>
         {icon && (
           <span
@@ -72,15 +74,15 @@ export function KPICard({ label, value, icon, trend, trendValue, tone = 'accent'
         )}
       </div>
       <div className="flex items-baseline gap-1.5 flex-wrap">
-        <span className={cn('font-extrabold text-text leading-none tracking-tight font-[var(--mono)] tabular-nums', compact ? 'text-lg sm:text-xl' : 'text-xl sm:text-2xl')}>{value}</span>
+        <span className={cn('font-extrabold text-text leading-none tracking-tight font-[var(--mono)] tabular-nums', compact ? 'text-base sm:text-lg' : 'text-lg sm:text-xl')}>{value}</span>
         {trend && (
-          <span className={cn('inline-flex items-center gap-0.5 text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-surface2/60 border border-border/50', TREND_TONE[trend] || TREND_TONE.flat)}>
-            {trend !== 'flat' && <Icon name={trend === 'up' ? 'trendUp' : 'trendDown'} size={10} />}
+          <span className={cn('inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-surface2/60 border border-border/50', TREND_TONE[trend] || TREND_TONE.flat)}>
+            {trend !== 'flat' && <Icon name={trend === 'up' ? 'trendUp' : 'trendDown'} size={9} />}
             {trendValue}
           </span>
         )}
       </div>
-      {helper && <span className="text-[10.5px] text-text3 leading-tight truncate">{helper}</span>}
+      {displayHelper && <span className="text-[10px] text-text3 leading-tight truncate">{displayHelper}</span>}
       <div
         className="absolute left-0 right-0 bottom-0 h-[2px] opacity-70 transition-all duration-300 group-hover:h-[3px] group-hover:opacity-100"
         style={{

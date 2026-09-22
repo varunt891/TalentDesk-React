@@ -591,7 +591,10 @@ export default function CommunicationWorkspace({ defaultView = 'callbacks', onNa
   }, [contextMenu])
   const openContextMenu = (e, item, kind) => { e.preventDefault(); setContextMenu({ item, kind, x: e.clientX, y: e.clientY }) }
 
-  const openPacketForCandidate = (candidate, job) => setPacketModal({ isOpen: true, candidate, job })
+  const openPacketForCandidate = (candidate, job) => {
+    setShowCandidateDetail(null)
+    setPacketModal({ isOpen: true, candidate, job })
+  }
 
   // Candidate preview drawer (Resubmit view) — same Overview/Timeline/Notes
   // shape as Candidates/Pipeline, so a candidate looks the same everywhere.

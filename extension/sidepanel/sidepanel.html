@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TalentDesk Candidate Sourcing Copilot</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Glassmorphic Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">T</div>
+        <div class="brand-text">
+          <h1>TalentDesk</h1>
+          <span class="badge">Copilot</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div class="status-pill" id="statusDot" title="Checking API connection...">
+          <span class="status-dot-inner"></span>
+          <span class="status-text" id="statusText">Checking...</span>
+        </div>
+        <button id="toggleSettingsBtn" class="icon-btn" title="Server & Connection Settings">
+          <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/>
+            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="content">
+      <!-- Config Collapsible (Hidden by default) -->
+      <div class="config-card hidden" id="configCard">
+        <div class="config-header">
+          <span>⚙️ Connection & API Settings</span>
+        </div>
+        <div class="config-body">
+          <div class="form-group">
+            <label for="apiUrl">API Server URL</label>
+            <input type="text" id="apiUrl" value="http://localhost:4000" placeholder="http://localhost:4000">
+          </div>
+          <div class="form-group">
+            <label for="orgId">Organization ID</label>
+            <input type="text" id="orgId" value="org_default" placeholder="org_default">
+          </div>
+          <button id="saveConfigBtn" class="btn-secondary btn-full">Save Settings</button>
+        </div>
+      </div>
+
+      <!-- Target Job Selection -->
+      <div class="section-card">
+        <div class="section-header-row">
+          <label for="jobSelect" class="section-label">🎯 Target Requisition</label>
+          <span class="sub-tag">Optional</span>
+        </div>
+        <select id="jobSelect" class="form-select">
+          <option value="">-- General Sourcing Pool --</option>
+        </select>
+      </div>
+
+      <!-- Active PDF Resume Banner (Dynamically shown) -->
+      <div id="pdfBanner" class="pdf-banner hidden">
+        <div class="pdf-banner-info">
+          <span class="pdf-icon">📄</span>
+          <div>
+            <strong>PDF Document Detected</strong>
+            <p>Ready to extract candidate resume text via AI parser.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scrape Profile Actions Row -->
+      <div class="action-buttons-container">
+        <button id="aiParseBtn" class="btn-ai btn-full" title="Uses Gemini AI to intelligently extract full profile, location, role, and experience">
+          🤖 AI Smart Parse (Full Profile / PDF)
+        </button>
+
+        <div class="action-buttons-row">
+          <button id="scrapeBtn" class="btn-primary flex-1">
+            ⚡ Quick Extract
+          </button>
+          
+          <button id="deepScanBtn" class="btn-secondary flex-1" title="Scrolls page down automatically to trigger lazy-loaded sections">
+            🔍 Deep Scan
+          </button>
+        </div>
+      </div>
+
+      <!-- Duplicate Alert Banner -->
+      <div id="duplicateAlert" class="alert-banner warning hidden">
+        <div class="alert-icon">⚠️</div>
+        <div class="alert-content flex-1">
+          <strong id="duplicateTitle">Potential Duplicate Detected</strong>
+          <p id="duplicateDesc">A candidate with matching details already exists in TalentDesk.</p>
+        </div>
+        <button id="closeDuplicateAlertBtn" class="alert-close-btn" title="Dismiss warning">✕</button>
+      </div>
+
+      <!-- Candidate Preview Card -->
+      <div id="previewCard" class="card candidate-card hidden">
+        <div class="card-header">
+          <img id="candAvatar" class="avatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%236b7280' d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E" alt="Candidate">
+          <div class="header-info">
+            <input type="text" id="candName" class="input-editable name-input" placeholder="Candidate Name">
+            <input type="text" id="candTitle" class="input-editable title-input" placeholder="Headline / Role Title">
+          </div>
+        </div>
+
+        <!-- Mini Tabs navigation inside Candidate Card -->
+        <div class="card-nav-tabs">
+          <button class="nav-tab active" data-tab="tab-overview">Overview</button>
+          <button class="nav-tab" data-tab="tab-experience">History & Edu</button>
+          <button class="nav-tab" data-tab="tab-resume">Full Resume</button>
+        </div>
+
+        <!-- Tab 1: Overview -->
+        <div class="card-tab-content active" id="tab-overview">
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label>Company</label>
+              <input type="text" id="candCompany" class="input-editable" placeholder="Company Name">
+            </div>
+            <div class="form-group flex-1">
+              <label>Location</label>
+              <input type="text" id="candLocation" class="input-editable" placeholder="City, State">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Email Address</label>
+            <input type="email" id="candEmail" class="input-editable" placeholder="Email address">
+          </div>
+
+          <div class="form-group">
+            <label>Phone Number</label>
+            <input type="text" id="candPhone" class="input-editable" placeholder="Phone number">
+          </div>
+
+          <div class="form-group">
+            <div class="label-with-chip">
+              <label>Source & Web Link</label>
+              <input type="text" id="candSource" class="source-chip-input" readonly value="Web Import">
+            </div>
+            <a id="candSourceUrl" href="#" target="_blank" class="link-truncate">Open Source Web Link ↗</a>
+          </div>
+
+          <div class="form-group">
+            <label>Extracted Skills</label>
+            <div id="candSkills" class="tags-container">
+              <span class="tag">Sourcing</span>
+              <span class="tag">Engineering</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Experience & Education -->
+        <div class="card-tab-content hidden" id="tab-experience">
+          <div class="form-group" id="experienceGroup">
+            <label class="section-subhead">Work Experience Timeline</label>
+            <div id="candExperience" class="history-list"></div>
+          </div>
+
+          <div class="form-group margin-top-sm" id="educationGroup">
+            <label class="section-subhead">Education & Qualifications</label>
+            <div id="candEducation" class="history-list"></div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Raw Full Resume & Notes -->
+        <div class="card-tab-content hidden" id="tab-resume">
+          <div class="form-group">
+            <label>Parsed Resume Text / Notes</label>
+            <textarea id="candSummary" class="input-editable textarea-editable" rows="10" placeholder="Full parsed candidate resume text..."></textarea>
+          </div>
+        </div>
+
+        <!-- Card Footer Action -->
+        <div class="card-footer">
+          <button id="importBtn" class="btn-success btn-full">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M12 4v16m8-8H4"/>
+            </svg>
+            1-Click Import to TalentDesk
+          </button>
+          <a id="openAppBtn" href="#" target="_blank" class="open-app-link hidden">
+            ✨ View Sourced Candidates in TalentDesk ↗
+          </a>
+        </div>
+      </div>
+
+      <!-- Toast Feedback -->
+      <div id="toast" class="toast hidden"></div>
+    </main>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>
+
+

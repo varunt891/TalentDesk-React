@@ -24,7 +24,7 @@ import MarkdownView from '../components/MarkdownView'
 import { normalizeAiPlainText } from '../lib/aiTextFormat'
 import { useOrgPreferences } from '../lib/admin/orgPreferences'
 
-const STATUSES = ['Pending', 'Submitted', 'Shortlisted', 'Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired', 'Rejected', 'On Hold', 'Withdrew']
+const STATUSES = ['Sourced', 'Pending', 'Submitted', 'Shortlisted', 'Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired', 'Rejected', 'On Hold', 'Withdrew']
 const FEEDBACK = ['Awaiting', 'Positive', 'Negative', 'No Response']
 
 export default function Candidates({ onNavigate, openEditCandidateId }) {
@@ -69,11 +69,11 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
     pushToast({ tone: type === 'error' ? 'error' : 'success', title: msg })
   }
 
-  const openPacketForCandidate = (cand) => {
+  const openPacketForCandidate = (cand, job) => {
     if ((organization?.subscription_plan || 'Growth') === 'Starter') {
       return showToast('⚡ 1-Click Client Submission Packets require Growth Plan. Please upgrade under Organization Settings.', 'error')
     }
-    const jobMock = {
+    const jobMock = job || {
       id: cand.job_id || 'JOB-REQ',
       job_id: cand.job_id || 'JOB-REQ',
       title: cand.job_title || 'Target Requisition',
@@ -83,14 +83,16 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
       skills: cand.skills || [],
       description: cand.notes || ''
     }
+    setShowDetail(null)
+    setAiMatchModal({ isOpen: false, candidate: null, job: null })
     setPacketModal({ isOpen: true, candidate: cand, job: jobMock })
   }
 
-  const openAiMatchForCandidate = (cand) => {
+  const openAiMatchForCandidate = (cand, job) => {
     if ((organization?.subscription_plan || 'Growth') === 'Starter') {
       return showToast('🎯 Deep AI Candidate Fit Radar requires Growth Plan. Please upgrade under Organization Settings.', 'error')
     }
-    const jobMock = {
+    const jobMock = job || {
       id: cand.job_id || 'JOB-REQ',
       job_id: cand.job_id || 'JOB-REQ',
       title: cand.job_title || 'Target Requisition',
@@ -100,6 +102,8 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
       skills: cand.skills || [],
       description: cand.notes || ''
     }
+    setShowDetail(null)
+    setPacketModal({ isOpen: false, candidate: null, job: null })
     setAiMatchModal({ isOpen: true, candidate: cand, job: jobMock })
   }
   const [deleteId, setDeleteId] = useState(null)
@@ -147,7 +151,15 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
   const orgOptions = [...new Set(candidates.map(c => c.org_name || organization?.name || 'TalentDesk').filter(Boolean))].sort()
   const recruiterOptions = [...new Set(candidates.map(c => c.recruiter_name).filter(Boolean))].sort()
 
+  const [showAllRecords, setShowAllRecords] = useState(false)
+
   const filtered = candidates.filter(c => {
+    // Sourced candidates should NOT appear in Active Candidates initially until promoted
+    const isSourced = !c.internal_status || c.internal_status === 'Sourced'
+    if (!showAllRecords && (!filters.status || !filters.status.includes('Sourced')) && isSourced) {
+      return false
+    }
+
     const q = search.toLowerCase()
     const cOrg = c.org_name || organization?.name || 'TalentDesk'
     if (q && !`${c.first_name} ${c.last_name} ${c.email} ${c.job_title} ${c.job_id} ${c.client} ${c.location} ${cOrg} ${ensureArray(c.skills).join(' ')}`.toLowerCase().includes(q)) return false
@@ -362,6 +374,44 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
 
   return (
     <PageContainer ref={pageRef}>
+      {/* Navigation Tab Switcher */}
+      <div className="flex items-center gap-2 border-b border-border pb-2.5 mb-4 overflow-x-auto scrollbar-none">
+        <button
+          type="button"
+          onClick={() => {
+            setShowAllRecords(false)
+            setFilters(f => ({ ...f, status: f.status.filter(s => s !== 'Sourced') }))
+          }}
+          className={cn(
+            'px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-2 shadow-xs shrink-0 transition-colors',
+            !showAllRecords && (!filters.status || !filters.status.includes('Sourced')) ? 'bg-accent text-white' : 'text-text2 hover:text-text hover:bg-surface2'
+          )}
+        >
+          <Icon name="users" size={13} />
+          Active Candidates ({candidates.filter(c => c.internal_status && c.internal_status !== 'Sourced').length})
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onNavigate('sourced_candidates')}
+          className="px-3 py-1.5 rounded-md text-xs font-semibold text-text2 hover:text-text hover:bg-surface2 flex items-center gap-2 transition-colors shrink-0"
+        >
+          <Icon name="download" size={13} />
+          Sourced Pool ({candidates.filter(c => !c.internal_status || c.internal_status === 'Sourced').length})
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setShowAllRecords(true)}
+          className={cn(
+            'px-3 py-1.5 rounded-md text-xs font-semibold shrink-0 transition-colors',
+            showAllRecords ? 'bg-surface3 text-text font-bold' : 'text-text3 hover:text-text hover:bg-surface2'
+          )}
+        >
+          All Records ({candidates.length})
+        </button>
+      </div>
+
       <PageHeader
         eyebrow="Recruiting Workspace"
         title="Candidates"

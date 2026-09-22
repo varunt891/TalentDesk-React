@@ -6,7 +6,9 @@
   --font-serif: 'Fraunces', 'Iowan Old Style', Georgia, serif;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   max-width: 100vw;
   overflow-x: hidden;
@@ -1132,12 +1134,8 @@ button {
   font-weight: 700;
 }
 
-.login-brand-name,
-.login-brand-subtitle {
-  display: block;
-}
-
 .login-brand-name {
+  display: block;
   color: #fff;
   font-family: var(--mono);
   font-size: 24px;
@@ -1145,6 +1143,7 @@ button {
 }
 
 .login-brand-subtitle {
+  display: block;
   margin-top: 2px;
   color: rgba(232, 234, 242, 0.62);
   font-size: 11px;
@@ -1191,8 +1190,7 @@ button {
   padding: 20px;
 }
 
-.login-insight-header,
-.login-metrics {
+.login-insight-header {
   display: flex;
   justify-content: space-between;
   gap: 16px;
@@ -1237,6 +1235,9 @@ button {
 }
 
 .login-metrics {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
   border-top: 1px solid rgba(232, 234, 242, 0.1);
   padding-top: 18px;
 }
@@ -1245,17 +1246,14 @@ button {
   min-width: 0;
 }
 
-.login-metrics strong,
-.login-metrics span {
-  display: block;
-}
-
 .login-metrics strong {
+  display: block;
   color: #fff;
   font-size: 22px;
 }
 
 .login-metrics span {
+  display: block;
   margin-top: 4px;
   color: rgba(232, 234, 242, 0.58);
   font-size: 12px;
@@ -2250,10 +2248,20 @@ button {
   padding: 14px 18px 18px;
 }
 
-.reports-table-row,
-.reports-activity-row {
+.reports-table-row {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface2);
+  padding: 10px 12px;
+}
+
+.reports-activity-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
   gap: 10px;
   align-items: center;
   border: 1px solid var(--border);
@@ -2274,13 +2282,8 @@ button {
   font-size: 11px;
 }
 
-
-.reports-activity-card>div:first-child {
+.reports-activity-card > div:first-child {
   padding: 0 18px;
-}
-
-.reports-activity-row {
-  grid-template-columns: 32px minmax(0, 1fr);
 }
 
 .reports-activity-row>span {
@@ -11140,14 +11143,10 @@ html[data-theme="dark"] select {
      Width/position/transform are handled by AppLayout wrapper. */
 }
 
-filter-search-shell:focus-within {
-  border: 0 !important;
-  outline: none !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent) !important;
-}
-
 .filter-search-shell:focus-within {
   background: var(--surface) !important;
+  border: 0 !important;
+  outline: none !important;
   box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.35), 0 0 0 3px rgba(59, 130, 246, 0.08) !important;
 }
 
@@ -11160,4 +11159,23 @@ filter-search-shell:focus-within {
   background: transparent !important;
   -webkit-appearance: none !important;
   appearance: none !important;
+}
+
+/* Sourced Candidates & Responsive Utilities */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .app-sidebar {
+    position: fixed !important;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 50;
+  }
 }

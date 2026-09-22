@@ -4,7 +4,9 @@ const getGroqModels = () => getConfiguredModels({
   primaryEnv: 'GROQ_MODEL',
   fallbackEnv: 'GROQ_FALLBACK_MODELS',
   defaults: [
-    'openai/gpt-oss-120b'
+    'groq/compound-mini',
+    'qwen/qwen3.8-27b',
+    'groq/compound'
   ]
 });
 

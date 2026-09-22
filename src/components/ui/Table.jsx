@@ -52,13 +52,13 @@ export default function Table({
   )
 
   const columnVisibility = columns.some(c => c.hideable)
-  const [hiddenKeys, setHiddenKeys] = useState(() => new Set(columns.filter(c => c.hideable && c.defaultHidden).map(c => c.key)))
+  const [hiddenKeys, setHiddenKeys] = useState(() => new Set(columns.filter(c => c.hideable && c.defaultHidden).map(c => c.key || c.id)))
   
   useEffect(() => {
-    setHiddenKeys(new Set(columns.filter(c => c.hideable && c.defaultHidden).map(c => c.key)))
+    setHiddenKeys(new Set(columns.filter(c => c.hideable && c.defaultHidden).map(c => c.key || c.id)))
   }, [columns])
 
-  const visibleColumns = useMemo(() => columns.filter(c => !(c.hideable && hiddenKeys.has(c.key))), [columns, hiddenKeys])
+  const visibleColumns = useMemo(() => columns.filter(c => !(c.hideable && hiddenKeys.has(c.key || c.id))), [columns, hiddenKeys])
   const toggleColumn = (key) => {
     setHiddenKeys(prev => {
       const next = new Set(prev)
@@ -275,7 +275,7 @@ export default function Table({
                     <tr key={i} className="border-b border-border last:border-0">
                       {selectable && <td className={cn('px-3', compact ? 'py-1.5' : 'py-2.5')}><Skeleton className="w-4 h-4 rounded" /></td>}
                       {visibleColumns.map(col => (
-                        <td key={col.key} className={cn('px-3', compact ? 'py-1.5' : 'py-2.5')}><Skeleton className="h-3.5 w-4/5 rounded" /></td>
+                        <td key={col.key || col.id} className={cn('px-3', compact ? 'py-1.5' : 'py-2.5')}><Skeleton className="h-3.5 w-4/5 rounded" /></td>
                       ))}
                       {rowActions && <td className={cn('px-3', compact ? 'py-1.5' : 'py-2.5')} />}
                     </tr>
@@ -300,22 +300,23 @@ export default function Table({
                           </td>
                         )}
                         {visibleColumns.map(col => {
-                          const isEditing = editingCell && editingCell.rowId === id && editingCell.key === col.key
+                          const colKey = col.key || col.id
+                          const isEditing = editingCell && editingCell.rowId === id && editingCell.key === colKey
                           return (
                             <td
-                              key={col.key}
+                              key={colKey}
                               className={cn('px-3 text-[12.5px] text-text', compact ? 'py-1' : 'py-2', ALIGN[col.align] || ALIGN.left, col.className)}
                               onDoubleClick={(e) => {
                                 if (!col.editable) return
                                 e.stopPropagation()
-                                setEditingCell({ rowId: id, key: col.key })
+                                setEditingCell({ rowId: id, key: colKey })
                               }}
                             >
                               {isEditing ? (
                                 col.editType === 'select' ? (
                                   <select
                                     autoFocus
-                                    defaultValue={row[col.key]}
+                                    defaultValue={row[colKey]}
                                     onClick={(e) => e.stopPropagation()}
                                     onBlur={(e) => commitEdit(row, col, e.target.value)}
                                     onKeyDown={(e) => { if (e.key === 'Escape') setEditingCell(null) }}
@@ -326,7 +327,7 @@ export default function Table({
                                 ) : (
                                   <input
                                     autoFocus
-                                    defaultValue={row[col.key]}
+                                    defaultValue={row[colKey]}
                                     onClick={(e) => e.stopPropagation()}
                                     onBlur={(e) => commitEdit(row, col, e.target.value)}
                                     onKeyDown={(e) => {
@@ -337,7 +338,7 @@ export default function Table({
                                   />
                                 )
                               ) : (
-                                col.render ? col.render(row) : row[col.key]
+                                col.render ? col.render(row) : col.cell ? col.cell(row) : row[colKey]
                               )}
                             </td>
                           )

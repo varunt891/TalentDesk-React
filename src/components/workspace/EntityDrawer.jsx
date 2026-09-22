@@ -14,6 +14,7 @@ import { cn } from '../ui/utils'
  */
 export default function EntityDrawer({
   open,
+  isOpen,
   onClose,
   avatarName,
   title,
@@ -27,10 +28,11 @@ export default function EntityDrawer({
   size = 'md',
   children,
 }) {
+  const isVisible = Boolean(open !== undefined ? open : isOpen)
   const [isMaximized, setIsMaximized] = useState(false)
 
   return (
-    <Drawer open={open} onClose={onClose} size={isMaximized ? 'full' : size} hideHeader>
+    <Drawer open={isVisible} isOpen={isVisible} onClose={onClose} size={isMaximized ? 'full' : size} hideHeader>
       <div className="flex flex-col h-full">
         <div className="flex items-start justify-between gap-3 px-4 sm:px-5 py-3.5 sm:py-4 border-b border-border shrink-0">
           <div className="flex items-center gap-3 min-w-0">

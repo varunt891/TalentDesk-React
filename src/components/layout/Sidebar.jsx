@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import { db } from '../../lib/api'
 import { Icon } from '../ui/icons'
 import Avatar from '../ui/Avatar'
 import Menu from '../ui/Menu'
@@ -10,6 +11,7 @@ const navItems = [
   { id: 'dashboard', icon: 'dashboard', label: 'Dashboard', section: 'Main' },
   { id: 'ai_center', icon: 'sparkles', label: 'AI Center', section: 'Main', isAI: true },
   { id: 'candidates', icon: 'users', label: 'Candidates', section: 'Main' },
+  { id: 'sourced_candidates', icon: 'download', label: 'Sourced Candidates', section: 'Main', isSourced: true },
   { id: 'pipeline', icon: 'pipeline', label: 'Pipeline', section: 'Main' },
   { id: 'jobs', icon: 'jobs', label: 'Jobs', section: 'Main' },
   { id: 'tasks', icon: 'tasks', label: 'Tasks & Targets', section: 'Main' },
@@ -38,6 +40,24 @@ function readJson(key, fallback) {
 export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggleCollapse, onClose, pendingTasksCount = 0, theme, onToggleTheme }) {
   const { profile, user, organization, signOut } = useAuth()
   const navigate = useNavigate()
+
+  const [sourcedCount, setSourcedCount] = useState(0)
+
+  useEffect(() => {
+    if (!user) return
+    const fetchSourced = async () => {
+      try {
+        const { data } = await db.from('candidates').select('id, internal_status')
+        if (data) {
+          const count = data.filter(c => !c.internal_status || c.internal_status === 'Sourced').length
+          setSourcedCount(count)
+        }
+      } catch (err) { /* ignore */ }
+    }
+    fetchSourced()
+    const interval = setInterval(fetchSourced, 10000)
+    return () => clearInterval(interval)
+  }, [user])
 
   const [collapsedSections, setCollapsedSections] = useState(() => readJson('td_sidebar_section_state', {}))
 
@@ -124,13 +144,13 @@ export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggle
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-2.5 py-3 flex flex-col gap-1">
-        <NavSection title="Main" items={mainItems} currentPage={currentPage} onNavigate={handleNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} collapsed={!!collapsedSections['Main']} onToggleCollapse={() => toggleSectionCollapse('Main')} />
-        <NavSection title="Tools" items={toolItems} currentPage={currentPage} onNavigate={handleNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} collapsed={!!collapsedSections['Tools']} onToggleCollapse={() => toggleSectionCollapse('Tools')} />
+        <NavSection title="Main" items={mainItems} currentPage={currentPage} onNavigate={handleNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} sourcedCount={sourcedCount} collapsed={!!collapsedSections['Main']} onToggleCollapse={() => toggleSectionCollapse('Main')} />
+        <NavSection title="Tools" items={toolItems} currentPage={currentPage} onNavigate={handleNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} sourcedCount={sourcedCount} collapsed={!!collapsedSections['Tools']} onToggleCollapse={() => toggleSectionCollapse('Tools')} />
         {workspaceItems.length > 0 && (
-          <NavSection title="Workspace" items={workspaceItems} currentPage={currentPage} onNavigate={handleNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} collapsed={!!collapsedSections['Workspace']} onToggleCollapse={() => toggleSectionCollapse('Workspace')} />
+          <NavSection title="Workspace" items={workspaceItems} currentPage={currentPage} onNavigate={handleNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} sourcedCount={sourcedCount} collapsed={!!collapsedSections['Workspace']} onToggleCollapse={() => toggleSectionCollapse('Workspace')} />
         )}
         {adminItems.length > 0 && (
-          <NavSection title="Admin" items={adminItems} currentPage={currentPage} onNavigate={handleNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} collapsed={!!collapsedSections['Admin']} onToggleCollapse={() => toggleSectionCollapse('Admin')} />
+          <NavSection title="Admin" items={adminItems} currentPage={currentPage} onNavigate={handleNavigate} isCollapsed={isCollapsed} pendingTasksCount={pendingTasksCount} sourcedCount={sourcedCount} collapsed={!!collapsedSections['Admin']} onToggleCollapse={() => toggleSectionCollapse('Admin')} />
         )}
       </nav>
 
@@ -209,7 +229,7 @@ export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggle
   )
 }
 
-function NavSection({ title, items, currentPage, onNavigate, isCollapsed, pendingTasksCount, favorites, onToggleFavorite, collapsed, onToggleCollapse, pinned, children }) {
+function NavSection({ title, items, currentPage, onNavigate, isCollapsed, pendingTasksCount, sourcedCount, favorites, onToggleFavorite, collapsed, onToggleCollapse, pinned, children }) {
   if (items?.length === 0 && !children) return null
 
   return (
@@ -240,6 +260,7 @@ function NavSection({ title, items, currentPage, onNavigate, isCollapsed, pendin
           onClick={() => onNavigate(item.id)}
           isCollapsed={isCollapsed}
           pendingTasksCount={pendingTasksCount}
+          sourcedCount={sourcedCount}
           isFavorite={favorites?.includes(item.id)}
           onToggleFavorite={onToggleFavorite ? (e) => onToggleFavorite(item.id, e) : undefined}
         />
@@ -248,9 +269,10 @@ function NavSection({ title, items, currentPage, onNavigate, isCollapsed, pendin
   )
 }
 
-function NavItem({ item, active, onClick, isCollapsed, pendingTasksCount, isFavorite, onToggleFavorite, muted }) {
+function NavItem({ item, active, onClick, isCollapsed, pendingTasksCount, sourcedCount = 0, isFavorite, onToggleFavorite, muted }) {
   const showRedDot = item.id === 'tasks' && pendingTasksCount > 0
   const isAI = item.isAI || item.id === 'ai_center'
+  const isSourced = item.id === 'sourced_candidates'
 
   return (
     <div className="group/nav relative flex items-center">
@@ -272,7 +294,7 @@ function NavItem({ item, active, onClick, isCollapsed, pendingTasksCount, isFavo
         )}
       >
         <span className="relative shrink-0 flex items-center justify-center">
-          <Icon name={item.icon} size={15} className={cn(isAI && 'text-ai')} />
+          <Icon name={item.icon} size={15} className={cn(isAI && 'text-ai', isSourced && 'text-teal-400')} />
           {showRedDot && isCollapsed && <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red border-2 border-surface" />}
         </span>
         {!isCollapsed && (
@@ -281,6 +303,10 @@ function NavItem({ item, active, onClick, isCollapsed, pendingTasksCount, isFavo
             {isAI ? (
               <span className="ml-1.5 text-[9px] font-extrabold tracking-wider uppercase bg-ai text-white px-1.5 py-0.5 rounded-full shadow-xs shrink-0">
                 AI
+              </span>
+            ) : isSourced && sourcedCount > 0 ? (
+              <span className="ml-1.5 text-[10px] font-extrabold bg-teal-500/15 text-teal-400 border border-teal-500/30 rounded-full px-2 py-0.5 leading-none shrink-0">
+                {sourcedCount}
               </span>
             ) : showRedDot ? (
               <span className="ml-2 text-[10px] font-extrabold bg-red/15 text-red rounded-full px-1.5 leading-4 shrink-0">{pendingTasksCount}</span>

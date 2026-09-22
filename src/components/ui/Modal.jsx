@@ -49,9 +49,10 @@ function Header({ title, subtitle, onClose, isMaximized, onToggleMaximize }) {
 
 const MODAL_SIZES = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' }
 
-export default function Modal({ open, onClose, title, subtitle, size = 'md', footer, hideHeader = false, children, className = '' }) {
-  useOverlayBehavior(open, onClose)
-  if (!open) return null
+export default function Modal({ open, isOpen, onClose, title, subtitle, size = 'md', footer, hideHeader = false, children, className = '' }) {
+  const isVisible = Boolean(open !== undefined ? open : isOpen)
+  useOverlayBehavior(isVisible, onClose)
+  if (!isVisible) return null
 
   return createPortal(
     <div
@@ -89,10 +90,11 @@ const DRAWER_SIZES = {
   full: 'w-[min(96vw,1200px)]',
 }
 
-export function Drawer({ open, onClose, title, subtitle, size = 'md', side = 'right', footer, hideHeader = false, allowMaximize = true, children, className = '' }) {
+export function Drawer({ open, isOpen, onClose, title, subtitle, size = 'md', side = 'right', footer, hideHeader = false, allowMaximize = true, children, className = '' }) {
+  const isVisible = Boolean(open !== undefined ? open : isOpen)
   const [localMaximized, setLocalMaximized] = useState(false)
-  useOverlayBehavior(open, onClose)
-  if (!open) return null
+  useOverlayBehavior(isVisible, onClose)
+  if (!isVisible) return null
 
   const effectiveSize = localMaximized ? 'full' : size
 

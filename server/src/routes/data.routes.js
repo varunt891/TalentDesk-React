@@ -241,7 +241,10 @@ function withOwnership(req, table, body) {
   const activeOrgId = req.organizationId || req.tenantOrg?.id || req.profile?.org_id
 
   if (tables[table]?.orgScoped) {
-    if (!data.org_id && activeOrgId) {
+    // Always enforce the server-side active org — never trust the client-supplied
+    // org_id, which can be stale after an org-switch (e.g. bransarv user still
+    // holding TalentDesk's org_id in their React state).
+    if (activeOrgId) {
       data.org_id = activeOrgId
     }
   } else {
@@ -250,6 +253,33 @@ function withOwnership(req, table, body) {
 
   if (ownedTables.includes(table)) {
     data.user_id ||= req.user.id
+  }
+
+  if (table === 'candidates') {
+    if (data.name && (!data.first_name || !data.last_name)) {
+      const parts = data.name.trim().split(' ')
+      data.first_name ||= parts[0] || ''
+      data.last_name ||= parts.slice(1).join(' ') || ''
+    }
+    delete data.name
+
+    if (data.title && !data.job_title) data.job_title = data.title
+    delete data.title
+
+    if (data.company && !data.client) data.client = data.company
+    delete data.company
+
+    if (data.source_url && !data.linkedin) data.linkedin = data.source_url
+    delete data.source_url
+
+    if (data.summary && !data.notes) data.notes = data.summary
+    delete data.summary
+
+    if (data.stage && !data.internal_status) data.internal_status = data.stage
+    delete data.stage
+
+    delete data.avatar_url
+    delete data.source
   }
 
   if (table === 'profiles') delete data.passwordHash

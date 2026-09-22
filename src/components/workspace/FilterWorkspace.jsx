@@ -104,13 +104,18 @@ function DatePopover({ def, value, onChange }) {
 }
 
 function FilterField({ def, values, onChange }) {
-  if (def.type === 'multiselect') {
-    return <MultiSelect label={def.label} options={def.options} selected={values[def.key] || []} onChange={(val) => onChange(def.key, val)} searchable={def.searchable} />
+  if (!def) return null
+  const key = def.key || def.id
+  const val = values ? values[key] : undefined
+  const handleChange = (newVal) => onChange && onChange(key, newVal)
+
+  if (def.type === 'multiselect' || (!def.type && def.options)) {
+    return <MultiSelect label={def.label} options={def.options} selected={val || []} onChange={handleChange} searchable={def.searchable} />
   }
   if (def.type === 'date') {
-    return <DatePopover def={def} value={values[def.key]} onChange={(val) => onChange(def.key, val)} />
+    return <DatePopover def={def} value={val} onChange={handleChange} />
   }
-  return <SelectPopover def={def} value={values[def.key]} onChange={(val) => onChange(def.key, val)} />
+  return <SelectPopover def={def} value={val} onChange={handleChange} />
 }
 
 /**
@@ -118,13 +123,15 @@ function FilterField({ def, values, onChange }) {
  * definition-driven bar of filter chips (inline on desktop, a Drawer on
  * mobile), Quick Presets, and per-page persisted Saved Views.
  */
-export default function FilterWorkspace({ filters, values, onChange, onReset, presets, storageKey, className = '' }) {
+export default function FilterWorkspace({ filters = [], values = {}, onChange, onReset, presets, storageKey, className = '' }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [savingView, setSavingView] = useState(false)
   const [viewName, setViewName] = useState('')
   const { views, saveView, deleteView } = useSavedViews(storageKey ? `td_views_${storageKey}` : 'td_views_default')
 
-  const activeCount = filters.filter(f => isActiveValue(values[f.key])).length
+  const activeCount = Array.isArray(filters)
+    ? filters.filter(f => f && (f.key || f.id) && values && isActiveValue(values[f.key || f.id])).length
+    : 0
 
   const applyPreset = (presetValues) => {
     Object.entries(presetValues).forEach(([key, val]) => onChange(key, val))

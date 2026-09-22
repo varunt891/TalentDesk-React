@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { aiService } from '../services/aiService.js';
 import { buildActionPrompt, toolIdForAction } from '../services/promptService.js';
 import { parseResumeText } from '../services/resumeParsingService.js';
+import { extractText } from '../services/documentTextService.js';
 import { recordAiUsage } from '../services/usageService.js';
 import { requireAuth } from '../auth.js';
 
@@ -145,6 +146,84 @@ router.post('/parse-resume', async (req, res) => {
     return res.status(status).json({
       success: false,
       error: err.message || 'Resume parsing failed.',
+    });
+  }
+});
+
+router.post('/parse-web-profile', async (req, res) => {
+  const startedAt = Date.now();
+  try {
+    let { pageText, pageUrl } = req.body;
+    
+    // PDF URL Detection & Automatic Downloading/Parsing
+    const isPdfUrl = pageUrl && (
+      pageUrl.toLowerCase().includes('.pdf') ||
+      pageUrl.toLowerCase().includes('/pdf/') ||
+      pageUrl.toLowerCase().includes('pdf')
+    );
+
+    if (isPdfUrl && (!pageText || pageText.trim().length < 50)) {
+      try {
+        console.log(`[ai.routes] Fetching PDF binary from URL: ${pageUrl}`);
+        const pdfResponse = await fetch(pageUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/pdf,*/*'
+          }
+        });
+        if (pdfResponse.ok) {
+          const arrayBuffer = await pdfResponse.arrayBuffer();
+          const pdfBuffer = Buffer.from(arrayBuffer);
+          const pdfExtractedText = await extractText({
+            buffer: pdfBuffer,
+            fileName: pageUrl.split('/').pop() || 'resume.pdf',
+            mimeType: 'application/pdf'
+          });
+          if (pdfExtractedText && pdfExtractedText.trim()) {
+            pageText = pdfExtractedText;
+            console.log(`[ai.routes] Successfully extracted ${pageText.length} chars from PDF URL`);
+          }
+        }
+      } catch (pdfErr) {
+        console.warn(`[ai.routes] Failed to fetch/extract PDF URL directly: ${pdfErr.message}`);
+      }
+    }
+
+    if (!pageText || !pageText.trim()) {
+      return res.status(400).json({ success: false, error: 'No page text or extractable PDF content found.' });
+    }
+
+    const prompt = `Extract candidate profile details from the following web page text or resume document into clean JSON format.
+Rules:
+- name: Candidate's Full Name (e.g. "Ryan Roslansky", "Loretta Danielson")
+- email: Candidate's email address if found
+- phone: Candidate's phone number if found
+- title: Current job headline or primary role title (e.g. "Human Resources Director", "Senior Recruiter")
+- company: Current or latest company name (e.g. "Donovan Corporation", "Microsoft")
+- location: Candidate City, State, Country location (e.g. "Chicago, IL")
+- summary: Detailed candidate bio summary or overview
+- skills: Array of top technical or domain skills
+- experience: Array of ALL past work roles [{ role, company, dates, location, description }]. CRITICAL: Extract EVERY single company, sub-role, date, and duration listed in the Experience section. Do NOT stop after the first company!
+- education: Array of degrees/schools [{ school, degree, dates }]
+
+Return ONLY valid JSON matching this structure without Markdown fences.
+
+Page URL: ${pageUrl || ''}
+Document Content:
+${pageText.substring(0, 25000)}`;
+
+    const result = await aiService.generate({ prompt, toolId: 'resume_parser' });
+    const cleaned = (result.text || '').replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+    const profile = JSON.parse(cleaned);
+
+    recordAiUsage({ ...usageContext(req), type: 'action', toolId: 'web_profile_ai_parser', provider: result.provider, model: result.model, success: true, durationMs: Date.now() - startedAt, totalTokens: result.totalTokens });
+
+    return res.json({ success: true, profile });
+  } catch (err) {
+    const status = err.status || 500;
+    return res.status(status).json({
+      success: false,
+      error: err.message || 'AI profile parsing failed.',
     });
   }
 });

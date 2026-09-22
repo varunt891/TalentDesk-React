@@ -222,10 +222,14 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
   }
 
   const openPacketModal = (candidate, job) => {
+    setViewingCandidate(null)
+    setShowDetail(null)
     setPacketModal({ isOpen: true, candidate, job })
   }
 
   const openAiMatchModal = (candidate, job) => {
+    setViewingCandidate(null)
+    setShowDetail(null)
     setAiMatchModal({ isOpen: true, candidate, job })
   }
 

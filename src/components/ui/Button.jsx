@@ -31,6 +31,7 @@ const Button = forwardRef(function Button(
     loading = false,
     disabled = false,
     leftIcon,
+    icon,
     rightIcon,
     className = '',
     children,
@@ -40,6 +41,7 @@ const Button = forwardRef(function Button(
   ref
 ) {
   const isDisabled = disabled || loading
+  const effectiveLeftIcon = leftIcon || icon
 
   return (
     <button
@@ -60,11 +62,11 @@ const Button = forwardRef(function Button(
     >
       {loading ? (
         <Icon name="loader" size={size === 'sm' ? 13 : 14} className="animate-spin" />
-      ) : leftIcon ? (
-        <Icon name={leftIcon} size={size === 'sm' ? 13 : 14} />
+      ) : effectiveLeftIcon ? (
+        <Icon name={effectiveLeftIcon} size={size === 'sm' ? 13 : 14} />
       ) : null}
       {!iconOnly && children}
-      {iconOnly && !loading && !leftIcon && children}
+      {iconOnly && !loading && !effectiveLeftIcon && children}
       {!loading && rightIcon && <Icon name={rightIcon} size={size === 'sm' ? 13 : 14} />}
     </button>
   )
