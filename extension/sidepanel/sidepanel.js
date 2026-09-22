@@ -69,9 +69,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // Load saved settings
+  // Default API URL points to the live Render server so the extension works
+  // without any manual configuration. Update this constant when you redeploy.
+  const LIVE_API_URL = 'https://talentdesk-react.onrender.com';
+
   const config = await chrome.storage.local.get(['apiUrl', 'orgId']);
-  const apiUrl = config.apiUrl || 'http://localhost:4000';
-  const orgId = config.orgId || 'org_default';
+  const apiUrl = config.apiUrl || LIVE_API_URL;
+  const orgId = config.orgId || '';
 
   apiUrlInput.value = apiUrl;
   orgIdInput.value = orgId;
@@ -87,7 +91,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Helper to fetch session token directly from Chrome Cookies
   async function getAuthToken(targetApiUrl) {
     try {
+      // Try the configured API URL first
       let cookie = await chrome.cookies.get({ url: targetApiUrl, name: 'td_session' });
+      // Then try the live server
+      if (!cookie) {
+        cookie = await chrome.cookies.get({ url: 'https://talentdesk-react.onrender.com', name: 'td_session' });
+      }
+      // Fallbacks for local development
       if (!cookie) {
         cookie = await chrome.cookies.get({ url: 'http://localhost:5173', name: 'td_session' });
       }
@@ -610,7 +620,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         duplicateAlert.classList.add('hidden');
 
         if (openAppBtn) {
-          openAppBtn.href = 'http://localhost:5173/sourced-candidates';
+          // Derive the frontend URL from the configured API URL.
+          // Render deploys frontend + backend together; adjust if split-deployed.
+          const frontendBase = currentApiUrl
+            .replace(':4000', ':5173')
+            .replace('/api', '');
+          openAppBtn.href = `${frontendBase}/sourced-candidates`;
           openAppBtn.classList.remove('hidden');
         }
       } else {
