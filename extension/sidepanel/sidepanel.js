@@ -110,7 +110,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (activeTab && activeTab.url && (activeTab.url.toLowerCase().includes('.pdf') || activeTab.url.toLowerCase().includes('/pdf/'))) {
       if (pdfBanner) pdfBanner.classList.remove('hidden');
     }
-  } catch (err) {}
+  } catch (err) { }
 
   // Helper to fetch session token directly from Chrome Cookies
   async function getAuthToken(targetApiUrl) {
@@ -171,7 +171,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
       const headers = await getAuthHeaders(currentApiUrl);
-      
+
       const jobsRes = await fetch(`${currentApiUrl}/api/data/jobs?org_id=${currentOrgId}`, {
         method: 'GET',
         headers,
@@ -183,7 +183,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (statusText) statusText.textContent = 'Online';
         statusDot.title = 'Connected to TalentDesk API';
         const result = await jobsRes.json();
-        
+
         let jobs = [];
         if (Array.isArray(result)) {
           jobs = result;
@@ -339,7 +339,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           : { sourceUrl: tab.url || '', rawPageText: '', summary: '', name: 'PDF Candidate' };
 
         const isPdfTab = (tab.url && (tab.url.toLowerCase().includes('.pdf') || tab.url.toLowerCase().includes('/pdf/'))) ||
-                         (domProf.sourceUrl && domProf.sourceUrl.toLowerCase().includes('.pdf'));
+          (domProf.sourceUrl && domProf.sourceUrl.toLowerCase().includes('.pdf'));
 
         // Use full raw page text as AI input — it contains everything AI needs (name, headline, 
         // location, experience, etc). domProf.summary is a pre-filtered DOM block that silently
@@ -395,9 +395,9 @@ document.addEventListener('DOMContentLoaded', async () => {
               // Experience: Filter AI experience against social comments, hashtags, emojis, or call-to-action buttons
               const rawAiExp = Array.isArray(aiProf.experience) ? aiProf.experience : [];
               const junkTerms = [
-                'happy for you', 'deserves this', 'congrats', 'congratulations', 
-                'book an appointment', 'appointment', 'like', 'comment', 'repost', 
-                'more', 'edited', '2nd', '3rd', '1st', 'follower', 'connection', 
+                'happy for you', 'deserves this', 'congrats', 'congratulations',
+                'book an appointment', 'appointment', 'like', 'comment', 'repost',
+                'more', 'edited', '2nd', '3rd', '1st', 'follower', 'connection',
                 'messaging', 'notifications', 'show all'
               ];
 
@@ -413,7 +413,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 // 2. Reject emojis or social symbols in role / company
                 if (/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(e.role || '') ||
-                    /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(e.company || '')) {
+                  /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(e.company || '')) {
                   return false;
                 }
 
@@ -507,9 +507,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!Array.isArray(expList)) return [];
 
     const junkRoleTerms = [
-      'happy for you', 'deserves this', 'congrats', 'congratulations', 
-      'book an appointment', 'appointment', 'like', 'comment', 'repost', 
-      'more', '... more', 'edited', '2nd', '3rd', '1st', 'follower', 'connection', 
+      'happy for you', 'deserves this', 'congrats', 'congratulations',
+      'book an appointment', 'appointment', 'like', 'comment', 'repost',
+      'more', '... more', 'edited', '2nd', '3rd', '1st', 'follower', 'connection',
       'messaging', 'notifications', 'show all'
     ];
 
@@ -537,7 +537,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Reject hashtags or emojis in role or company
       if (r.includes('#') || c.includes('#')) return false;
       if (/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(r) ||
-          /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(c)) {
+        /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(c)) {
         return false;
       }
 
@@ -554,9 +554,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     var match = resumeText.match(/WORK EXPERIENCE[:\s]*([\s\S]*?)(?=\nEDUCATION:|\nSKILLS:|\n={10,}|$)/i);
     if (!match) match = resumeText.match(/WORK EXPERIENCE[:\s]*([\s\S]*)/i);
     if (!match) return result;
-    var lines = match[1].split('\n').map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 1; });
+    var lines = match[1].split('\n').map(function (l) { return l.trim(); }).filter(function (l) { return l.length > 1; });
     var cur = null;
-    lines.forEach(function(line) {
+    lines.forEach(function (line) {
       var isDate = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december|\d{4}|present|current)/i.test(line);
       var isBullet = /^[\u2022\-\*]/.test(line);
       var cleanLine = line.replace(/^[\u2022\-\*]\s*/, '');
@@ -580,7 +580,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         cur.description = cur.description ? cur.description + '\n' + cleanLine : cleanLine;
       }
     });
-    result.forEach(function(e) { if (!e.role && e.company) { e.role = e.company; e.company = ''; } });
+    result.forEach(function (e) { if (!e.role && e.company) { e.role = e.company; e.company = ''; } });
     return result;
   }
 
@@ -589,9 +589,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!resumeText) return result;
     var match = resumeText.match(/EDUCATION[:\s]*([\s\S]*?)(?=\nSKILLS:|\nFULL DOCUMENT|\n={10,}|$)/i);
     if (!match) return result;
-    var lines = match[1].split('\n').map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 1; });
+    var lines = match[1].split('\n').map(function (l) { return l.trim(); }).filter(function (l) { return l.length > 1; });
     var cur = null;
-    lines.forEach(function(line) {
+    lines.forEach(function (line) {
       var isDate = /\b(\d{4}|present|current)/i.test(line);
       if (isDate) {
         if (cur && !cur.dates) cur.dates = line;
@@ -620,7 +620,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     candCompany.value = profile.company || '';
     candLocation.value = profile.location || '';
     candSource.value = profile.source || 'Web Import';
-    
+
     candEmail.value = profile.email || '';
     candEmail.placeholder = profile.email ? 'Email' : 'Click "Contact info" on LinkedIn to populate';
 
@@ -842,7 +842,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const savedCand = responseBody.data ? (Array.isArray(responseBody.data) ? responseBody.data[0] : responseBody.data) : responseBody;
         const savedName = [savedCand.first_name, savedCand.last_name].filter(Boolean).join(' ') || savedCand.name || 'Candidate';
         showToast(`🎉 ${savedName} imported to TalentDesk!`, 'success');
-        
+
         if (Array.isArray(existingCandidates)) {
           existingCandidates.push(savedCand);
         }
