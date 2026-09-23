@@ -71,9 +71,11 @@ export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggle
 
   const handleNavigate = (id) => {
     onNavigate(id)
+    onClose?.()
   }
 
   const handleSignOut = async () => {
+    onClose?.()
     await signOut()
     navigate('/login', { replace: true })
   }
@@ -98,8 +100,10 @@ export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggle
       className={cn(
         'app-sidebar h-full flex flex-col bg-[var(--sidebar-bg)] border-r border-border shrink-0 overflow-x-hidden',
         'transition-[width,min-width] duration-200 ease-[var(--ease-standard)] will-change-[width]',
+        isCollapsed && 'collapsed',
         isCollapsed ? 'w-16 min-w-[4rem]' : 'w-52 min-w-[13rem]'
       )}
+      data-collapsed={isCollapsed ? 'true' : 'false'}
     >
       {/* Header */}
       <div className={cn('flex items-center h-16 border-b border-border shrink-0', isCollapsed ? 'justify-center px-2' : 'justify-between px-4')}>

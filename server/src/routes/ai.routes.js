@@ -195,15 +195,15 @@ router.post('/parse-web-profile', async (req, res) => {
 
     const prompt = `Extract candidate profile details from the following web page text or resume document into clean JSON format.
 Rules:
-- name: Candidate's Full Name (e.g. "Ryan Roslansky", "Loretta Danielson")
-- email: Candidate's email address if found
+- name: Candidate's Full Name (e.g. "Ryan Roslansky", "Loretta Danielson"). Clean out any leading unread notification counters like "(1)" or connection badges like "1st".
+- email: Candidate's personal or work email address if found
 - phone: Candidate's phone number if found
 - title: Current job headline or primary role title (e.g. "Human Resources Director", "Senior Recruiter")
 - company: Current or latest company name (e.g. "Donovan Corporation", "Microsoft")
 - location: Candidate City, State, Country location (e.g. "Chicago, IL")
 - summary: Detailed candidate bio summary or overview
 - skills: Array of top technical or domain skills
-- experience: Array of ALL past work roles [{ role, company, dates, location, description }]. CRITICAL: Extract EVERY single company, sub-role, date, and duration listed in the Experience section. Do NOT stop after the first company!
+- experience: Array of official past work roles [{ role, company, dates, location, description }]. CRITICAL: Extract ONLY official work experience roles listed in the candidate's Experience/Employment History section. Do NOT extract post comments, social feed updates, congratulatory messages, "People also viewed" sidebar profiles, connection badges (like "• 2nd"), or call-to-action buttons (like "Book an appointment")!
 - education: Array of degrees/schools [{ school, degree, dates }]
 
 Return ONLY valid JSON matching this structure without Markdown fences.
@@ -213,8 +213,29 @@ Document Content:
 ${pageText.substring(0, 25000)}`;
 
     const result = await aiService.generate({ prompt, toolId: 'resume_parser' });
-    const cleaned = (result.text || '').replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
-    const profile = JSON.parse(cleaned);
+
+    // Robust JSON extraction: handle markdown fences, surrounding text, etc.
+    let rawText = (result.text || '').trim();
+    // Strip markdown code fences (```json ... ``` or ``` ... ```)
+    rawText = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+    // If the text still doesn't start with { or [, try to find the JSON object within it
+    if (!rawText.startsWith('{') && !rawText.startsWith('[')) {
+      const jsonMatch = rawText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+      if (jsonMatch) {
+        rawText = jsonMatch[1].trim();
+      }
+    }
+
+    let profile;
+    try {
+      profile = JSON.parse(rawText);
+    } catch (parseErr) {
+      console.error('[parse-web-profile] JSON parse failed:', parseErr.message, '| Raw length:', rawText.length);
+      return res.status(500).json({
+        success: false,
+        error: 'AI returned a response that could not be parsed as JSON. Please try again.',
+      });
+    }
 
     recordAiUsage({ ...usageContext(req), type: 'action', toolId: 'web_profile_ai_parser', provider: result.provider, model: result.model, success: true, durationMs: Date.now() - startedAt, totalTokens: result.totalTokens });
 

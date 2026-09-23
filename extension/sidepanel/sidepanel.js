@@ -20,6 +20,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   const duplicateTitle = document.getElementById('duplicateTitle');
   const duplicateDesc = document.getElementById('duplicateDesc');
   const toast = document.getElementById('toast');
+  const scanningBanner = document.getElementById('scanningBanner');
+  const scanningTitle = document.getElementById('scanningTitle');
+  const scanningSub = document.getElementById('scanningSub');
+
+  let scanningTimeout = null;
+
+  function showScanning(title = '⚡ Scanning Page Content...', sub = 'Auto-scrolling page to trigger lazy-loaded sections.') {
+    if (scanningTitle) scanningTitle.textContent = title;
+    if (scanningSub) scanningSub.textContent = sub;
+    if (scanningBanner) scanningBanner.classList.remove('hidden');
+
+    if (scanningTimeout) clearTimeout(scanningTimeout);
+    scanningTimeout = setTimeout(() => {
+      hideScanning();
+    }, 12000);
+  }
+
+  function hideScanning() {
+    if (scanningBanner) scanningBanner.classList.add('hidden');
+    if (scanningTimeout) {
+      clearTimeout(scanningTimeout);
+      scanningTimeout = null;
+    }
+  }
 
   // Input elements in preview card
   const candAvatar = document.getElementById('candAvatar');
@@ -93,7 +117,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       // Try the configured API URL first
       let cookie = await chrome.cookies.get({ url: targetApiUrl, name: 'td_session' });
-      // Then try the live server
+      // Try the Vercel frontend (this is where the cookie is actually set since login
+      // goes through Vercel which proxies /api/* to Render)
+      if (!cookie) {
+        cookie = await chrome.cookies.get({ url: 'https://talent-desk-react.vercel.app', name: 'td_session' });
+      }
+      // Try the live Render backend directly
       if (!cookie) {
         cookie = await chrome.cookies.get({ url: 'https://talentdesk-react.onrender.com', name: 'td_session' });
       }
@@ -129,11 +158,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     checkConnectionAndLoadJobs();
   });
 
-  // Initial connection check & jobs load
-  await checkConnectionAndLoadJobs();
+  // Initial connection check & jobs load (run in background)
+  checkConnectionAndLoadJobs();
 
-  // Auto-extract on load if side panel opened on active tab
-  extractActiveTabProfile(false);
+  // Instantly show scanning banner & start auto-extraction on load
+  showScanning('⚡ Scanning Page Profile...', 'Auto-scrolling page to trigger lazy-loaded sections...');
+  extractActiveTabProfile(true);
 
   async function checkConnectionAndLoadJobs() {
     const currentApiUrl = apiUrlInput.value.trim().replace(/\/$/, '');
@@ -222,35 +252,51 @@ document.addEventListener('DOMContentLoaded', async () => {
     activeBtn.disabled = true;
     activeBtn.innerHTML = deepScan ? '⚡ Scanning...' : 'Extracting...';
 
+    showScanning(
+      deepScan ? '⚡ Deep Scanning Page Content...' : '🔍 Extracting Page Profile...',
+      deepScan ? 'Auto-scrolling page to trigger lazy-loaded work experience & education...' : 'Gathering candidate profile information...'
+    );
+
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab || !tab.id) {
+        hideScanning();
         showToast('No active tab detected', 'error');
+        activeBtn.disabled = false;
+        activeBtn.innerHTML = origText;
         return;
       }
 
       const isPdfTab = tab.url && (tab.url.toLowerCase().includes('.pdf') || tab.url.toLowerCase().includes('/pdf/'));
-
       if (isPdfTab) {
         activeBtn.disabled = false;
         activeBtn.innerHTML = origText;
         return extractWithGeminiAI();
       }
 
-      const msgPayload = { type: 'PARSE_PROFILE', deepScan };
-
-      chrome.tabs.sendMessage(tab.id, msgPayload, async (response) => {
-        const domProf = response?.profile;
-
-        if (!domProf || !domProf.rawPageText || (domProf.rawPageText.length < 30 && !domProf.name)) {
+      chrome.tabs.sendMessage(tab.id, { type: 'PARSE_PROFILE', deepScan }, async (response) => {
+        // Handle chrome.runtime.lastError quietly (content script disconnected after extension reload)
+        if (chrome.runtime.lastError) {
+          const _err = chrome.runtime.lastError.message;
+          hideScanning();
+          showToast('Please refresh your web page (F5) to connect extension updates', 'error');
           activeBtn.disabled = false;
           activeBtn.innerHTML = origText;
-          return extractWithGeminiAI();
+          return;
         }
 
-        if (response && response.success) {
+        const domProf = response?.profile;
+
+        // If DOM returned useful data, render it directly
+        if (domProf && response?.success && domProf.rawPageText && (domProf.rawPageText.length >= 30 || domProf.name)) {
+          // On LinkedIn, if Quick Extract ran (deepScan=false) and experience is empty because section was lazy-unloaded, auto-trigger Deep Scan
+          if (!deepScan && tab.url && tab.url.includes('linkedin.com') && (!domProf.experience || domProf.experience.length === 0)) {
+            console.log('[Extract] LinkedIn experience empty on Quick Extract, auto-triggering Deep Scan...');
+            return extractActiveTabProfile(true);
+          }
           renderProfileCard(domProf);
         } else {
+          // DOM failed or returned empty — fall back to AI for all extraction modes
           extractWithGeminiAI();
         }
       });
@@ -266,24 +312,44 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function extractWithGeminiAI() {
     aiParseBtn.disabled = true;
     aiParseBtn.innerHTML = '🤖 AI Extracting...';
+    showScanning(
+      '🤖 AI Model Parsing Profile...',
+      'Analyzing page text & extracting role, experience timeline & skills via Gemini...'
+    );
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab || !tab.id) {
+        hideScanning();
         showToast('No active tab detected', 'error');
+        aiParseBtn.disabled = false;
+        aiParseBtn.innerHTML = '🤖 AI Smart Parse';
         return;
       }
 
+      // Send deepScan to content script to scroll & extract DOM data
       chrome.tabs.sendMessage(tab.id, { type: 'PARSE_PROFILE', deepScan: true }, async (response) => {
+        // Handle chrome.runtime.lastError quietly (e.g. tab refreshed, content script reloaded)
+        if (chrome.runtime.lastError) {
+          const _err = chrome.runtime.lastError.message;
+        }
+
         const domProf = (response && response.success && response.profile)
           ? response.profile
-          : { sourceUrl: tab.url || '', rawPageText: '', name: 'PDF Candidate' };
+          : { sourceUrl: tab.url || '', rawPageText: '', summary: '', name: 'PDF Candidate' };
 
         const isPdfTab = (tab.url && (tab.url.toLowerCase().includes('.pdf') || tab.url.toLowerCase().includes('/pdf/'))) ||
                          (domProf.sourceUrl && domProf.sourceUrl.toLowerCase().includes('.pdf'));
 
-        if (!domProf.rawPageText && !isPdfTab) {
-          showToast('Could not extract page content for AI', 'error');
+        // Use full raw page text as AI input — it contains everything AI needs (name, headline, 
+        // location, experience, etc). domProf.summary is a pre-filtered DOM block that silently
+        // drops any fields the selectors missed, so it's worse for AI extraction.
+        // For PDFs the server fetches the binary via pageUrl; rawPageText can be empty there.
+        const aiInputText = domProf.rawPageText || domProf.summary || '';
+
+        if (!aiInputText && !isPdfTab) {
+          hideScanning();
+          showToast('Could not extract page content for AI. Refresh the tab and try again.', 'error');
           aiParseBtn.disabled = false;
           aiParseBtn.innerHTML = '🤖 AI Smart Parse';
           return;
@@ -294,110 +360,262 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         showToast(isPdfTab ? '📄 AI fetching & parsing PDF resume document...' : '🤖 AI model analyzing full profile text...', 'success');
 
-        const aiRes = await fetch(`${currentApiUrl}/api/ai/parse-web-profile`, {
-          method: 'POST',
-          headers,
-          credentials: 'include',
-          body: JSON.stringify({
-            pageText: domProf.rawPageText,
-            pageUrl: domProf.sourceUrl
-          })
-        });
+        try {
+          const aiRes = await fetch(`${currentApiUrl}/api/ai/parse-web-profile`, {
+            method: 'POST',
+            headers,
+            credentials: 'include',
+            body: JSON.stringify({
+              pageText: aiInputText,
+              pageUrl: domProf.sourceUrl || tab.url
+            })
+          });
 
-        if (aiRes.ok) {
-          const aiJson = await aiRes.json();
-          if (aiJson.success && aiJson.profile) {
-            const aiProf = aiJson.profile;
+          if (aiRes.ok) {
+            const aiJson = await aiRes.json();
+            if (aiJson.success && aiJson.profile) {
+              const aiProf = aiJson.profile;
 
-            // Merge DOM client data with AI data so no fields are lost
-            aiProf.name = (aiProf.name && aiProf.name.length >= 2) ? aiProf.name : (aiProf.full_name || aiProf.candidate_name || domProf.name || 'Candidate');
-            aiProf.title = aiProf.title || aiProf.headline || aiProf.job_title || domProf.title || '';
-            aiProf.company = aiProf.company || aiProf.current_company || domProf.company || '';
-            aiProf.location = aiProf.location || aiProf.city || domProf.location || '';
-            
-            aiProf.sourceUrl = domProf.sourceUrl;
-            aiProf.avatarUrl = domProf.avatarUrl;
-            aiProf.source = domProf.source || 'AI Sourced';
+              // AI data is authoritative for structured fields — DOM fills in what AI missed
+              aiProf.name = (aiProf.name && aiProf.name.length >= 2)
+                ? aiProf.name
+                : (aiProf.full_name || aiProf.candidate_name || domProf.name || 'Candidate');
 
-            // Merge DOM experience timeline if AI returned fewer or incomplete experience entries
-            const aiExp = Array.isArray(aiProf.experience) ? aiProf.experience : [];
-            const domExp = Array.isArray(domProf.experience) ? domProf.experience : [];
-            const activeExperience = domExp.length >= aiExp.length ? domExp : aiExp;
+              aiProf.title = aiProf.title || aiProf.headline || aiProf.job_title || domProf.title || '';
+              aiProf.company = aiProf.company || aiProf.current_company || domProf.company || '';
+              aiProf.location = aiProf.location || aiProf.city || domProf.location || '';
+              aiProf.email = aiProf.email || domProf.email || '';
+              aiProf.phone = aiProf.phone || domProf.phone || '';
 
-            const activeEducation = (aiProf.education && aiProf.education.length > 0)
-              ? aiProf.education
-              : (domProf.education || []);
+              // Always use DOM for avatar & source URL — AI can't extract these
+              aiProf.sourceUrl = domProf.sourceUrl || tab.url || '';
+              aiProf.avatarUrl = domProf.avatarUrl || '';
+              aiProf.source = domProf.source || 'AI Sourced';
 
-            aiProf.experience = activeExperience;
-            aiProf.education = activeEducation;
+              // Experience: Filter AI experience against social comments, hashtags, emojis, or call-to-action buttons
+              const rawAiExp = Array.isArray(aiProf.experience) ? aiProf.experience : [];
+              const junkTerms = [
+                'happy for you', 'deserves this', 'congrats', 'congratulations', 
+                'book an appointment', 'appointment', 'like', 'comment', 'repost', 
+                'more', 'edited', '2nd', '3rd', '1st', 'follower', 'connection', 
+                'messaging', 'notifications', 'show all'
+              ];
 
-            if (!aiProf.skills || aiProf.skills.length === 0) {
-              aiProf.skills = domProf.skills || [];
-            }
+              const cleanAiExp = rawAiExp.filter(e => {
+                const r = (e.role || '').toLowerCase();
+                const c = (e.company || '').toLowerCase();
+                const d = (e.description || '').toLowerCase();
+                const dt = (e.dates || '').toLowerCase();
 
-            // Build full multi-line resume text for ABOUT / SUMMARY textarea
-            let fullResume = `==================================================\n`;
-            fullResume += `CANDIDATE: ${aiProf.name}\n`;
-            fullResume += `Headline: ${aiProf.title}\n`;
-            fullResume += `Location: ${aiProf.location}\n`;
-            fullResume += `Company: ${aiProf.company}\n`;
-            fullResume += `Source: ${aiProf.sourceUrl}\n`;
-            fullResume += `==================================================\n\n`;
+                // 1. Check for junk substrings in role, company, dates, or description
+                const hasJunk = junkTerms.some(t => r.includes(t) || c.includes(t) || d.includes(t) || dt.includes(t));
+                if (hasJunk) return false;
 
-            if (aiProf.summary && typeof aiProf.summary === 'string' && !aiProf.summary.includes('WORK EXPERIENCE TIMELINE')) {
-              fullResume += `ABOUT BIO:\n${aiProf.summary}\n\n`;
-            }
+                // 2. Reject emojis or social symbols in role / company
+                if (/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(e.role || '') ||
+                    /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(e.company || '')) {
+                  return false;
+                }
 
-            if (activeExperience.length > 0) {
-              fullResume += `WORK EXPERIENCE TIMELINE:\n`;
-              activeExperience.forEach((e, idx) => {
-                fullResume += `${idx + 1}. ${e.role || 'Role'}${e.company ? ' at ' + e.company : ''}\n`;
-                if (e.dates) fullResume += `   Dates & Duration: ${e.dates}\n`;
-                if (e.location) fullResume += `   Location: ${e.location}\n`;
-                if (e.description) fullResume += `   Details: ${e.description.replace(/\n+/g, ' ')}\n`;
+                // 3. Reject hashtags or overly long titles
+                if (r.includes('#') || c.includes('#') || r.length > 100) return false;
+
+                return true;
+              });
+
+              const domExp = Array.isArray(domProf.experience) ? domProf.experience : [];
+              aiProf.experience = cleanAiExp.length > 0 ? cleanAiExp : domExp;
+
+              // Education: prefer AI, fall back to DOM
+              const aiEdu = Array.isArray(aiProf.education) ? aiProf.education : [];
+              const domEdu = Array.isArray(domProf.education) ? domProf.education : [];
+              aiProf.education = aiEdu.length > 0 ? aiEdu : domEdu;
+
+              // Skills: merge AI + DOM skills for maximum coverage
+              const aiSkills = Array.isArray(aiProf.skills) ? aiProf.skills : [];
+              const domSkills = Array.isArray(domProf.skills) ? domProf.skills : [];
+              const mergedSkills = [...new Set([...aiSkills, ...domSkills])];
+              aiProf.skills = mergedSkills.length > 0 ? mergedSkills : ['Sourcing', 'Engineering'];
+
+              // Build full multi-line resume text for ABOUT / SUMMARY textarea
+              let fullResume = `==================================================\n`;
+              fullResume += `CANDIDATE: ${aiProf.name}\n`;
+              if (aiProf.title) fullResume += `Headline: ${aiProf.title}\n`;
+              if (aiProf.location) fullResume += `Location: ${aiProf.location}\n`;
+              if (aiProf.company) fullResume += `Company: ${aiProf.company}\n`;
+              fullResume += `Source: ${aiProf.sourceUrl}\n`;
+              fullResume += `==================================================\n\n`;
+
+              if (aiProf.summary && typeof aiProf.summary === 'string' && !aiProf.summary.includes('WORK EXPERIENCE TIMELINE')) {
+                fullResume += `ABOUT BIO:\n${aiProf.summary}\n\n`;
+              }
+
+              if (aiProf.experience.length > 0) {
+                fullResume += `WORK EXPERIENCE TIMELINE:\n`;
+                aiProf.experience.forEach((e, idx) => {
+                  fullResume += `${idx + 1}. ${e.role || 'Role'}${e.company ? ' at ' + e.company : ''}\n`;
+                  if (e.dates) fullResume += `   Dates & Duration: ${e.dates}\n`;
+                  if (e.location) fullResume += `   Location: ${e.location}\n`;
+                  if (e.description) fullResume += `   Details: ${e.description.replace(/\n+/g, ' ')}\n`;
+                  fullResume += `\n`;
+                });
+              }
+
+              if (aiProf.education.length > 0) {
+                fullResume += `EDUCATION:\n`;
+                aiProf.education.forEach((ed, idx) => {
+                  fullResume += `${idx + 1}. ${ed.school || 'School'}${ed.degree ? ' - ' + ed.degree : ''} ${ed.dates ? '(' + ed.dates + ')' : ''}\n`;
+                });
                 fullResume += `\n`;
-              });
+              }
+
+              if (aiProf.skills && aiProf.skills.length > 0) {
+                fullResume += `SKILLS:\n${aiProf.skills.join(', ')}\n`;
+              }
+
+              aiProf.summary = fullResume;
+              aiProf.resume_text = fullResume;
+
+              showToast('✨ AI successfully extracted complete candidate profile!', 'success');
+              renderProfileCard(aiProf);
+            } else {
+              hideScanning();
+              showToast(aiJson.error || 'AI parsing returned unexpected format', 'error');
             }
-
-            if (activeEducation.length > 0) {
-              fullResume += `EDUCATION:\n`;
-              activeEducation.forEach((ed, idx) => {
-                fullResume += `${idx + 1}. ${ed.school || 'School'}${ed.degree ? ' - ' + ed.degree : ''} ${ed.dates ? '(' + ed.dates + ')' : ''}\n`;
-              });
-              fullResume += `\n`;
-            }
-
-            if (aiProf.skills && aiProf.skills.length > 0) {
-              fullResume += `SKILLS:\n${aiProf.skills.join(', ')}\n`;
-            }
-
-            aiProf.summary = fullResume;
-            aiProf.resume_text = fullResume;
-
-            showToast('✨ AI successfully extracted complete candidate profile!', 'success');
-            renderProfileCard(aiProf);
           } else {
-            showToast(aiJson.error || 'AI parsing returned unexpected format', 'error');
+            const errJson = await aiRes.json().catch(() => ({}));
+            hideScanning();
+            showToast(errJson.error || 'AI endpoint error — try again', 'error');
           }
-        } else {
-          const errJson = await aiRes.json().catch(() => ({}));
-          showToast(errJson.error || 'AI endpoint error', 'error');
+        } catch (fetchErr) {
+          hideScanning();
+          showToast('AI request failed: ' + fetchErr.message, 'error');
         }
 
         aiParseBtn.disabled = false;
         aiParseBtn.innerHTML = '🤖 AI Smart Parse';
       });
     } catch (err) {
+      hideScanning();
       showToast('AI Parsing failed: ' + err.message, 'error');
       aiParseBtn.disabled = false;
       aiParseBtn.innerHTML = '🤖 AI Smart Parse';
     }
   }
 
+  function cleanExperienceArray(expList) {
+    if (!Array.isArray(expList)) return [];
+
+    const junkRoleTerms = [
+      'happy for you', 'deserves this', 'congrats', 'congratulations', 
+      'book an appointment', 'appointment', 'like', 'comment', 'repost', 
+      'more', '... more', 'edited', '2nd', '3rd', '1st', 'follower', 'connection', 
+      'messaging', 'notifications', 'show all'
+    ];
+
+    return expList.filter(e => {
+      const r = (e.role || '').toLowerCase().trim();
+      const c = (e.company || '').toLowerCase().trim();
+
+      if (!r || r.length < 2) return false;
+
+      // Reject exact button labels like "more", "... more", "show all", "comment"
+      if (r === 'more' || r === '... more' || r === 'show all' || r === 'comment' || r === 'like' || r === 'repost') {
+        return false;
+      }
+
+      // Reject connection badges or time tags at start of role or company (e.g. • 1st, • 2nd, 1w •)
+      if (/^[\*\•\-\·\s]*(1st|2nd|3rd|\d+w|\d+d|\d+m)\b/i.test(r) || /^[\*\•\-\·\s]*(1st|2nd|3rd|\d+w|\d+d|\d+m)\b/i.test(c)) {
+        return false;
+      }
+
+      // Reject role titles that match junk social comment phrases
+      if (junkRoleTerms.some(t => r === t || r.startsWith(t + ' ') || r.includes('happy for you') || r.includes('deserves this'))) {
+        return false;
+      }
+
+      // Reject hashtags or emojis in role or company
+      if (r.includes('#') || c.includes('#')) return false;
+      if (/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(r) ||
+          /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(c)) {
+        return false;
+      }
+
+      // Reject full sentences as role titles (job titles aren't >100 chars or full sentences with exclamation marks)
+      if (r.length > 100 || r.includes('!')) return false;
+
+      return true;
+    });
+  }
+
+  function parseExpFromText(resumeText) {
+    var result = [];
+    if (!resumeText) return result;
+    var match = resumeText.match(/WORK EXPERIENCE[:\s]*([\s\S]*?)(?=\nEDUCATION:|\nSKILLS:|\n={10,}|$)/i);
+    if (!match) match = resumeText.match(/WORK EXPERIENCE[:\s]*([\s\S]*)/i);
+    if (!match) return result;
+    var lines = match[1].split('\n').map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 1; });
+    var cur = null;
+    lines.forEach(function(line) {
+      var isDate = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december|\d{4}|present|current)/i.test(line);
+      var isBullet = /^[\u2022\-\*]/.test(line);
+      var cleanLine = line.replace(/^[\u2022\-\*]\s*/, '');
+      if (isDate && !isBullet) {
+        if (cur) cur.dates = cur.dates ? cur.dates + ' - ' + line : line;
+      } else if (isBullet) {
+        if (cur) cur.description = cur.description ? cur.description + '\n' + cleanLine : cleanLine;
+      } else if (line.length < 80) {
+        if (!cur) {
+          cur = { role: '', company: line, dates: '', location: '', description: '' };
+          result.push(cur);
+        } else if (cur.company && !cur.role) {
+          var parts = line.split(/[\u2022\u00b7]/);
+          cur.role = parts[0].trim();
+          if (parts[1]) cur.location = parts[1].trim();
+        } else {
+          cur = { role: '', company: line, dates: '', location: '', description: '' };
+          result.push(cur);
+        }
+      } else if (cur) {
+        cur.description = cur.description ? cur.description + '\n' + cleanLine : cleanLine;
+      }
+    });
+    result.forEach(function(e) { if (!e.role && e.company) { e.role = e.company; e.company = ''; } });
+    return result;
+  }
+
+  function parseEduFromText(resumeText) {
+    var result = [];
+    if (!resumeText) return result;
+    var match = resumeText.match(/EDUCATION[:\s]*([\s\S]*?)(?=\nSKILLS:|\nFULL DOCUMENT|\n={10,}|$)/i);
+    if (!match) return result;
+    var lines = match[1].split('\n').map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 1; });
+    var cur = null;
+    lines.forEach(function(line) {
+      var isDate = /\b(\d{4}|present|current)/i.test(line);
+      if (isDate) {
+        if (cur && !cur.dates) cur.dates = line;
+      } else if (line.length <= 120) {
+        if (!cur) {
+          cur = { school: line, degree: '', dates: '' };
+          result.push(cur);
+        } else if (!cur.degree && line !== cur.school) {
+          cur.degree = line.split(/[\u2022\u00b7]/)[0].trim();
+        } else {
+          cur = { school: line, degree: '', dates: '' };
+          result.push(cur);
+        }
+      }
+    });
+    return result;
+  }
+
   function renderProfileCard(profile) {
+    hideScanning();
     currentProfileData = profile;
 
-    candName.value = profile.name || '';
+    profile.name = (profile.name || '').replace(/^\s*\(\d+\+?\)\s*/, '').trim();
+    candName.value = profile.name;
     candTitle.value = profile.title || '';
     candCompany.value = profile.company || '';
     candLocation.value = profile.location || '';
@@ -430,11 +648,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       candSkills.appendChild(tag);
     });
 
+    // Resolve experience: use structured array if available, else parse from resume_text
+    const rawExpList = (profile.experience && profile.experience.length > 0)
+      ? profile.experience
+      : parseExpFromText(profile.resume_text || profile.summary || '');
+    const expList = cleanExperienceArray(rawExpList);
+
     // Render Experience List
     candExperience.innerHTML = '';
-    if (profile.experience && profile.experience.length > 0) {
+    if (expList.length > 0) {
       experienceGroup.classList.remove('hidden');
-      profile.experience.forEach(exp => {
+      expList.forEach(exp => {
         const item = document.createElement('div');
         item.className = 'history-item';
         item.innerHTML = `<div class="history-title">${exp.role || 'Role'}</div><div class="history-sub">${exp.company || ''} ${exp.dates ? '• ' + exp.dates : ''}</div>${exp.location ? `<div class="history-sub">${exp.location}</div>` : ''}${exp.description ? `<div class="history-desc">${exp.description.substring(0, 140)}...</div>` : ''}`;
@@ -444,11 +668,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       experienceGroup.classList.add('hidden');
     }
 
+    // Resolve education: use structured array if available, else parse from resume_text
+    const eduList = (profile.education && profile.education.length > 0)
+      ? profile.education
+      : parseEduFromText(profile.resume_text || profile.summary || '');
+
     // Render Education List
     candEducation.innerHTML = '';
-    if (profile.education && profile.education.length > 0) {
+    if (eduList.length > 0) {
       educationGroup.classList.remove('hidden');
-      profile.education.forEach(edu => {
+      eduList.forEach(edu => {
         const item = document.createElement('div');
         item.className = 'history-item';
         item.innerHTML = `<div class="history-title">${edu.school || 'School'}</div><div class="history-sub">${edu.degree || ''} ${edu.dates ? '• ' + edu.dates : ''}</div>`;

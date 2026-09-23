@@ -118,8 +118,9 @@ export default function SourcedCandidates({ onNavigate }) {
   const totalSourcedCount = sourcedCandidates.length
   const unassignedCount = useMemo(() => sourcedCandidates.filter(c => !c.job_id).length, [sourcedCandidates])
   const sourcedThisWeekCount = useMemo(() => {
-    const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-    return sourcedCandidates.filter(c => new Date(c.created_at || Date.now()) >= oneWeekAgo).length
+    const now = new Date().getTime()
+    const oneWeekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000)
+    return sourcedCandidates.filter(c => new Date(c.created_at || now) >= oneWeekAgo).length
   }, [sourcedCandidates])
   const readyForSubmissionCount = useMemo(() => {
     return sourcedCandidates.filter(c => Boolean((c.email && !c.email.includes('example@email.com')) || c.notes || (c.skills && c.skills.length > 0))).length

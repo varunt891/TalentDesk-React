@@ -41,6 +41,17 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
     return () => { document.body.style.overflow = '' }
   }, [isMobile, sidebarOpen])
 
+  // Close mobile sidebar on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && sidebarOpen) {
+        setSidebarOpen(false)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [sidebarOpen])
+
   const toggleSidebarCollapse = () => {
     const next = !sidebarCollapsed
     setSidebarCollapsed(next)
@@ -120,7 +131,8 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
 
       <div
         className={cn(
-          'fixed inset-y-0 left-0 z-40 lg:relative lg:z-auto transition-transform duration-200 ease-[var(--ease-standard)] will-change-transform',
+          'fixed inset-y-0 left-0 z-40 shrink-0 overflow-hidden lg:relative lg:z-auto transition-[transform,width,min-width] duration-200 ease-[var(--ease-standard)] will-change-[transform,width]',
+          isMobile || !sidebarCollapsed ? 'w-52 min-w-[13rem]' : 'w-16 min-w-[4rem]',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
       >
