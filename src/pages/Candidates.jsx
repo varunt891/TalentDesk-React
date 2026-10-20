@@ -27,7 +27,7 @@ import { useOrgPreferences } from '../lib/admin/orgPreferences'
 const STATUSES = ['Sourced', 'Pending', 'Submitted', 'Shortlisted', 'Interview Scheduled', 'Interview Done', 'Offer Extended', 'Hired', 'Rejected', 'On Hold', 'Withdrew']
 const FEEDBACK = ['Awaiting', 'Positive', 'Negative', 'No Response']
 
-export default function Candidates({ onNavigate, openEditCandidateId }) {
+export default function Candidates({ onNavigate, openEditCandidateId, showAll = false }) {
   const { profile, organization, user } = useAuth()
   const orgId = organization?.id || profile?.org_id
   const userId = user?.id
@@ -151,7 +151,7 @@ export default function Candidates({ onNavigate, openEditCandidateId }) {
   const orgOptions = [...new Set(candidates.map(c => c.org_name || organization?.name || 'TalentDesk').filter(Boolean))].sort()
   const recruiterOptions = [...new Set(candidates.map(c => c.recruiter_name).filter(Boolean))].sort()
 
-  const [showAllRecords, setShowAllRecords] = useState(false)
+  const [showAllRecords, setShowAllRecords] = useState(showAll)
 
   const filtered = candidates.filter(c => {
     // Sourced candidates should NOT appear in Active Candidates initially until promoted

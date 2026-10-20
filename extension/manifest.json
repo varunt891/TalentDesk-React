@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TalentDesk Candidate Sourcing",
-  "version": "1.0.0",
+  "version": "1.1.4",
   "description": "1-Click Candidate Sourcing & Profile Scraper for TalentDesk ATS",
   "icons": {
     "16": "icons/icon-16.png",

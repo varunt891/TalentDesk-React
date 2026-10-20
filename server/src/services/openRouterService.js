@@ -1,6 +1,6 @@
 import { getConfiguredModels } from './modelConfig.js';
 
-const getOpenRouterModels = () => getConfiguredModels({
+export const getOpenRouterModels = () => getConfiguredModels({
   primaryEnv: 'OPENROUTER_MODEL',
   fallbackEnv: 'OPENROUTER_FALLBACK_MODELS',
   defaults: [

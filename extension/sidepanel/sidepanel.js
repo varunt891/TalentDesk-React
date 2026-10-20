@@ -1,8 +1,22 @@
 // TalentDesk Side Panel Controller Script (Hybrid DOM + Gemini AI Parser)
 
 document.addEventListener('DOMContentLoaded', async () => {
+  const { normalize, safeUrl, escapeHtml } = globalThis.TalentDeskProfile;
+  const panelWindow = await chrome.windows.getCurrent();
+  const activeTab = async () => (await chrome.tabs.query({ active: true, windowId: panelWindow.id }))[0];
+  const captureStatus = document.getElementById('captureStatus');
+  const resumeFile = document.getElementById('resumeFile');
+  const parseTextBtn = document.getElementById('parseTextBtn');
+  const skillsInput = document.getElementById('skillsInput');
+  let capturing = false;
+  let saving = false;
+  let imported = false;
+  let captureRevision = 0;
+  let operationRevision = 0;
+  let capturedTabId = null;
   const apiUrlInput = document.getElementById('apiUrl');
   const orgIdInput = document.getElementById('orgId');
+  const appUrlInput = document.getElementById('appUrl');
   const saveConfigBtn = document.getElementById('saveConfigBtn');
   const toggleSettingsBtn = document.getElementById('toggleSettingsBtn');
   const configCard = document.getElementById('configCard');
@@ -65,6 +79,83 @@ document.addEventListener('DOMContentLoaded', async () => {
   let currentProfileData = null;
   let existingCandidates = [];
 
+  async function runCapture(action) {
+    if (capturing || saving) return;
+    capturing = true;
+    operationRevision = ++captureRevision;
+    imported = false;
+    currentProfileData = null;
+    previewCard.classList.add('hidden');
+    duplicateAlert.classList.add('hidden');
+    openAppBtn.classList.add('hidden');
+    const controls = [scrapeBtn, deepScanBtn, aiParseBtn, resumeFile, parseTextBtn, importBtn];
+    controls.forEach(el => { el.disabled = true; });
+    captureStatus.textContent = 'Reading source...';
+    try { await action(); }
+    catch (err) {
+      showToast(err.message || 'Capture failed. Upload the document or paste its text.', 'error');
+      captureStatus.textContent = 'Capture failed. Upload a document or paste text.';
+    } finally {
+      capturing = false;
+      if (!currentProfileData && operationRevision === captureRevision) captureStatus.textContent = 'No profile captured. Upload a document or paste text.';
+      hideScanning();
+      controls.forEach(el => { el.disabled = false; });
+      importBtn.disabled = !currentProfileData || imported;
+    }
+  }
+
+  async function readTab(tab, deepScan) {
+    if (!tab?.id || !/^(https?|file):/.test(tab.url || '')) {
+      throw new Error('This browser page cannot be read. Upload a PDF or Word document, or paste text.');
+    }
+    capturedTabId = tab.id;
+    try { return await chrome.tabs.sendMessage(tab.id, { type: 'PARSE_PROFILE', deepScan }); }
+    catch {
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+      return chrome.tabs.sendMessage(tab.id, { type: 'PARSE_PROFILE', deepScan });
+    }
+  }
+
+  function invalidateCapture() {
+    captureRevision++;
+    if (capturing) captureStatus.textContent = 'Source changed. Capture again when ready.';
+  }
+  chrome.tabs.onActivated.addListener(info => {
+    if (info.windowId === panelWindow.id) invalidateCapture();
+  });
+  chrome.tabs.onUpdated.addListener((id, change) => {
+    if (id === capturedTabId && change.url) invalidateCapture();
+  });
+
+  async function parseDocument(file) {
+    if (!/\.(pdf|docx?|txt|html?)$/i.test(file.name)) throw new Error('Choose PDF, DOC, DOCX, TXT or HTML.');
+    if (file.size > 5 * 1024 * 1024) throw new Error('Document exceeds the 5 MB limit.');
+    const base = apiUrlInput.value.trim().replace(/\/$/, '');
+    const headers = await getAuthHeaders(base);
+    delete headers['Content-Type'];
+    const body = new FormData();
+    body.append('file', file);
+    const response = await fetch(`${base}/api/upload/resume`, { method: 'POST', headers, credentials: 'include', body, signal: AbortSignal.timeout(60000) });
+    const result = await response.json();
+    if (!response.ok || !result.success) throw new Error(result.error || 'Document could not be read.');
+    renderProfileCard({ ...result.profile, source: file.name, resume_text: result.extractedText, resume_file_key: result.resume_file_key, resume_file_name: result.resume_file_name, resume_file_size: result.resume_file_size });
+    if (result.warning) showToast(result.warning, 'error');
+  }
+  resumeFile.addEventListener('change', () => {
+    const file = resumeFile.files?.[0];
+    resumeFile.value = '';
+    if (file) runCapture(() => parseDocument(file));
+  });
+  parseTextBtn.addEventListener('click', () => runCapture(async () => {
+    const pageText = document.getElementById('pastedText').value.trim();
+    if (pageText.length < 30) throw new Error('Enter at least 30 characters of resume text.');
+    const base = apiUrlInput.value.trim().replace(/\/$/, '');
+    const response = await fetch(`${base}/api/ai/parse-web-profile`, { method: 'POST', headers: await getAuthHeaders(base), credentials: 'include', body: JSON.stringify({ pageText }), signal: AbortSignal.timeout(60000) });
+    const result = await response.json();
+    if (!response.ok || !result.success) throw new Error(result.error || 'Text parsing failed.');
+    renderProfileCard({ ...result.profile, source: 'Pasted resume', resume_text: pageText });
+  }));
+
   // Toggle settings panel
   if (toggleSettingsBtn && configCard) {
     toggleSettingsBtn.addEventListener('click', () => {
@@ -97,16 +188,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   // without any manual configuration. Update this constant when you redeploy.
   const LIVE_API_URL = 'https://talentdesk-react.onrender.com';
 
-  const config = await chrome.storage.local.get(['apiUrl', 'orgId']);
+  const config = await chrome.storage.local.get(['apiUrl', 'orgId', 'appUrl']);
   const apiUrl = config.apiUrl || LIVE_API_URL;
   const orgId = config.orgId || '';
 
   apiUrlInput.value = apiUrl;
   orgIdInput.value = orgId;
+  appUrlInput.value = config.appUrl || (apiUrl === LIVE_API_URL ? 'https://talent-desk-react.vercel.app' : apiUrl.replace(':4000', ':5173'));
 
   // Check active tab to see if it is a PDF
   try {
-    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const activeTab = (await chrome.tabs.query({ active: true, windowId: panelWindow.id }))[0];
     if (activeTab && activeTab.url && (activeTab.url.toLowerCase().includes('.pdf') || activeTab.url.toLowerCase().includes('/pdf/'))) {
       if (pdfBanner) pdfBanner.classList.remove('hidden');
     }
@@ -153,7 +245,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   saveConfigBtn.addEventListener('click', async () => {
     const newApiUrl = apiUrlInput.value.trim().replace(/\/$/, '');
     const newOrgId = orgIdInput.value.trim();
-    await chrome.storage.local.set({ apiUrl: newApiUrl, orgId: newOrgId });
+    const appUrl = safeUrl(appUrlInput.value.trim());
+    if (!safeUrl(newApiUrl) || !appUrl) return showToast('Enter valid HTTP or HTTPS server and app URLs.', 'error');
+    await chrome.storage.local.set({ apiUrl: newApiUrl, orgId: newOrgId, appUrl });
     showToast('Settings saved successfully', 'success');
     checkConnectionAndLoadJobs();
   });
@@ -163,7 +257,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Instantly show scanning banner & start auto-extraction on load
   showScanning('⚡ Scanning Page Profile...', 'Auto-scrolling page to trigger lazy-loaded sections...');
-  extractActiveTabProfile(true);
+  runCapture(() => extractActiveTabProfile(false));
 
   async function checkConnectionAndLoadJobs() {
     const currentApiUrl = apiUrlInput.value.trim().replace(/\/$/, '');
@@ -195,7 +289,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (Array.isArray(jobs)) {
           jobs.forEach(job => {
             const opt = document.createElement('option');
-            opt.value = job.id;
+            opt.value = job.job_id || job.id;
             opt.textContent = `${job.job_id || ''} ${job.title || job.job_title || 'Requisition'} (${job.client || 'Client'})`;
             jobSelect.appendChild(opt);
           });
@@ -224,6 +318,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
           existingCandidates = [];
         }
+        if (currentProfileData) checkForDuplicates(currentProfileData);
       }
     } catch (err) {
       statusDot.classList.remove('online');
@@ -235,15 +330,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Scrape Profile button handlers
   scrapeBtn.addEventListener('click', () => {
-    extractActiveTabProfile(false);
+    runCapture(() => extractActiveTabProfile(false));
   });
 
   deepScanBtn.addEventListener('click', () => {
-    extractActiveTabProfile(true);
+    runCapture(() => extractActiveTabProfile(true));
   });
 
   aiParseBtn.addEventListener('click', () => {
-    extractWithGeminiAI();
+    runCapture(() => extractWithGeminiAI());
   });
 
   async function extractActiveTabProfile(deepScan = false) {
@@ -258,7 +353,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     );
 
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const tab = await activeTab();
       if (!tab || !tab.id) {
         hideScanning();
         showToast('No active tab detected', 'error');
@@ -267,14 +362,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
 
-      const isPdfTab = tab.url && (tab.url.toLowerCase().includes('.pdf') || tab.url.toLowerCase().includes('/pdf/'));
+      const isPdfTab = tab.url && /\.(pdf|docx?)(?:[?#]|$)/i.test(tab.url);
       if (isPdfTab) {
-        activeBtn.disabled = false;
-        activeBtn.innerHTML = origText;
-        return extractWithGeminiAI();
+        return await captureDocumentTab(tab);
       }
 
-      chrome.tabs.sendMessage(tab.id, { type: 'PARSE_PROFILE', deepScan }, async (response) => {
+      const response = await readTab(tab, deepScan);
+      {
         // Handle chrome.runtime.lastError quietly (content script disconnected after extension reload)
         if (chrome.runtime.lastError) {
           const _err = chrome.runtime.lastError.message;
@@ -297,11 +391,11 @@ document.addEventListener('DOMContentLoaded', async () => {
           renderProfileCard(domProf);
         } else {
           // DOM failed or returned empty — fall back to AI for all extraction modes
-          extractWithGeminiAI();
+          await extractWithGeminiAI();
         }
-      });
+      }
     } catch (err) {
-      extractWithGeminiAI();
+      throw err;
     } finally {
       activeBtn.disabled = false;
       activeBtn.innerHTML = origText;
@@ -309,6 +403,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // AI Smart Parsing using Gemini API with Fallback Merging
+  async function captureDocumentTab(tab) {
+    capturedTabId = tab.id;
+    try {
+      const response = await fetch(tab.url, { credentials: 'include', signal: AbortSignal.timeout(20000) });
+      if (!response.ok) throw new Error('Document unavailable');
+      if (Number(response.headers.get('content-length')) > 5 * 1024 * 1024) throw new Error('Document exceeds 5 MB');
+      const blob = await response.blob();
+      const filename = decodeURIComponent(new URL(tab.url).pathname.split('/').pop());
+      await parseDocument(new File([blob], filename, { type: blob.type }));
+    } catch (err) {
+      throw new Error(`${err.message}. Use Resume document to upload the original file.`);
+    }
+  }
+
   async function extractWithGeminiAI() {
     aiParseBtn.disabled = true;
     aiParseBtn.innerHTML = '🤖 AI Extracting...';
@@ -318,7 +426,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     );
 
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const tab = await activeTab();
+      if (tab?.url && /\.(pdf|docx?)(?:[?#]|$)/i.test(tab.url)) {
+        try { return await captureDocumentTab(tab); }
+        finally { aiParseBtn.disabled = false; aiParseBtn.textContent = 'AI Smart Parse'; }
+      }
       if (!tab || !tab.id) {
         hideScanning();
         showToast('No active tab detected', 'error');
@@ -328,7 +440,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       // Send deepScan to content script to scroll & extract DOM data
-      chrome.tabs.sendMessage(tab.id, { type: 'PARSE_PROFILE', deepScan: true }, async (response) => {
+      const response = await readTab(tab, true).catch(() => null);
+      {
         // Handle chrome.runtime.lastError quietly (e.g. tab refreshed, content script reloaded)
         if (chrome.runtime.lastError) {
           const _err = chrome.runtime.lastError.message;
@@ -340,6 +453,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const isPdfTab = (tab.url && (tab.url.toLowerCase().includes('.pdf') || tab.url.toLowerCase().includes('/pdf/'))) ||
           (domProf.sourceUrl && domProf.sourceUrl.toLowerCase().includes('.pdf'));
+        const isLinkedInProfile = domProf.source === 'LinkedIn' || /(^|\.)linkedin\.com\//i.test((domProf.sourceUrl || tab.url || '').replace(/^https?:\/\//i, ''));
 
         // Use full raw page text as AI input — it contains everything AI needs (name, headline, 
         // location, experience, etc). domProf.summary is a pre-filtered DOM block that silently
@@ -365,6 +479,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             method: 'POST',
             headers,
             credentials: 'include',
+            signal: AbortSignal.timeout(60000),
             body: JSON.stringify({
               pageText: aiInputText,
               pageUrl: domProf.sourceUrl || tab.url
@@ -374,16 +489,24 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (aiRes.ok) {
             const aiJson = await aiRes.json();
             if (aiJson.success && aiJson.profile) {
-              const aiProf = aiJson.profile;
+              const aiProf = normalize(aiJson.profile);
 
               // AI data is authoritative for structured fields — DOM fills in what AI missed
-              aiProf.name = (aiProf.name && aiProf.name.length >= 2)
+              aiProf.name = isLinkedInProfile && domProf.name
+                ? domProf.name
+                : ((aiProf.name && aiProf.name.length >= 2)
                 ? aiProf.name
-                : (aiProf.full_name || aiProf.candidate_name || domProf.name || 'Candidate');
+                : (aiProf.full_name || aiProf.candidate_name || domProf.name || 'Candidate'));
 
-              aiProf.title = aiProf.title || aiProf.headline || aiProf.job_title || domProf.title || '';
-              aiProf.company = aiProf.company || aiProf.current_company || domProf.company || '';
-              aiProf.location = aiProf.location || aiProf.city || domProf.location || '';
+              aiProf.title = isLinkedInProfile
+                ? (domProf.title || aiProf.title || aiProf.headline || aiProf.job_title || '')
+                : (aiProf.title || aiProf.headline || aiProf.job_title || domProf.title || '');
+              aiProf.company = isLinkedInProfile
+                ? (domProf.company || aiProf.company || aiProf.current_company || '')
+                : (aiProf.company || aiProf.current_company || domProf.company || '');
+              aiProf.location = isLinkedInProfile
+                ? (domProf.location || aiProf.location || aiProf.city || '')
+                : (aiProf.location || aiProf.city || domProf.location || '');
               aiProf.email = aiProf.email || domProf.email || '';
               aiProf.phone = aiProf.phone || domProf.phone || '';
 
@@ -404,11 +527,9 @@ document.addEventListener('DOMContentLoaded', async () => {
               const cleanAiExp = rawAiExp.filter(e => {
                 const r = (e.role || '').toLowerCase();
                 const c = (e.company || '').toLowerCase();
-                const d = (e.description || '').toLowerCase();
-                const dt = (e.dates || '').toLowerCase();
 
                 // 1. Check for junk substrings in role, company, dates, or description
-                const hasJunk = junkTerms.some(t => r.includes(t) || c.includes(t) || d.includes(t) || dt.includes(t));
+                const hasJunk = junkTerms.some(t => r.trim() === t || c.trim() === t);
                 if (hasJunk) return false;
 
                 // 2. Reject emojis or social symbols in role / company
@@ -418,24 +539,28 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
 
                 // 3. Reject hashtags or overly long titles
-                if (r.includes('#') || c.includes('#') || r.length > 100) return false;
+                if (r.startsWith('#') || c.startsWith('#') || r.length > 150) return false;
 
                 return true;
               });
 
               const domExp = Array.isArray(domProf.experience) ? domProf.experience : [];
-              aiProf.experience = cleanAiExp.length > 0 ? cleanAiExp : domExp;
+              const safeAiExp = cleanExperienceArray(cleanAiExp);
+              const safeDomExp = cleanExperienceArray(domExp);
+              aiProf.experience = isLinkedInProfile && safeDomExp.length > 0
+                ? safeDomExp
+                : (safeAiExp.length > 0 ? safeAiExp : safeDomExp);
 
-              // Education: prefer AI, fall back to DOM
+              // LinkedIn's section DOM is more reliable than AI parsing page-wide social text.
               const aiEdu = Array.isArray(aiProf.education) ? aiProf.education : [];
               const domEdu = Array.isArray(domProf.education) ? domProf.education : [];
-              aiProf.education = aiEdu.length > 0 ? aiEdu : domEdu;
+              aiProf.education = isLinkedInProfile && domEdu.length > 0 ? domEdu : (aiEdu.length > 0 ? aiEdu : domEdu);
 
               // Skills: merge AI + DOM skills for maximum coverage
               const aiSkills = Array.isArray(aiProf.skills) ? aiProf.skills : [];
               const domSkills = Array.isArray(domProf.skills) ? domProf.skills : [];
               const mergedSkills = [...new Set([...aiSkills, ...domSkills])];
-              aiProf.skills = mergedSkills.length > 0 ? mergedSkills : ['Sourcing', 'Engineering'];
+              aiProf.skills = isLinkedInProfile && domSkills.length > 0 ? [...new Set(domSkills)] : mergedSkills;
 
               // Build full multi-line resume text for ABOUT / SUMMARY textarea
               let fullResume = `==================================================\n`;
@@ -446,7 +571,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               fullResume += `Source: ${aiProf.sourceUrl}\n`;
               fullResume += `==================================================\n\n`;
 
-              if (aiProf.summary && typeof aiProf.summary === 'string' && !aiProf.summary.includes('WORK EXPERIENCE TIMELINE')) {
+              if (!isLinkedInProfile && aiProf.summary && typeof aiProf.summary === 'string' && !aiProf.summary.includes('WORK EXPERIENCE TIMELINE')) {
                 fullResume += `ABOUT BIO:\n${aiProf.summary}\n\n`;
               }
 
@@ -474,9 +599,9 @@ document.addEventListener('DOMContentLoaded', async () => {
               }
 
               aiProf.summary = fullResume;
-              aiProf.resume_text = fullResume;
+              aiProf.resume_text = aiInputText && !isLinkedInProfile ? `${fullResume}\n\nFULL DOCUMENT:\n${aiInputText}` : fullResume;
 
-              showToast('✨ AI successfully extracted complete candidate profile!', 'success');
+              showToast('Profile extracted. Review the detected fields before saving.', 'success');
               renderProfileCard(aiProf);
             } else {
               hideScanning();
@@ -494,7 +619,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         aiParseBtn.disabled = false;
         aiParseBtn.innerHTML = '🤖 AI Smart Parse';
-      });
+      }
     } catch (err) {
       hideScanning();
       showToast('AI Parsing failed: ' + err.message, 'error');
@@ -503,8 +628,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  function looksLikeExperienceRole(value) {
+    const role = String(value || '').trim();
+    if (!role || role.length > 90) return false;
+    if (/^(?:at\b|i\b|my\b|in my\b|as a\b|as an\b|responsible for\b|spearheaded\b|developed\b|helped\b|led\b|focused on\b)/i.test(role)) return false;
+    if (/\bI\s+(?:play|am|have|lead|manage|work|focus|help|develop|drive)\b/i.test(role)) return false;
+    return !/[.!?]/.test(role);
+  }
+
   function cleanExperienceArray(expList) {
     if (!Array.isArray(expList)) return [];
+
+    const looksLikeCredential = value => /\b(certificate|certification|credential|license|licence|course|learning|issued by|certx|live)\b/i.test(String(value || ''));
 
     const junkRoleTerms = [
       'happy for you', 'deserves this', 'congrats', 'congratulations',
@@ -516,8 +651,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     return expList.filter(e => {
       const r = (e.role || '').toLowerCase().trim();
       const c = (e.company || '').toLowerCase().trim();
+      const combined = `${r} ${c} ${(e.dates || '').toLowerCase()} ${(e.description || '').toLowerCase()}`;
 
       if (!r || r.length < 2) return false;
+      const isEngagement = value => /\b\d[\d,.]*\s*[·•-]\s*\d[\d,.]*\s+comments?\b/i.test(String(value || '')) || (/\b(?:comments?|reactions?|likes?|reposts?)\b/i.test(String(value || '')) && /^\s*\d[\d,.]*/.test(String(value || '')));
+      if (isEngagement(r) || isEngagement(c) || isEngagement(e.dates)) return false;
+      if (looksLikeCredential(combined)) return false;
+      if (!/\b(?:19|20)\d{2}\b/.test(String(e.dates || '')) && /\b\d+\s*(?:s|m|h|d|w|mo|mos|yr|yrs)\s*[·•-]?\s*$/i.test(String(e.dates || ''))) return false;
+      if (!looksLikeExperienceRole(r) || /[!?]/.test(r) || /(^|\s)#\w+|\b(reposted|captured by|visit website)/i.test(r)) return false;
 
       // Reject exact button labels like "more", "... more", "show all", "comment"
       if (r === 'more' || r === '... more' || r === 'show all' || r === 'comment' || r === 'like' || r === 'repost') {
@@ -535,7 +676,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       // Reject hashtags or emojis in role or company
-      if (r.includes('#') || c.includes('#')) return false;
+      if (r.startsWith('#') || c.startsWith('#')) return false;
       if (/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(r) ||
         /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(c)) {
         return false;
@@ -548,13 +689,169 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  function prepareResumeText(text) {
+    return String(text || '')
+      .replace(/\r\n?/g, '\n')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/(Show all|reactions)(Experience|Education|Skills)(?=[A-Z])/gi, '$1\n$2:')
+      .replace(/(Experience|Education|Skills)(?=[A-Z][a-z])/g, '$1:\n')
+      .replace(/([a-z)])(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})/g, '$1\n$2 $3')
+      .replace(/(Remote|Hybrid|On-site)(?=[A-Z])/g, '$1\n')
+      .replace(/\b(\d+\s*(?:years?|yrs|yr|months?|mos|mo)(?:\s+\d+\s*(?:years?|yrs|yr|months?|mos|mo))*)(?=(?:Remote|Hybrid|On-site|[A-Z][a-z]))/gi, '$1\n')
+      .replace(/([.!?])([A-Z][A-Za-z0-9&@.,'() /+-]{2,140}?\s*·\s*(?:Full-time|Part-time|Contract|Freelance|Self-employed|Internship|Apprenticeship|Seasonal))/g, '$1\n$2')
+      .replace(/\s+(ABOUT BIO|SUMMARY|WORK EXPERIENCE(?: TIMELINE)?|EXPERIENCE|EMPLOYMENT HISTORY|PROFESSIONAL EXPERIENCE|EDUCATION|SKILLS|FULL DOCUMENT(?: TEXT)?):/gi, '\n$1:')
+      .replace(/\s+(\d+\.\s+)/g, '\n$1')
+      .replace(/\s+(Dates? & Duration:|Dates?:|Duration:|Location:|Details?:)/gi, '\n   $1')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  function splitCompactExperienceLine(line) {
+    const employmentTypes = '(Full-time|Part-time|Contract|Freelance|Self-employed|Internship|Apprenticeship|Seasonal)';
+    const match = String(line || '').match(new RegExp(`^(.+?)\\s*·\\s*${employmentTypes}$`));
+    if (!match) return null;
+    const combined = match[1].trim();
+    const boundary = findRoleCompanyBoundary(combined);
+    if (!boundary) return null;
+    return {
+      role: boundary.role,
+      company: boundary.company
+    };
+  }
+
+  function findRoleCompanyBoundary(combined) {
+    const roleTail = /\b(associate|assistant|executive|specialist|manager|lead|director|head|trainee|intern|analyst|consultant|engineer|developer|artist|educator|strategist|writer|coordinator|administrator|recruiter|designer|architect|supervisor|officer|sde|scm|hr|sales|marketing|operations|supply chain)\b/i;
+    const companyHint = /\b(inc|llc|ltd|limited|pvt|private|technologies|technology|systems|solutions|services|media|steel|amazon|flipkart|direct)\b/i;
+    const candidates = [];
+
+    for (let i = 2; i < combined.length - 1; i++) {
+      const prev = combined[i - 1];
+      const cur = combined[i];
+      const next = combined[i + 1] || '';
+      const isBoundary = prev !== ' ' && /[A-Z]/.test(cur) && /[a-z]/.test(next);
+      if (!isBoundary) continue;
+
+      const role = combined.slice(0, i).trim();
+      const company = combined.slice(i).trim();
+      if (role.length < 2 || role.length > 120 || company.length < 2 || company.length > 90) continue;
+      if (!/[a-zA-Z]/.test(role) || !/[a-zA-Z]/.test(company)) continue;
+
+      let score = 0;
+      if (roleTail.test(role)) score += 10;
+      if (companyHint.test(company)) score += 4;
+      if (/^[A-Z][A-Za-z0-9&@.,'() /+-]+$/.test(company)) score += 2;
+      if (role.split(/\s+/).length >= 2) score += 1;
+      score -= Math.abs(company.split(/\s+/).length - 2) * 0.25;
+      candidates.push({ role, company, score });
+    }
+
+    candidates.sort((a, b) => b.score - a.score || a.role.length - b.role.length);
+    return candidates[0] || null;
+  }
+
+  function parseExperienceLines(lines) {
+    const result = [];
+    let cur = null;
+    const push = () => {
+      if (cur && cur.role) result.push(cur);
+      cur = null;
+    };
+
+    lines.forEach(line => {
+      const clean = line.replace(/^\d+\.\s*/, '').replace(/^\s*[-*]\s*/, '').trim();
+      if (!clean) return;
+
+      const compact = splitCompactExperienceLine(clean);
+      const atMatch = clean.match(/^(.+?)\s+at\s+(.+)$/i);
+      if (compact || atMatch) {
+        push();
+        cur = compact
+          ? { role: compact.role, company: compact.company, dates: '', location: '', description: '' }
+          : { role: atMatch[1].trim(), company: atMatch[2].trim(), dates: '', location: '', description: '' };
+        return;
+      }
+
+      if (!cur) {
+        cur = { role: clean, company: '', dates: '', location: '', description: '' };
+        return;
+      }
+
+      if (/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December|\d{4}|Present|Current|yrs?|years?|mos?|months?)\b/i.test(clean) && !cur.dates) {
+        cur.dates = clean;
+      } else if (/(^|\s·\s)(Remote|Hybrid|On-site)$/i.test(clean) && !cur.location) {
+        cur.location = clean;
+      } else if (!cur.company && clean.length < 100 && !/^skills?:/i.test(clean)) {
+        cur.company = clean.split(/[•·]/)[0].trim();
+      } else {
+        cur.description = [cur.description, clean].filter(Boolean).join('\n');
+      }
+    });
+
+    push();
+    return result;
+  }
+
+  function parseStructuredExperienceBlock(block) {
+    const lines = prepareResumeText(block).split('\n').map(line => line.trim()).filter(Boolean);
+    if (lines.length === 0) return null;
+
+    const first = lines.shift().replace(/^\d+\.\s*/, '').trim();
+    const entry = { role: '', company: '', dates: '', location: '', description: '' };
+    const compact = splitCompactExperienceLine(first);
+    const atMatch = first.match(/^(.+?)\s+at\s+(.+)$/i);
+    if (compact) {
+      entry.role = compact.role;
+      entry.company = compact.company;
+    } else if (atMatch) {
+      entry.role = atMatch[1].trim();
+      entry.company = atMatch[2].trim();
+    } else {
+      entry.role = first;
+    }
+
+    lines.forEach(line => {
+      const clean = line.replace(/^\s*[-*]\s*/, '').trim();
+      if (/^dates?\s*&?\s*duration\s*:/i.test(clean)) {
+        entry.dates = clean.replace(/^dates?\s*&?\s*duration\s*:/i, '').trim();
+      } else if (/^dates?\s*:/i.test(clean)) {
+        entry.dates = clean.replace(/^dates?\s*:/i, '').trim();
+      } else if (/^duration\s*:/i.test(clean)) {
+        entry.dates = [entry.dates, clean.replace(/^duration\s*:/i, '').trim()].filter(Boolean).join(' - ');
+      } else if (/^location\s*:/i.test(clean)) {
+        entry.location = clean.replace(/^location\s*:/i, '').trim();
+      } else if (/^details?\s*:/i.test(clean)) {
+        entry.description = [entry.description, clean.replace(/^details?\s*:/i, '').trim()].filter(Boolean).join('\n');
+      } else if (/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december|\d{4}|present|current)\b/i.test(clean) && !entry.dates) {
+        entry.dates = clean;
+      } else if (!entry.company && clean.length <= 90) {
+        entry.company = clean.split(/[•·]/)[0].trim();
+      } else {
+        entry.description = [entry.description, clean].filter(Boolean).join('\n');
+      }
+    });
+
+    return entry.role ? entry : null;
+  }
+
   function parseExpFromText(resumeText) {
     var result = [];
     if (!resumeText) return result;
-    var match = resumeText.match(/WORK EXPERIENCE[:\s]*([\s\S]*?)(?=\nEDUCATION:|\nSKILLS:|\n={10,}|$)/i);
-    if (!match) match = resumeText.match(/WORK EXPERIENCE[:\s]*([\s\S]*)/i);
+    resumeText = prepareResumeText(resumeText);
+    var match = resumeText.match(/(?:^|\n)(?:WORK EXPERIENCE(?: TIMELINE)?|EXPERIENCE|EMPLOYMENT HISTORY|PROFESSIONAL EXPERIENCE)\s*:?\s*([\s\S]*?)(?=\n(?:EDUCATION|SKILLS|FULL DOCUMENT|ABOUT BIO|SUMMARY)\b|={10,}|$)/i);
     if (!match) return result;
-    var lines = match[1].split('\n').map(function (l) { return l.trim(); }).filter(function (l) { return l.length > 1; });
+
+    var section = match[1].trim();
+    var compactLines = section.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
+    if (compactLines.some(splitCompactExperienceLine)) {
+      return parseExperienceLines(compactLines);
+    }
+
+    var numberedBlocks = section.split(/\n(?=\d+\.\s+)/).map(function (b) { return b.trim(); }).filter(Boolean);
+    if (numberedBlocks.length > 0 && /^\d+\.\s+/.test(numberedBlocks[0])) {
+      return numberedBlocks.map(parseStructuredExperienceBlock).filter(Boolean);
+    }
+
+    var lines = section.split('\n').map(function (l) { return l.trim(); }).filter(function (l) { return l.length > 1; });
     var cur = null;
     lines.forEach(function (line) {
       var isDate = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december|\d{4}|present|current)/i.test(line);
@@ -587,7 +884,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   function parseEduFromText(resumeText) {
     var result = [];
     if (!resumeText) return result;
-    var match = resumeText.match(/EDUCATION[:\s]*([\s\S]*?)(?=\nSKILLS:|\nFULL DOCUMENT|\n={10,}|$)/i);
+    resumeText = prepareResumeText(resumeText);
+    var match = resumeText.match(/(?:^|\n)EDUCATION\s*:?\s*([\s\S]*?)(?=\n(?:SKILLS|FULL DOCUMENT)\b|\n(?:WORK EXPERIENCE|EXPERIENCE)\b|\n={10,}|$)/i);
     if (!match) return result;
     var lines = match[1].split('\n').map(function (l) { return l.trim(); }).filter(function (l) { return l.length > 1; });
     var cur = null;
@@ -610,7 +908,62 @@ document.addEventListener('DOMContentLoaded', async () => {
     return result;
   }
 
+  function buildReviewResumeText(profile, expList, eduList) {
+    const rawExisting = prepareResumeText(profile.resume_text || profile.summary || profile.rawPageText || '');
+    const hasSections = /CANDIDATE:/i.test(rawExisting) && /(WORK EXPERIENCE TIMELINE|WORK EXPERIENCE:|EXPERIENCE:|FULL DOCUMENT)/i.test(rawExisting) && rawExisting.split('\n').length >= 4;
+    if (hasSections) return rawExisting;
+
+    let text = `==================================================\n`;
+    text += `CANDIDATE: ${profile.name || 'Candidate'}\n`;
+    if (profile.title) text += `Headline: ${profile.title}\n`;
+    if (profile.company) text += `Company: ${profile.company}\n`;
+    if (profile.location) text += `Location: ${profile.location}\n`;
+    if (profile.email) text += `Email: ${profile.email}\n`;
+    if (profile.phone) text += `Phone: ${profile.phone}\n`;
+    if (profile.sourceUrl) text += `Source: ${profile.sourceUrl}\n`;
+    text += `==================================================\n\n`;
+
+    if (profile.summary && profile.summary !== profile.resume_text) {
+      text += `SUMMARY:\n${prepareResumeText(profile.summary)}\n\n`;
+    }
+
+    if (expList.length > 0) {
+      text += 'WORK EXPERIENCE TIMELINE:\n';
+      expList.forEach((exp, idx) => {
+        text += `${idx + 1}. ${exp.role || 'Role'}${exp.company ? ' at ' + exp.company : ''}\n`;
+        if (exp.dates) text += `   Dates & Duration: ${exp.dates}\n`;
+        if (exp.location) text += `   Location: ${exp.location}\n`;
+        if (exp.description) text += `   Details: ${prepareResumeText(exp.description)}\n`;
+        text += '\n';
+      });
+    }
+
+    if (eduList.length > 0) {
+      text += 'EDUCATION:\n';
+      eduList.forEach((edu, idx) => {
+        text += `${idx + 1}. ${edu.school || 'School'}${edu.degree ? ' - ' + edu.degree : ''}${edu.dates ? ` (${edu.dates})` : ''}\n`;
+      });
+      text += '\n';
+    }
+
+    if (profile.skills && profile.skills.length > 0) {
+      text += `SKILLS:\n${profile.skills.join(', ')}\n\n`;
+    }
+
+    const fullParts = [];
+    if (rawExisting) fullParts.push(rawExisting);
+    const rawPage = prepareResumeText(profile.rawPageText || '');
+    if (rawPage && rawPage !== rawExisting) fullParts.push(rawPage);
+    if (fullParts.length > 0) {
+      text += `FULL DOCUMENT TEXT:\n${fullParts.join('\n\n---\n\n').substring(0, 25000)}`;
+    }
+
+    return text.trim();
+  }
+
   function renderProfileCard(profile) {
+    if (operationRevision !== captureRevision) return;
+    profile = normalize(profile);
     hideScanning();
     currentProfileData = profile;
 
@@ -622,12 +975,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     candSource.value = profile.source || 'Web Import';
 
     candEmail.value = profile.email || '';
-    candEmail.placeholder = profile.email ? 'Email' : 'Click "Contact info" on LinkedIn to populate';
+    candEmail.placeholder = 'Add email manually';
 
     candPhone.value = profile.phone || '';
-    candPhone.placeholder = profile.phone ? 'Phone' : 'Click "Contact info" on LinkedIn to populate';
-
-    candSummary.value = profile.summary || profile.resume_text || '';
+    candPhone.placeholder = 'Add phone manually';
 
     if (profile.avatarUrl) {
       candAvatar.src = profile.avatarUrl;
@@ -635,12 +986,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       candAvatar.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%236b7280' d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
     }
 
-    candSourceUrl.href = profile.sourceUrl || '#';
+    if (profile.sourceUrl) candSourceUrl.href = profile.sourceUrl;
+    else candSourceUrl.removeAttribute('href');
     candSourceUrl.textContent = profile.sourceUrl || '';
+    candSourceUrl.classList.toggle('hidden', !profile.sourceUrl);
 
     // Render Skills tags
     candSkills.innerHTML = '';
-    const skills = profile.skills && profile.skills.length > 0 ? profile.skills : ['Sourcing', 'Engineering'];
+    const skills = profile.skills;
+    skillsInput.value = skills.join(', ');
     skills.forEach(skill => {
       const tag = document.createElement('span');
       tag.className = 'tag';
@@ -653,6 +1007,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       ? profile.experience
       : parseExpFromText(profile.resume_text || profile.summary || '');
     const expList = cleanExperienceArray(rawExpList);
+    profile.experience = expList;
 
     // Render Experience List
     candExperience.innerHTML = '';
@@ -661,7 +1016,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       expList.forEach(exp => {
         const item = document.createElement('div');
         item.className = 'history-item';
-        item.innerHTML = `<div class="history-title">${exp.role || 'Role'}</div><div class="history-sub">${exp.company || ''} ${exp.dates ? '• ' + exp.dates : ''}</div>${exp.location ? `<div class="history-sub">${exp.location}</div>` : ''}${exp.description ? `<div class="history-desc">${exp.description.substring(0, 140)}...</div>` : ''}`;
+        item.innerHTML = `<div class="history-title">${escapeHtml(exp.role)}</div><div class="history-sub">${escapeHtml(exp.company)} ${escapeHtml(exp.dates)}</div><div class="history-sub">${escapeHtml(exp.location)}</div><div class="history-desc">${escapeHtml(exp.description)}</div>`;
         candExperience.appendChild(item);
       });
     } else {
@@ -669,9 +1024,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Resolve education: use structured array if available, else parse from resume_text
-    const eduList = (profile.education && profile.education.length > 0)
+    const eduListRaw = (profile.education && profile.education.length > 0)
       ? profile.education
       : parseEduFromText(profile.resume_text || profile.summary || '');
+    const eduList = eduListRaw.filter(edu => {
+      const school = String(edu.school || '').trim();
+      return school.length >= 2 && !/^grade\s*:?\s*[a-f][+-]?$/i.test(school) && !/\b\d[\d,.]*\s*[·•-]\s*\d[\d,.]*\s+comments?\b/i.test(school) && !/^\d[\d,.]*\s+comments?$/i.test(school);
+    });
+    profile.education = eduList;
+    profile.resume_text = buildReviewResumeText(profile, expList, eduList);
+    candSummary.value = profile.resume_text;
 
     // Render Education List
     candEducation.innerHTML = '';
@@ -680,7 +1042,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       eduList.forEach(edu => {
         const item = document.createElement('div');
         item.className = 'history-item';
-        item.innerHTML = `<div class="history-title">${edu.school || 'School'}</div><div class="history-sub">${edu.degree || ''} ${edu.dates ? '• ' + edu.dates : ''}</div>`;
+        item.innerHTML = `<div class="history-title">${escapeHtml(edu.school)}</div><div class="history-sub">${escapeHtml(edu.degree)} ${escapeHtml(edu.dates)}</div>`;
         candEducation.appendChild(item);
       });
     } else {
@@ -688,6 +1050,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     previewCard.classList.remove('hidden');
+    const missing = ['name', 'title', 'location'].filter(key => !profile[key]);
+    captureStatus.textContent = missing.length ? `Not detected: ${missing.join(', ')}. Review before saving.` : 'Profile ready for review';
     checkForDuplicates(profile);
   }
 
@@ -726,7 +1090,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       'nameless penguin', 'anonymous bird', 'anonymous candidate', 'sample candidate',
       'john doe', 'jane doe', 'candidate name', 'your name', 'skip to main content'
     ];
-    if (!normName || genericNames.some(gn => normName.includes(gn))) return;
+    const hasUsableName = normName && !genericNames.includes(normName);
 
     // Generic dummy sample emails used in template sites (e.g. resume.com)
     const genericEmails = [
@@ -771,7 +1135,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (normCompany && cCompany && normCompany !== cCompany) return false;
 
       // 4. Full Name Match (only if supported by matching company or neither profile has conflicting details)
-      if (normName && cFullName && normName === cFullName && normName.split(' ').length >= 2) {
+      if (hasUsableName && cFullName && normName === cFullName && normName.split(' ').length >= 2) {
         if (normCompany && cCompany && normCompany === cCompany) return true;
         if (!normUrl && !cUrl && !normEmail && !cEmail) return true;
       }
@@ -789,9 +1153,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 1-Click Import Handler
   importBtn.addEventListener('click', async () => {
-    if (!currentProfileData) return;
+    if (!currentProfileData || capturing || imported || importBtn.disabled) return;
+    if (!candName.value.trim() || /^(candidate|pdf candidate|imported candidate)$/i.test(candName.value.trim())) {
+      candName.focus();
+      return showToast('Enter the candidate name before importing.', 'error');
+    }
+    if (candEmail.value.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candEmail.value.trim())) {
+      candEmail.focus();
+      return showToast('Enter a valid email address or leave it blank.', 'error');
+    }
 
     importBtn.disabled = true;
+    saving = true;
+    [scrapeBtn, deepScanBtn, aiParseBtn, resumeFile, parseTextBtn].forEach(el => { el.disabled = true; });
     importBtn.innerHTML = 'Importing...';
 
     const currentApiUrl = apiUrlInput.value.trim().replace(/\/$/, '');
@@ -799,7 +1173,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const selectedJobId = jobSelect.value;
 
     const fullRawName = candName.value.trim() || 'Imported Candidate';
-    const nameParts = fullRawName.split(' ');
+    const nameParts = fullRawName.split(/\s+/);
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || '';
 
@@ -818,11 +1192,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       client: candCompany.value.trim() || null,
       company: candCompany.value.trim() || null,
       location: candLocation.value.trim() || null,
-      linkedin: candSourceUrl.href || null,
-      source_url: candSourceUrl.href || null,
+      linkedin: safeUrl(currentProfileData.sourceUrl) || null,
+      source_url: safeUrl(currentProfileData.sourceUrl) || null,
       notes: fullResumeNotes,
       resume_text: fullResumeNotes,
-      skills: Array.from(candSkills.querySelectorAll('.tag')).map(t => t.textContent),
+      skills: normalize({ skills: skillsInput.value }).skills,
+      resume_file_key: currentProfileData.resume_file_key || null,
+      resume_file_name: currentProfileData.resume_file_name || null,
+      resume_file_size: currentProfileData.resume_file_size || null,
       job_id: selectedJobId || null,
       internal_status: 'Sourced'
     };
@@ -839,6 +1216,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const responseBody = await res.json().catch(() => ({}));
 
       if (res.ok) {
+        imported = true;
         const savedCand = responseBody.data ? (Array.isArray(responseBody.data) ? responseBody.data[0] : responseBody.data) : responseBody;
         const savedName = [savedCand.first_name, savedCand.last_name].filter(Boolean).join(' ') || savedCand.name || 'Candidate';
         showToast(`🎉 ${savedName} imported to TalentDesk!`, 'success');
@@ -851,9 +1229,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (openAppBtn) {
           // Derive the frontend URL from the configured API URL.
           // Render deploys frontend + backend together; adjust if split-deployed.
-          const frontendBase = currentApiUrl
-            .replace(':4000', ':5173')
-            .replace('/api', '');
+          const frontendBase = (safeUrl(appUrlInput.value) || currentApiUrl).replace(/\/$/, '');
           openAppBtn.href = `${frontendBase}/sourced-candidates`;
           openAppBtn.classList.remove('hidden');
         }
@@ -864,8 +1240,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
       showToast('Network error during import: ' + err.message, 'error');
     } finally {
-      importBtn.disabled = false;
-      importBtn.innerHTML = `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v16m8-8H4"/></svg> 1-Click Import to TalentDesk`;
+      saving = false;
+      [scrapeBtn, deepScanBtn, aiParseBtn, resumeFile, parseTextBtn].forEach(el => { el.disabled = false; });
+      importBtn.disabled = imported;
+      importBtn.textContent = imported ? 'Imported' : 'Import to TalentDesk';
     }
   });
 

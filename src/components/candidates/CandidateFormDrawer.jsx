@@ -50,6 +50,7 @@ export default function CandidateFormDrawer({
   onClose,
   candidateData = null,
   candidates = [],
+  defaultStatus = 'Pending',
   onSaved,
   showToast: showToastProp,
 }) {
@@ -127,6 +128,8 @@ export default function CandidateFormDrawer({
       } else {
         setForm({
           ...emptyForm,
+          internal_status: defaultStatus,
+          submission_date: defaultStatus === 'Sourced' ? '' : new Date().toISOString().slice(0, 10),
           work_auth: market.defaultWorkAuth,
           recruiter_name: defaultRecruiter,
         })
@@ -134,7 +137,7 @@ export default function CandidateFormDrawer({
       setSkillInput('')
       setFormErrors({})
     }
-  }, [open, candidateData, market.defaultWorkAuth, profile, user])
+  }, [open, candidateData, defaultStatus, market.defaultWorkAuth, profile, user])
 
   const inp = (field) => ({
     value: form[field],
@@ -220,6 +223,8 @@ export default function CandidateFormDrawer({
           return {
             ...prev,
             first_name: p.first_name || prev.first_name,
+            job_title: prev.internal_status === 'Sourced' ? (candTitle || prev.job_title) : prev.job_title,
+            client: prev.internal_status === 'Sourced' ? (p.current_company || prev.client) : prev.client,
             last_name: p.last_name || prev.last_name,
             email: p.email || prev.email,
             phone: p.phone || prev.phone,
@@ -273,6 +278,8 @@ export default function CandidateFormDrawer({
             resume_file_name: res.resume_file_name || prev.resume_file_name,
             resume_file_size: res.resume_file_size || prev.resume_file_size,
             first_name: p.first_name || prev.first_name,
+            job_title: prev.internal_status === 'Sourced' ? (candTitle || prev.job_title) : prev.job_title,
+            client: prev.internal_status === 'Sourced' ? (p.current_company || prev.client) : prev.client,
             last_name: p.last_name || prev.last_name,
             email: p.email || prev.email,
             phone: p.phone || prev.phone,
@@ -286,7 +293,8 @@ export default function CandidateFormDrawer({
               : prev.skills,
           }
         })
-        showToast(res.resume_file_key ? `⚡ Resume saved & profile auto-filled from ${file.name}!` : `⚡ Text & profile auto-filled from ${file.name}!`)
+        if (res.warning) showToast(res.warning, 'warning')
+        else showToast(res.resume_file_key ? `Resume saved and profile filled from ${file.name}` : `Text and profile filled from ${file.name}`)
       } else {
         throw new Error(res?.error || 'Failed to parse document text.')
       }
@@ -313,8 +321,8 @@ export default function CandidateFormDrawer({
 
   const handleSave = async () => {
     const errors = {}
-    if (!form.first_name) errors.first_name = 'First name is required'
-    if (!form.job_id) errors.job_id = 'Job ID is required'
+    if (!form.first_name.trim()) errors.first_name = 'First name is required'
+    if (form.internal_status !== 'Sourced' && !form.job_id.trim()) errors.job_id = 'Job ID is required'
     if (hasInterviewScheduledStatus(form) && !form.interview_date) errors.interview_date = 'Interview date is required'
     if (hasInterviewScheduledStatus(form) && !form.interview_time) errors.interview_time = 'Interview time is required'
     if (hasInterviewScheduledStatus(form) && !form.interview_type) errors.interview_type = 'Interview type is required'
@@ -383,7 +391,7 @@ export default function CandidateFormDrawer({
     <Drawer
       open={open}
       onClose={onClose}
-      title={isEdit ? 'Edit Candidate' : 'Add Candidate'}
+      title={isEdit ? 'Edit Candidate' : defaultStatus === 'Sourced' ? 'Add Sourced Candidate' : 'Add Candidate'}
       size="lg"
       footer={
         <>
@@ -465,8 +473,8 @@ export default function CandidateFormDrawer({
         <div>
           <FormSectionTitle>Submission Details</FormSectionTitle>
           <div className="grid sm:grid-cols-2 gap-3.5">
-            <FormField label="Submission Date" required><Input {...inp('submission_date')} type="date" /></FormField>
-            <FormField label="Job ID" required error={formErrors.job_id}>
+            <FormField label="Submission Date" required={form.internal_status !== 'Sourced'}><Input {...inp('submission_date')} type="date" /></FormField>
+            <FormField label="Job ID" required={form.internal_status !== 'Sourced'} error={formErrors.job_id}>
               <Input ref={jobIdRef} {...inp('job_id')} error={!!formErrors.job_id} placeholder="JOB-001" />
             </FormField>
             <FormField label="Job Title" required>
@@ -485,7 +493,7 @@ export default function CandidateFormDrawer({
           <FormSectionTitle>Status Tracking</FormSectionTitle>
           <div className="grid sm:grid-cols-2 gap-3.5">
             <FormField label="Internal Status">
-              <Select value={form.internal_status} onChange={v => setStatusField('internal_status', v)} options={STATUSES.map(s => ({ value: s, label: s }))} />
+              <Select value={form.internal_status} onChange={v => setStatusField('internal_status', v)} options={['Sourced', ...STATUSES].map(s => ({ value: s, label: s }))} />
             </FormField>
             <FormField label="External Status">
               <Select value={form.external_status} onChange={v => setStatusField('external_status', v)} options={STATUSES.map(s => ({ value: s, label: s }))} />

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Login from './pages/Login'
@@ -32,6 +32,7 @@ import { ToastProvider } from './components/ui'
 import GlobalCallbackAlert from './components/GlobalCallbackAlert'
 
 function ProtectedRoute({ children }) {
+  const location = useLocation()
   const { user, loading } = useAuth()
 
   if (loading) {
@@ -46,14 +47,14 @@ function ProtectedRoute({ children }) {
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />
+    return <Navigate to="/login" state={{ from: location.pathname }} replace />
   }
 
   return children
 }
 
 function MainApp() {
-  const [currentPage, setCurrentPage] = useState('dashboard')
+  const [currentPage, setCurrentPage] = useState(() => window.location.pathname.replace(/\/$/, '') === '/sourced-candidates' ? 'sourced_candidates' : 'dashboard')
   const [navParams, setNavParams] = useState({})
   const navigateTo = (page, params = {}) => {
     setNavParams(params)
@@ -113,7 +114,7 @@ function MainApp() {
       case 'dashboard': return <Dashboard onNavigate={navigateTo} />
       case 'tasks': return <TasksPage user={profile || user} onNavigate={navigateTo} />
       case 'ai_center': return <AICenter />
-      case 'candidates': return <Candidates onNavigate={navigateTo} openEditCandidateId={navParams.editCandidateId} />
+      case 'candidates': return <Candidates onNavigate={navigateTo} openEditCandidateId={navParams.editCandidateId} showAll={Boolean(navParams.showAll)} />
       case 'sourced_candidates': return <SourcedCandidates onNavigate={navigateTo} />
       case 'jobs': return <Jobs onNavigate={navigateTo} openEditJobId={navParams.editJobId} />
       case 'job_detail': return <JobDetail jobId={navParams.jobId} onNavigate={navigateTo} />

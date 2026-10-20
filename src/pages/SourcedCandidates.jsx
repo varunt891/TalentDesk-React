@@ -8,19 +8,16 @@ import CandidateDetailDrawer from '../components/candidates/CandidateDetailDrawe
 import * as XLSX from 'xlsx'
 import { PageContainer } from '../components/layout/PageContainer'
 import {
-  Button, Badge, StatusPill, Card, CardHeader,
-  KPICard, PageHeader, Table, Modal, Switch, Icon, Avatar, Menu, EmptyState, useToast, cn,
+  Button, Badge, StatusPill, Card,
+  KPICard, Table, Modal, Icon, Avatar, EmptyState, useToast, cn,
 } from '../components/ui'
-import { WorkspaceSearch, FilterWorkspace, EntityDrawer } from '../components/workspace'
+import { WorkspaceSearch, FilterWorkspace } from '../components/workspace'
 import { ensureArray } from '../lib/candidateHealth'
-import MarkdownView from '../components/MarkdownView'
 
 export default function SourcedCandidates({ onNavigate }) {
-  const { profile, organization, user } = useAuth()
-  const orgId = organization?.id || profile?.org_id
-  const isSuperAdmin = profile?.role === 'superadmin' || profile?.role === 'SUPERADMIN'
+  const { organization } = useAuth()
 
-  const { candidates, loading, updateCandidate, deleteCandidate, refetch } = useCandidates()
+  const { candidates, loading, error, addCandidates, updateCandidate, deleteCandidate, refetch } = useCandidates()
 
   // Sourced candidates filter (internal_status === 'Sourced' or no active pipeline status)
   const sourcedCandidates = useMemo(() => {
@@ -34,9 +31,11 @@ export default function SourcedCandidates({ onNavigate }) {
   const [viewMode, setViewMode] = useState('table')
   const [showBulkUpload, setShowBulkUpload] = useState(false)
   const [showAddDrawer, setShowAddDrawer] = useState(false)
+  const [editingCandidate, setEditingCandidate] = useState(null)
   const [showExtensionModal, setShowExtensionModal] = useState(false)
   const [showDetail, setShowDetail] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Promotion modal state
   const [promoteModal, setPromoteModal] = useState({ isOpen: false, candidates: [] })
@@ -105,7 +104,7 @@ export default function SourcedCandidates({ onNavigate }) {
       if (quickFilter === 'has_email' && (!c.email || c.email.includes('example@email.com'))) return false
       if (quickFilter === 'high_priority' && c.priority !== 'High') return false
       if (quickFilter === 'today') {
-        const createdDate = new Date(c.created_at || Date.now()).toDateString()
+        const createdDate = new Date(c.created_at).toDateString()
         const todayDate = new Date().toDateString()
         if (createdDate !== todayDate) return false
       }
@@ -120,14 +119,20 @@ export default function SourcedCandidates({ onNavigate }) {
   const sourcedThisWeekCount = useMemo(() => {
     const now = new Date().getTime()
     const oneWeekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000)
-    return sourcedCandidates.filter(c => new Date(c.created_at || now) >= oneWeekAgo).length
+    return sourcedCandidates.filter(c => c.created_at && new Date(c.created_at) >= oneWeekAgo && new Date(c.created_at).getTime() <= now).length
   }, [sourcedCandidates])
   const readyForSubmissionCount = useMemo(() => {
-    return sourcedCandidates.filter(c => Boolean((c.email && !c.email.includes('example@email.com')) || c.notes || (c.skills && c.skills.length > 0))).length
+    return sourcedCandidates.filter(c => Boolean((c.first_name || c.name) && (c.email || c.phone) && (c.resume_text || ensureArray(c.skills).length))).length
   }, [sourcedCandidates])
 
   // Selection
   const clearSelection = () => setSelected([])
+
+  const openAddSourcedCandidate = () => {
+    setShowDetail(null)
+    setEditingCandidate(null)
+    setShowAddDrawer(true)
+  }
 
   // Single promotion trigger
   const openPromoteSingle = (cand) => {
@@ -149,6 +154,7 @@ export default function SourcedCandidates({ onNavigate }) {
 
   // Execute promotion
   const handleExecutePromote = async () => {
+    if (isPromoting) return
     if (!promoteModal.candidates || promoteModal.candidates.length === 0) return
     setIsPromoting(true)
 
@@ -158,10 +164,11 @@ export default function SourcedCandidates({ onNavigate }) {
       const clientToSet = selectedJob ? selectedJob.client : undefined
 
       let count = 0
+      const failed = []
       for (const cand of promoteModal.candidates) {
         const updates = {
           internal_status: targetStatus,
-          submission_date: targetStatus === 'Submitted' ? new Date().toISOString().slice(0, 10) : cand.submission_date || new Date().toISOString().slice(0, 10)
+          submission_date: targetStatus === 'Submitted' ? new Date().toISOString().slice(0, 10) : cand.submission_date || null
         }
         if (targetJobId) {
           updates.job_id = targetJobId
@@ -172,14 +179,20 @@ export default function SourcedCandidates({ onNavigate }) {
           updates.notes = cand.notes ? `${cand.notes}\n\n[Promotion Note (${new Date().toLocaleDateString()})]: ${promoteNotes}` : `[Promotion Note (${new Date().toLocaleDateString()})]: ${promoteNotes}`
         }
 
-        const { error } = await updateCandidate(cand.id, updates)
-        if (!error) count++
+        try {
+          const { error } = await updateCandidate(cand.id, updates)
+          if (error) failed.push(cand)
+          else count++
+        } catch {
+          failed.push(cand)
+        }
       }
 
-      showToast(`🚀 ${count} candidate(s) promoted to Active Candidates!`, 'success')
-      setPromoteModal({ isOpen: false, candidates: [] })
-      clearSelection()
-      refetch()
+      if (count) showToast(`${count} candidate(s) promoted to Active Candidates!`)
+      if (failed.length) showToast(`${failed.length} promotion(s) failed. Review and retry.`, 'error')
+      setPromoteModal({ isOpen: failed.length > 0, candidates: failed })
+      setSelected(failed.map(c => c.id))
+      await refetch()
     } catch (err) {
       showToast('Error promoting candidates: ' + err.message, 'error')
     } finally {
@@ -214,12 +227,24 @@ export default function SourcedCandidates({ onNavigate }) {
 
   // Bulk Delete
   const handleBulkDelete = async () => {
+    if (isDeleting) return
     if (!window.confirm(`Are you sure you want to delete ${selected.length} selected sourced candidates?`)) return
-    for (const id of selected) {
-      await deleteCandidate(id)
+    setIsDeleting(true)
+    const failed = []
+    try {
+      for (const id of selected) {
+        try {
+          const { error } = await deleteCandidate(id)
+          if (error) failed.push(id)
+        } catch { failed.push(id) }
+      }
+      const count = selected.length - failed.length
+      if (count) showToast(`Deleted ${count} candidate(s)`)
+      if (failed.length) showToast(`${failed.length} deletion(s) failed. Please retry.`, 'error')
+      setSelected(failed)
+    } finally {
+      setIsDeleting(false)
     }
-    showToast(`Deleted ${selected.length} candidate(s)`)
-    clearSelection()
   }
 
   return (
@@ -228,16 +253,13 @@ export default function SourcedCandidates({ onNavigate }) {
       <div className="flex flex-col gap-4 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2.5 mb-1">
+            <div className="flex flex-wrap items-center gap-2.5 mb-1">
               <div className="w-8 h-8 rounded-lg bg-teal-500/10 border border-teal-500/20 text-teal-400 flex items-center justify-center font-bold">
                 <Icon name="download" size={18} />
               </div>
-              <h1 className="text-2xl font-serif font-bold text-text tracking-tight">Sourced Candidates Pool</h1>
+              <h1 className="text-xl font-bold text-text">Sourced Candidates</h1>
               <Badge tone="teal" size="sm">{totalSourcedCount} Sourced</Badge>
             </div>
-            <p className="text-xs text-text3">
-              Imported profiles from Chrome Extension, Web Scrapes & Resume Parsing ready to be assigned & submitted.
-            </p>
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap">
@@ -269,7 +291,7 @@ export default function SourcedCandidates({ onNavigate }) {
               variant="primary"
               size="sm"
               icon="plus"
-              onClick={() => setShowAddDrawer(true)}
+              onClick={openAddSourcedCandidate}
             >
               Add Sourced Candidate
             </Button>
@@ -306,7 +328,7 @@ export default function SourcedCandidates({ onNavigate }) {
       </div>
 
       {/* KPI Metrics Header (Compact & High-Density) */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-4 [&_.truncate]:whitespace-normal [&_.truncate]:overflow-visible [&_.truncate]:text-clip">
         <KPICard
           compact
           label="TOTAL SOURCED"
@@ -335,16 +357,16 @@ export default function SourcedCandidates({ onNavigate }) {
           compact
           label="READY TO PROMOTE"
           value={readyForSubmissionCount}
-          helper="With resume & skills parsed"
+          helper="Name, contact and resume or skills"
           icon="checkCircle"
           tone="green"
         />
       </div>
 
       {/* Filter Workspace (Sleek Compact Layout) */}
-      <div className="p-3 bg-surface border border-border rounded-xl mb-4 flex flex-col gap-2 shadow-xs">
+      <div className="py-3 border-y border-border mb-4 flex flex-col gap-2">
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5">
-          <div className="flex-1 min-w-[240px]">
+          <div className="flex-1 min-w-0">
             <WorkspaceSearch
               value={search}
               onChange={setSearch}
@@ -375,18 +397,22 @@ export default function SourcedCandidates({ onNavigate }) {
               <button
                 type="button"
                 onClick={() => setViewMode('table')}
-                className={cn('p-1 rounded text-xs transition-colors', viewMode === 'table' ? 'bg-surface text-text shadow-xs font-semibold' : 'text-text3 hover:text-text')}
+                className={cn('w-8 h-8 flex items-center justify-center rounded transition-colors', viewMode === 'table' ? 'bg-surface text-text shadow-xs font-semibold' : 'text-text3 hover:text-text')}
                 title="Table View"
+                aria-label="Table view"
+                aria-pressed={viewMode === 'table'}
               >
-                <Icon name="table" size={13} />
+                <Icon name="listBullets" size={16} />
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode('grid')}
-                className={cn('p-1 rounded text-xs transition-colors', viewMode === 'grid' ? 'bg-surface text-text shadow-xs font-semibold' : 'text-text3 hover:text-text')}
+                className={cn('w-8 h-8 flex items-center justify-center rounded transition-colors', viewMode === 'grid' ? 'bg-surface text-text shadow-xs font-semibold' : 'text-text3 hover:text-text')}
                 title="Grid / Board View"
+                aria-label="Grid view"
+                aria-pressed={viewMode === 'grid'}
               >
-                <Icon name="grid" size={13} />
+                <Icon name="dashboard" size={16} />
               </button>
             </div>
           </div>
@@ -421,7 +447,7 @@ export default function SourcedCandidates({ onNavigate }) {
 
       {/* Bulk Action Floating Bar */}
       {selected.length > 0 && (
-        <div className="sticky top-4 z-20 mb-4 p-3 rounded-xl bg-surface border border-accent/30 shadow-xl flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="sticky top-4 z-20 mb-4 p-3 rounded-lg bg-surface border border-accent/30 shadow-xl flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Badge tone="accent" size="md">{selected.length} Selected</Badge>
             <span className="text-xs text-text2 hidden sm:inline">Choose an action for selected sourced candidates:</span>
@@ -464,7 +490,9 @@ export default function SourcedCandidates({ onNavigate }) {
       )}
 
       {/* Main Content Area: Table vs Grid View */}
-      {loading ? (
+      {error ? (
+        <EmptyState icon="alertCircle" title="Could not load sourced candidates" description={error.message || 'Connection failed.'} action={<Button onClick={refetch} icon="refresh">Retry</Button>} />
+      ) : loading ? (
         <Card className="p-12 text-center">
           <div className="inline-block w-8 h-8 border-3 border-border border-t-accent rounded-full animate-spin mb-3" />
           <p className="text-xs font-semibold text-text2">Loading Sourced Candidates...</p>
@@ -480,7 +508,7 @@ export default function SourcedCandidates({ onNavigate }) {
                 <Button variant="primary" size="sm" icon="upload" onClick={() => setShowBulkUpload(true)}>
                   Upload Resumes
                 </Button>
-                <Button variant="secondary" size="sm" icon="plus" onClick={() => setShowAddDrawer(true)}>
+                <Button variant="secondary" size="sm" icon="plus" onClick={openAddSourcedCandidate}>
                   Add Manually
                 </Button>
               </div>
@@ -489,7 +517,7 @@ export default function SourcedCandidates({ onNavigate }) {
         </Card>
       ) : viewMode === 'table' ? (
         /* TABLE VIEW */
-        <Card className="overflow-hidden border border-border rounded-xl shadow-xs">
+        <div className="min-w-0 overflow-hidden">
           <Table
             compact={false}
             selectable={true}
@@ -665,7 +693,7 @@ export default function SourcedCandidates({ onNavigate }) {
               }
             ]}
           />
-        </Card>
+        </div>
       ) : (
         /* GRID / CARD VIEW */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -833,7 +861,6 @@ export default function SourcedCandidates({ onNavigate }) {
                 <option value="Pending">Pending (Review Needed)</option>
                 <option value="Submitted">Submitted (Submitted to Client)</option>
                 <option value="Shortlisted">Shortlisted</option>
-                <option value="Interview Scheduled">Interview Scheduled</option>
               </select>
             </div>
 
@@ -878,6 +905,7 @@ export default function SourcedCandidates({ onNavigate }) {
           candidate={showDetail}
           isOpen={Boolean(showDetail)}
           onClose={() => setShowDetail(null)}
+          onEdit={cand => { setShowDetail(null); setEditingCandidate(cand); setShowAddDrawer(true) }}
           onPromote={(cand) => {
             setShowDetail(null)
             openPromoteSingle(cand)
@@ -910,11 +938,19 @@ export default function SourcedCandidates({ onNavigate }) {
                 variant="danger"
                 size="sm"
                 onClick={async () => {
-                  await deleteCandidate(deleteId)
-                  showToast('Candidate deleted')
-                  setDeleteId(null)
-                  refetch()
+                  if (isDeleting) return
+                  setIsDeleting(true)
+                  try {
+                    const { error } = await deleteCandidate(deleteId)
+                    if (error) throw error
+                    showToast('Candidate deleted')
+                    setSelected(ids => ids.filter(id => id !== deleteId))
+                    setDeleteId(null)
+                  } catch (err) {
+                    showToast(err.message || 'Deletion failed. Please retry.', 'error')
+                  } finally { setIsDeleting(false) }
                 }}
+                loading={isDeleting}
               >
                 Delete
               </Button>
@@ -926,8 +962,10 @@ export default function SourcedCandidates({ onNavigate }) {
       {/* BULK UPLOAD MODAL */}
       <BulkResumeUploadModal
         isOpen={showBulkUpload}
+        preserveResumeTitle
         onClose={() => setShowBulkUpload(false)}
-        onImportComplete={() => refetch()}
+        addCandidates={rows => addCandidates(rows.map(row => ({ ...row, internal_status: 'Sourced', submission_date: null })))}
+        showToast={showToast}
       />
 
       {/* GET CHROME EXTENSION MODAL */}
@@ -990,7 +1028,7 @@ export default function SourcedCandidates({ onNavigate }) {
           </div>
 
           <div className="flex items-center justify-between pt-2 border-t border-border">
-            <span className="text-[11px] text-text3 font-mono">Version 1.0.0 · Chrome, Edge, Brave</span>
+            <span className="text-[11px] text-text3 font-mono">Version 1.1.0 · Chrome, Edge, Brave</span>
             <Button variant="secondary" size="sm" onClick={() => setShowExtensionModal(false)}>
               Done
             </Button>
@@ -1000,10 +1038,13 @@ export default function SourcedCandidates({ onNavigate }) {
 
       {/* ADD CANDIDATE FORM DRAWER */}
       <CandidateFormDrawer
-        isOpen={showAddDrawer}
-        onClose={() => setShowAddDrawer(false)}
-        onSave={() => refetch()}
-        initialValues={{ internal_status: 'Sourced' }}
+        key={editingCandidate?.id || 'new-sourced-candidate'}
+        open={showAddDrawer}
+        onClose={() => { setShowAddDrawer(false); setEditingCandidate(null) }}
+        candidateData={editingCandidate}
+        onSaved={() => refetch()}
+        candidates={candidates}
+        defaultStatus="Sourced"
       />
     </PageContainer>
   )

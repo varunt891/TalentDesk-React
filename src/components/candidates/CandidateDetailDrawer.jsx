@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { EntityDrawer } from '../workspace'
-import { Button, Badge, StatusPill, Icon, Avatar, useToast, cn } from '../ui'
+import { Button, Badge, StatusPill, Icon, useToast } from '../ui'
 import MarkdownView from '../MarkdownView'
 import { ensureArray } from '../../lib/candidateHealth'
 
@@ -10,31 +10,19 @@ import { ensureArray } from '../../lib/candidateHealth'
 export function parseWorkTimeline(notesText) {
   if (!notesText || typeof notesText !== 'string') return { summary: '', items: [] }
 
-  const cleanText = notesText.trim()
-  
-  // Look for timeline header
-  const timelineMatch = cleanText.match(/(?:WORK EXPERIENCE TIMELINE:|WORK HISTORY:|EXPERIENCE TIMELINE:|WORK EXPERIENCE:)/i)
-  
-  let summary = cleanText
-  let timelineContent = ''
-
-  if (timelineMatch) {
-    const splitIndex = timelineMatch.index
-    summary = cleanText.substring(0, splitIndex).trim()
-    timelineContent = cleanText.substring(splitIndex + timelineMatch[0].length).trim()
+  const cleanText = notesText.replace(/\r\n?/g, '\n').trim()
+  const timelineMatch = /^(?:WORK EXPERIENCE TIMELINE|WORK HISTORY|EXPERIENCE TIMELINE|WORK EXPERIENCE|PROFESSIONAL EXPERIENCE|EMPLOYMENT HISTORY)\s*:?\s*$/im.exec(cleanText)
+  if (!timelineMatch) {
+    const summary = /(?:CANDIDATE:|HEADLINE:|SOURCE URL?:|={4,}|FULL DOCUMENT)/i.test(cleanText) ? '' : cleanText
+    return { summary, items: [] }
   }
 
-  if (!timelineContent && cleanText.match(/\b\d+\.\s+[A-Z]/)) {
-    timelineContent = cleanText
-    summary = ''
-  }
-
-  if (!timelineContent) {
-    return { summary: cleanText, items: [] }
-  }
-
-  // Split by numbered items (e.g. "1. IT Business Support...", "2. Systems Engineer...")
-  const rawItems = timelineContent.split(/(?=\b\d+\.\s+)/g).map(s => s.trim()).filter(Boolean)
+  const contentStart = timelineMatch.index + timelineMatch[0].length
+  const remainingText = cleanText.slice(contentStart)
+  const nextSection = /^(?:EDUCATION(?: & QUALIFICATIONS)?|SKILLS|FULL DOCUMENT(?: TEXT)?|ABOUT BIO|SUMMARY)\s*:?\s*$/im.exec(remainingText)
+  const timelineContent = (nextSection ? remainingText.slice(0, nextSection.index) : remainingText).trim()
+  const rawItems = timelineContent.split(/(?=^\d+\.\s+)/m).map(s => s.trim()).filter(s => /^\d+\.\s+/.test(s))
+  const summary = cleanText.slice(0, timelineMatch.index).replace(/^[=\s]+|[=\s]+$/g, '').trim()
 
   const items = rawItems.map((raw, idx) => {
     const cleanRaw = raw.replace(/^\d+\.\s*/, '')
@@ -102,12 +90,10 @@ export default function CandidateDetailDrawer({
   const [copiedField, setCopiedField] = useState(null)
   const { toast } = useToast()
 
-  if (!candidate) return null
-
-  const fullName = `${candidate.first_name || ''} ${candidate.last_name || ''}`.trim() || candidate.name || 'Candidate Details'
-  const skillsList = ensureArray(candidate.skills)
-  const isSourced = !candidate.internal_status || candidate.internal_status === 'Sourced'
-  const notesText = candidate.notes || candidate.resume_text || ''
+  const fullName = `${candidate?.first_name || ''} ${candidate?.last_name || ''}`.trim() || candidate?.name || 'Candidate Details'
+  const skillsList = ensureArray(candidate?.skills)
+  const isSourced = !candidate?.internal_status || candidate.internal_status === 'Sourced'
+  const notesText = candidate?.notes || candidate?.resume_text || ''
 
   // Parse work timeline from notes
   const parsedTimeline = useMemo(() => parseWorkTimeline(notesText), [notesText])
@@ -125,12 +111,30 @@ export default function CandidateDetailDrawer({
     return skillsList.filter(s => s.toLowerCase().includes(skillSearch.toLowerCase().trim()))
   }, [skillsList, skillSearch])
 
+  if (!candidate) return null
+
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'experience', label: 'Work History', count: parsedTimeline.items.length },
     { id: 'skills', label: 'Skills & Keywords', count: skillsList.length },
     { id: 'resume', label: 'Full Resume & Notes' },
   ]
+
+  const profileFacts = [
+    { label: 'Current / last company', value: candidate.client || candidate.company, icon: 'building' },
+    { label: 'Target requisition', value: candidate.job_id ? `${candidate.job_id}${candidate.job_title ? ` · ${candidate.job_title}` : ''}` : 'Unassigned', icon: 'briefcase' },
+    { label: 'Work authorization', value: candidate.work_authorization || candidate.work_auth || candidate.visa_status || candidate.authorization, icon: 'shield' },
+    { label: 'Total experience', value: candidate.experience || candidate.experience_years || candidate.total_experience, icon: 'clock' },
+    { label: 'Expected rate', value: candidate.pay_rate || candidate.bill_rate || candidate.salary || candidate.rate, icon: 'sparkles' },
+    { label: 'Recruiter', value: candidate.recruiter_name || candidate.assigned_to, icon: 'user' },
+  ].filter(fact => Boolean(fact.value))
+
+  const sourceUrl = candidate.linkedin || candidate.source_url
+  const overviewSummary = candidate.executive_summary || candidate.summary || (
+    parsedTimeline.summary && !/(?:CANDIDATE:|HEADLINE:|SOURCE:|={4,}|PARSED RESUME)/i.test(parsedTimeline.summary)
+      ? parsedTimeline.summary
+      : ''
+  )
 
   return (
     <EntityDrawer
@@ -185,228 +189,90 @@ export default function CandidateDetailDrawer({
       }
     >
       <div className="space-y-5">
-        {/* Top Header Banner for Sourced Candidates */}
-        {isSourced && (
-          <div className="p-3.5 rounded-xl bg-teal-500/10 border border-teal-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
-                <span className="text-xs font-bold text-teal-400 uppercase tracking-wider">Sourced Candidate Record</span>
-                <Badge tone="teal" size="sm">Status: {candidate.internal_status || 'Sourced'}</Badge>
-              </div>
-              <p className="text-[11px] text-text3 mt-0.5 leading-tight">
-                Profile extracted via TalentDesk Sourcing Engine. Click Promote to assign to active hiring requisitions.
-              </p>
-            </div>
-
-            {onPromote && (
-              <Button
-                variant="primary"
-                size="sm"
-                icon="arrowRight"
-                onClick={() => onPromote(candidate)}
-                className="shrink-0 w-full sm:w-auto"
-              >
-                Promote to Active Candidate
-              </Button>
-            )}
-          </div>
-        )}
-
         {/* TAB 1: OVERVIEW */}
         {activeTab === 'overview' && (
-          <div className="space-y-5">
-            {/* Contact & Essential Info Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {/* Email */}
-              <div className="p-3 rounded-xl bg-surface2/70 border border-border/70 flex flex-col justify-between">
-                <div className="flex items-center justify-between gap-1 mb-1">
-                  <span className="text-[10px] font-bold text-text3 uppercase tracking-wider flex items-center gap-1">
-                    <Icon name="mail" size={12} className="text-accent" /> Email Address
-                  </span>
-                  {candidate.email && (
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(candidate.email, 'Email')}
-                      className="text-text3 hover:text-accent p-0.5 rounded transition-colors"
-                      title="Copy Email"
-                    >
-                      <Icon name={copiedField === 'Email' ? 'check' : 'copy'} size={12} />
+          <div className="space-y-6">
+            {isSourced && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="w-2 h-2 rounded-full bg-teal-500" />
+                <Badge tone="teal" size="sm">Sourced</Badge>
+                {candidate.created_at && <span className="text-text3">Added {new Date(candidate.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>}
+              </div>
+            )}
+
+            <section aria-label="Contact information">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-text3 mb-2">Contact</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
+                {candidate.email && (
+                  <div className="flex items-center justify-between gap-3 py-3 border-t border-border/70 min-w-0">
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-text3 mb-1">Email</div>
+                      <a href={`mailto:${candidate.email}`} className="text-sm font-medium text-text hover:text-accent truncate block">{candidate.email}</a>
+                    </div>
+                    <button type="button" onClick={() => copyToClipboard(candidate.email, 'Email')} className="text-text3 hover:text-accent p-1" title="Copy email" aria-label="Copy email">
+                      <Icon name={copiedField === 'Email' ? 'check' : 'copy'} size={14} />
                     </button>
-                  )}
-                </div>
-                {candidate.email ? (
-                  <a
-                    href={`mailto:${candidate.email}`}
-                    className="text-xs font-semibold text-text hover:text-accent truncate select-all block"
-                  >
-                    {candidate.email}
-                  </a>
-                ) : (
-                  <span className="text-xs text-text3 italic">Not provided</span>
-                )}
-              </div>
-
-              {/* Phone */}
-              <div className="p-3 rounded-xl bg-surface2/70 border border-border/70 flex flex-col justify-between">
-                <div className="flex items-center justify-between gap-1 mb-1">
-                  <span className="text-[10px] font-bold text-text3 uppercase tracking-wider flex items-center gap-1">
-                    <Icon name="phone" size={12} className="text-accent" /> Phone Number
-                  </span>
-                  {candidate.phone && (
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(candidate.phone, 'Phone')}
-                      className="text-text3 hover:text-accent p-0.5 rounded transition-colors"
-                      title="Copy Phone"
-                    >
-                      <Icon name={copiedField === 'Phone' ? 'check' : 'copy'} size={12} />
-                    </button>
-                  )}
-                </div>
-                {candidate.phone ? (
-                  <a
-                    href={`tel:${candidate.phone}`}
-                    className="text-xs font-semibold text-text hover:text-accent truncate select-all block"
-                  >
-                    {candidate.phone}
-                  </a>
-                ) : (
-                  <span className="text-xs text-text3 italic">Not provided</span>
-                )}
-              </div>
-
-              {/* Location */}
-              <div className="p-3 rounded-xl bg-surface2/70 border border-border/70 flex flex-col justify-between">
-                <span className="text-[10px] font-bold text-text3 uppercase tracking-wider flex items-center gap-1 mb-1">
-                  <Icon name="pin" size={12} className="text-accent" /> Location
-                </span>
-                <span className="text-xs font-semibold text-text truncate">
-                  {candidate.location || 'Not Specified'}
-                </span>
-              </div>
-
-              {/* Current Designation / Role */}
-              <div className="p-3 rounded-xl bg-surface2/70 border border-border/70 flex flex-col justify-between">
-                <span className="text-[10px] font-bold text-text3 uppercase tracking-wider flex items-center gap-1 mb-1">
-                  <Icon name="briefcase" size={12} className="text-accent" /> Current Role / Designation
-                </span>
-                <span className="text-xs font-semibold text-text truncate">
-                  {candidate.job_title || candidate.current_role || candidate.role || 'Not Specified'}
-                </span>
-              </div>
-
-              {/* Current Company */}
-              <div className="p-3 rounded-xl bg-surface2/70 border border-border/70 flex flex-col justify-between">
-                <span className="text-[10px] font-bold text-text3 uppercase tracking-wider flex items-center gap-1 mb-1">
-                  <Icon name="building" size={12} className="text-accent" /> Current / Last Company
-                </span>
-                <span className="text-xs font-semibold text-text truncate">
-                  {candidate.client || candidate.company || 'Not Specified'}
-                </span>
-              </div>
-
-              {/* Target Job Requisition */}
-              <div className="p-3 rounded-xl bg-surface2/70 border border-border/70 flex flex-col justify-between">
-                <span className="text-[10px] font-bold text-text3 uppercase tracking-wider flex items-center gap-1 mb-1">
-                  <Icon name="briefcase" size={12} className="text-accent" /> Target Requisition
-                </span>
-                {candidate.job_id ? (
-                  <div className="text-xs font-semibold text-text truncate">
-                    <span className="font-mono text-accent">{candidate.job_id}</span>
-                    {candidate.job_title ? ` · ${candidate.job_title}` : ''}
                   </div>
-                ) : (
-                  <span className="text-xs text-amber-400 font-medium italic">Unassigned Requisition</span>
+                )}
+                {candidate.phone && (
+                  <div className="flex items-center justify-between gap-3 py-3 border-t border-border/70 min-w-0">
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-text3 mb-1">Phone</div>
+                      <a href={`tel:${candidate.phone}`} className="text-sm font-medium text-text hover:text-accent truncate block">{candidate.phone}</a>
+                    </div>
+                    <button type="button" onClick={() => copyToClipboard(candidate.phone, 'Phone')} className="text-text3 hover:text-accent p-1" title="Copy phone" aria-label="Copy phone">
+                      <Icon name={copiedField === 'Phone' ? 'check' : 'copy'} size={14} />
+                    </button>
+                  </div>
+                )}
+                {candidate.location && (
+                  <div className="py-3 border-t border-border/70 min-w-0">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-text3 mb-1">Location</div>
+                    <div className="text-sm font-medium text-text">{candidate.location}</div>
+                  </div>
                 )}
               </div>
+            </section>
 
-              {/* Work Authorization */}
-              <div className="p-3 rounded-xl bg-surface2/70 border border-border/70 flex flex-col justify-between">
-                <span className="text-[10px] font-bold text-text3 uppercase tracking-wider flex items-center gap-1 mb-1">
-                  <Icon name="shield" size={12} className="text-accent" /> Work Authorization
-                </span>
-                <span className="text-xs font-semibold text-text truncate">
-                  {candidate.work_authorization || candidate.visa_status || candidate.authorization || 'Not Specified'}
-                </span>
-              </div>
-
-              {/* Total Experience */}
-              <div className="p-3 rounded-xl bg-surface2/70 border border-border/70 flex flex-col justify-between">
-                <span className="text-[10px] font-bold text-text3 uppercase tracking-wider flex items-center gap-1 mb-1">
-                  <Icon name="clock" size={12} className="text-accent" /> Total Experience
-                </span>
-                <span className="text-xs font-semibold text-text truncate">
-                  {candidate.experience || candidate.experience_years || candidate.total_experience || 'Not Specified'}
-                </span>
-              </div>
-
-              {/* Pay / Bill Rate */}
-              <div className="p-3 rounded-xl bg-surface2/70 border border-border/70 flex flex-col justify-between">
-                <span className="text-[10px] font-bold text-text3 uppercase tracking-wider flex items-center gap-1 mb-1">
-                  <Icon name="sparkles" size={12} className="text-accent" /> Expected / Pay Rate
-                </span>
-                <span className="text-xs font-semibold text-text truncate">
-                  {candidate.pay_rate || candidate.bill_rate || candidate.salary || candidate.rate || 'Not Specified'}
-                </span>
-              </div>
-
-              {/* Assigned Recruiter */}
-              <div className="p-3 rounded-xl bg-surface2/70 border border-border/70 flex flex-col justify-between">
-                <span className="text-[10px] font-bold text-text3 uppercase tracking-wider flex items-center gap-1 mb-1">
-                  <Icon name="user" size={12} className="text-accent" /> Recruiter
-                </span>
-                <span className="text-xs font-semibold text-text truncate">
-                  {candidate.recruiter_name || candidate.assigned_to || 'TalentDesk Recruiter'}
-                </span>
-              </div>
-            </div>
-
-            {/* Source Link & Created Date */}
-            <div className="p-3.5 rounded-xl bg-surface2/70 border border-border/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-text3 text-[11px] font-bold uppercase tracking-wider shrink-0">Source Link:</span>
-                {candidate.linkedin || candidate.source_url ? (
-                  <a
-                    href={candidate.linkedin || candidate.source_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-accent hover:underline flex items-center gap-1 font-mono text-xs truncate"
-                  >
-                    {candidate.linkedin || candidate.source_url}
-                    <Icon name="externalLink" size={12} className="shrink-0" />
-                  </a>
-                ) : (
-                  <span className="text-text3 italic">Web Imported Profile</span>
-                )}
-              </div>
-
-              {candidate.created_at && (
-                <div className="text-text3 text-[11px] shrink-0">
-                  Imported on: <span className="font-semibold text-text">{new Date(candidate.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+            {profileFacts.length > 0 && (
+              <section aria-label="Candidate details">
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-text3 mb-2">Candidate details</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8">
+                  {profileFacts.map(fact => (
+                    <div key={fact.label} className="py-3 border-t border-border/70 min-w-0">
+                      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-text3 mb-1">
+                        <Icon name={fact.icon} size={12} className="text-accent" /> {fact.label}
+                      </div>
+                      <div className={`text-sm font-medium truncate ${fact.label === 'Target requisition' && !candidate.job_id ? 'text-text3' : 'text-text'}`}>{fact.value}</div>
+                    </div>
+                  ))}
                 </div>
-              )}
-            </div>
+              </section>
+            )}
 
-            {/* Executive Summary Card */}
-            {parsedTimeline.summary && (
-              <div className="p-4 rounded-xl bg-surface2/50 border border-border/80">
-                <h4 className="text-xs font-bold text-text uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <Icon name="summarize" size={14} className="text-accent" /> Candidate Executive Summary
-                </h4>
-                <p className="text-xs text-text2 leading-relaxed whitespace-pre-wrap font-sans">
-                  {parsedTimeline.summary}
-                </p>
+            {sourceUrl && (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-3 border-y border-border/70">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-text3">Source profile</span>
+                <a href={sourceUrl} target="_blank" rel="noreferrer" className="text-xs font-medium text-accent hover:underline flex items-center gap-1 min-w-0">
+                  <span className="truncate">{sourceUrl}</span><Icon name="externalLink" size={12} className="shrink-0" />
+                </a>
               </div>
+            )}
+
+            {overviewSummary && (
+              <section aria-label="Candidate summary">
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-text3 mb-2">Professional summary</h3>
+                <p className="text-sm text-text2 leading-relaxed whitespace-pre-wrap">{overviewSummary}</p>
+              </section>
             )}
 
             {/* Top Skills Preview */}
             {skillsList.length > 0 && (
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-xs font-bold text-text uppercase tracking-wider flex items-center gap-1.5">
-                    <Icon name="code" size={14} className="text-accent" /> Key Skills & Competencies ({skillsList.length})
-                  </h4>
+                  <h3 className="text-[11px] font-bold text-text3 uppercase tracking-wider flex items-center gap-1.5">
+                    <Icon name="code" size={14} className="text-accent" /> Skills ({skillsList.length})
+                  </h3>
                   <button
                     type="button"
                     onClick={() => setActiveTab('skills')}
@@ -419,7 +285,7 @@ export default function CandidateDetailDrawer({
                   {skillsList.slice(0, 10).map((sk, idx) => (
                     <span
                       key={idx}
-                      className="px-2.5 py-1 rounded-lg bg-surface2 text-xs font-semibold text-text border border-border/60 hover:border-accent/40 transition-colors"
+                      className="px-2 py-1 rounded-md bg-surface2 text-xs font-medium text-text border border-border/60"
                     >
                       {sk}
                     </span>

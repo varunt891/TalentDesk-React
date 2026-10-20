@@ -7,10 +7,12 @@ export function useCandidates(options = {}) {
   const { user, profile } = useAuth()
   const [candidates, setCandidates] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
   const fetch = useCallback(async () => {
     try {
       setLoading(true)
+      setError(null)
       let query = db.from('candidates').select('*').order('created_at', { ascending: false })
       if (allOrgs) {
         query = query.param('all_orgs', 'true')
@@ -20,10 +22,12 @@ export function useCandidates(options = {}) {
       if (!error) {
         setCandidates(data || [])
       } else {
+        setError(error)
         console.error('[useCandidates] Fetch error:', error)
       }
       setLoading(false)
     } catch (err) {
+      setError(err)
       console.error('[useCandidates] Exception:', err)
       setLoading(false)
     }
@@ -37,11 +41,11 @@ export function useCandidates(options = {}) {
     const dateFields = ['submission_date', 'interview_date', 'followup_date']
     const cleaned = { ...data }
     dateFields.forEach(f => {
-      if (!cleaned[f] || cleaned[f] === '') cleaned[f] = null
+      if (Object.hasOwn(cleaned, f) && !cleaned[f]) cleaned[f] = null
     })
     if (cleaned.experience !== undefined && cleaned.experience !== null && cleaned.experience !== '') {
       cleaned.experience = String(cleaned.experience)
-    } else {
+    } else if (Object.hasOwn(cleaned, 'experience')) {
       cleaned.experience = null
     }
     return cleaned
@@ -111,5 +115,5 @@ export function useCandidates(options = {}) {
     return { error }
   }
 
-  return { candidates, loading, addCandidate, addCandidates, updateCandidate, deleteCandidate, refetch: fetch }
+  return { candidates, loading, error, addCandidate, addCandidates, updateCandidate, deleteCandidate, refetch: fetch }
 }

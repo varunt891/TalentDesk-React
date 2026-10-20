@@ -1,6 +1,7 @@
 import mammoth from 'mammoth';
 import { convert as htmlToText } from 'html-to-text';
 import { PDFParse } from 'pdf-parse';
+import WordExtractor from 'word-extractor';
 
 function extensionOf(fileName, mimeType) {
   const match = /\.([a-z0-9]+)$/i.exec(fileName || '');
@@ -60,15 +61,13 @@ export async function extractText({ buffer, fileName, mimeType }) {
   }
 
   if (ext === 'html' || ext === 'htm') {
-    const text = htmlToText(buffer.toString('utf-8'), { wordwrap: false });
+    const text = htmlToText(buffer.toString('utf-8'), { wordwrap: false, selectors: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].map(selector => ({ selector, options: { uppercase: false } })) });
     return sanitizeExtractedText(text);
   }
 
   if (ext === 'doc') {
-    const err = new Error('Legacy .doc files are not supported — please re-save as .docx or PDF and try again.');
-    err.status = 400;
-    err.code = 'UNSUPPORTED_LEGACY_DOC';
-    throw err;
+    const document = await new WordExtractor().extract(buffer);
+    return sanitizeExtractedText([document.getHeaders(), document.getBody(), document.getTextboxes(), document.getFootnotes()].filter(Boolean).join('\n'));
   }
 
   const err = new Error(`Unsupported file type: .${ext || 'unknown'}`);

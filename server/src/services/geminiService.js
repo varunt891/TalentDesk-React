@@ -150,7 +150,7 @@ export class GeminiService {
     throw fallbackErr;
   }
 
-  async generate({ prompt, fileInlineData, toolConfig }) {
+  async generate({ prompt, fileInlineData, toolConfig, signal }) {
     const key = (process.env.GEMINI_API_KEY || '').trim();
     if (!key) {
       const err = new Error('GEMINI_API_KEY environment variable is not configured on the server.');
@@ -167,6 +167,7 @@ export class GeminiService {
       const attempts = toolConfig.allowGrounding ? [true, false] : [false];
 
       for (const useGrounding of attempts) {
+        signal?.throwIfAborted();
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10-second timeout
 
@@ -205,7 +206,7 @@ export class GeminiService {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
-              signal: controller.signal
+              signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal
             }
           );
 
@@ -235,6 +236,9 @@ export class GeminiService {
           }
 
           const candidate = data?.candidates?.[0];
+          if (fileInlineData && candidate?.finishReason === 'MAX_TOKENS') {
+            throw new Error('Gemini document response was truncated.');
+          }
           const text = candidate?.content?.parts?.map(part => part.text).join('') || '';
 
           if (!text) {
@@ -268,6 +272,7 @@ export class GeminiService {
           };
         } catch (err) {
           clearTimeout(timeoutId);
+          if (signal?.aborted) throw signal.reason;
 
           if (err.name === 'AbortError') {
             const timeoutError = new Error(`Gemini request timed out after 10 seconds (${model}).`);

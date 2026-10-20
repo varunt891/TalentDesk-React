@@ -5,7 +5,7 @@ import { requireAuth } from '../auth.js';
 import { prisma } from '../prisma.js';
 import { storageService } from '../services/storageService.js';
 import { extractText } from '../services/documentTextService.js';
-import { parseResumeText } from '../services/resumeParsingService.js';
+import { parseResumeText, readScannedResume } from '../services/resumeParsingService.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -60,6 +60,17 @@ async function processResumeFile(file, context) {
     result.error = err.message || 'Failed to read file.';
     return result;
   }
+  if (!result.extractedText.trim()) {
+    if (/\.pdf$/i.test(file.originalname) || file.mimetype === 'application/pdf') {
+      try {
+        result.extractedText = await readScannedResume(file.buffer, context);
+        result.warning = 'Text recognized from a scanned PDF. Review names, contact details and dates.';
+      } catch (error) { result.error = error.message; return result; }
+    } else {
+      result.error = 'No readable text found in this document.';
+      return result;
+    }
+  }
 
   // Kick off storage upload concurrently with AI parsing to save latency
   const storagePromise = storageService.uploadFile({
@@ -73,18 +84,22 @@ async function processResumeFile(file, context) {
   });
 
   if (result.extractedText.trim()) {
+    let timeout;
     try {
       // Race the AI parsing against an 8-second timeout so slow AI fallback chains
       // never push total request time past Render's 30s connection limit on mobile.
       const aiTimeout = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('AI parsing timed out after 8s — skipping, fields left blank for manual entry.')), 8000)
+        timeout = setTimeout(() => reject(new Error('AI parsing timed out. Resume text was retained; review and fill missing fields.')), 8000)
       );
       result.profile = await Promise.race([
         parseResumeText(result.extractedText, context),
         aiTimeout,
       ]);
     } catch (err) {
+      result.warning = err.message || 'Automatic field extraction failed. Resume text was retained.';
       console.warn('[upload.routes] AI profile parsing skipped:', err.message);
+    } finally {
+      clearTimeout(timeout);
     }
   }
 

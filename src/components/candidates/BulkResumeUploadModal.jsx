@@ -5,6 +5,7 @@ import { apiUpload } from '../../lib/api'
 const ACCEPTED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.txt', '.html', '.htm', '.xlsx']
 const MAX_FILES = 20
 const MAX_FILE_SIZE = 5 * 1024 * 1024
+const CANDIDATE_FIELDS = new Set('first_name last_name email phone location work_auth experience linkedin submission_date job_id job_title client rate relocation internal_status external_status feedback_status priority interview_date interview_time interview_type fe_name fe_extension account_manager recruiter_name skills notes followup_date resume_text'.split(' '))
 
 function extOf(fileName) {
   const match = /\.[a-z0-9]+$/i.exec(fileName || '')
@@ -15,7 +16,7 @@ function emptyProfile() {
   return { first_name: '', last_name: '', email: '', phone: '', job_title: '' }
 }
 
-export default function BulkResumeUploadModal({ isOpen, onClose, addCandidates, showToast }) {
+export default function BulkResumeUploadModal({ isOpen, onClose, addCandidates, showToast, preserveResumeTitle = false }) {
   const [files, setFiles] = useState([])
   const [rejected, setRejected] = useState([])
   const [uploading, setUploading] = useState(false)
@@ -32,6 +33,7 @@ export default function BulkResumeUploadModal({ isOpen, onClose, addCandidates, 
   }
 
   const handleClose = () => {
+    if (uploading || importing) return
     reset()
     onClose?.()
   }
@@ -101,6 +103,7 @@ export default function BulkResumeUploadModal({ isOpen, onClose, addCandidates, 
 
       setResults(combinedResults.map(r => {
         const prof = { ...emptyProfile(), ...r.profile }
+        if (preserveResumeTitle) prof.client = r.profile?.current_company || prof.client || ''
         // For AI-parsed resumes, separate candidate resume designation from submission job title
         if (r.profile?.candidate_title || r.profile?.job_title) {
           const candTitle = r.profile.candidate_title || r.profile.job_title
@@ -109,7 +112,7 @@ export default function BulkResumeUploadModal({ isOpen, onClose, addCandidates, 
           }
           // Do not pollute submission job_title with candidate's resume designation unless explicitly provided in XLSX
           if (!r.profile.is_xlsx) {
-            prof.job_title = ''
+            prof.job_title = preserveResumeTitle ? candTitle : ''
           }
         }
         return {
@@ -140,22 +143,24 @@ export default function BulkResumeUploadModal({ isOpen, onClose, addCandidates, 
     const rows = (results || [])
       .filter(r => r.include)
       .map(r => ({
-        ...r.profile,
+        ...Object.fromEntries(Object.entries(r.profile).filter(([key]) => CANDIDATE_FIELDS.has(key))),
         resume_text: r.extractedText || r.profile.resume_text || '',
         resume_file_key: r.resume_file_key || undefined,
         resume_file_name: r.resume_file_name || undefined,
         resume_file_size: r.resume_file_size || undefined,
       }))
-      .filter(row => row.first_name)
+      .map(row => ({ ...row, first_name: (row.first_name || '').trim() }))
 
     if (!rows.length) return showToast?.('Nothing selected to import.', 'error')
+    if (rows.some(row => !row.first_name)) return showToast?.('Enter a first name for every selected candidate.', 'error')
 
     setImporting(true)
     try {
       const { error } = await addCandidates(rows)
       if (error) throw new Error(error.message || 'Import failed.')
       showToast?.(`Imported ${rows.length} candidate${rows.length === 1 ? '' : 's'}!`)
-      handleClose()
+      reset()
+      onClose?.()
     } catch (err) {
       showToast?.(err.message || 'Import failed', 'error')
     } finally {
@@ -239,6 +244,7 @@ export default function BulkResumeUploadModal({ isOpen, onClose, addCandidates, 
           <div className="flex flex-col gap-2 max-h-[55vh] overflow-y-auto">
             {results.map((r, i) => (
               <div key={i} className={`rounded-[var(--radius-md)] border p-3 ${r.success ? 'border-border bg-surface2/60' : 'border-red/30 bg-red/5'}`}>
+                {r.warning && <p className="text-xs text-amber-500 mb-2">{r.warning}</p>}
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <Checkbox checked={!!r.include} disabled={!r.success} onChange={e => toggleInclude(i, e.target.checked)} />

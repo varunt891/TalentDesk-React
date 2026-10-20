@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { authApi } from '../lib/api'
 import { Button, FormField, Input, Modal, useToast } from '../components/ui'
@@ -10,6 +10,8 @@ const SIGNAL_HEIGHTS = [42, 68, 54, 86, 62, 74, 48]
 export default function Login() {
   const { signIn, user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const returnPath = location.state?.from === '/sourced-candidates' ? '/sourced-candidates' : '/'
   const { toast } = useToast()
 
   const [email, setEmail] = useState('')
@@ -40,8 +42,8 @@ export default function Login() {
 
   useEffect(() => {
     window.scrollTo(0, 0)
-    if (!authLoading && user) navigate('/', { replace: true })
-  }, [authLoading, navigate, user])
+    if (!authLoading && user) navigate(returnPath, { replace: true })
+  }, [authLoading, navigate, user, returnPath])
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -57,7 +59,7 @@ export default function Login() {
     }
 
     window.scrollTo(0, 0)
-    navigate('/')
+    navigate(returnPath)
   }
 
   const handleRequestReset = async (e) => {
@@ -362,4 +364,3 @@ export default function Login() {
     </main>
   )
 }
-

@@ -47,6 +47,10 @@
             <label for="orgId">Organization ID</label>
             <input type="text" id="orgId" value="org_default" placeholder="org_default">
           </div>
+          <div class="form-group">
+            <label for="appUrl">TalentDesk app URL</label>
+            <input type="url" id="appUrl" placeholder="https://talent-desk-react.vercel.app">
+          </div>
           <button id="saveConfigBtn" class="btn-secondary btn-full">Save Settings</button>
         </div>
       </div>
@@ -98,6 +102,18 @@
           </button>
         </div>
       </div>
+
+      <!-- Duplicate Alert Banner -->
+      <section class="capture-inputs" aria-label="Document capture">
+        <label for="resumeFile" class="section-label">Resume document</label>
+        <input id="resumeFile" type="file" accept=".pdf,.doc,.docx,.txt,.html,.htm" />
+        <details>
+          <summary>Paste resume text</summary>
+          <textarea id="pastedText" class="input-editable" rows="6" aria-label="Resume text" placeholder="Resume text"></textarea>
+          <button id="parseTextBtn" class="btn-secondary btn-full">Parse text</button>
+        </details>
+        <p id="captureStatus" role="status" aria-live="polite">No profile captured</p>
+      </section>
 
       <!-- Duplicate Alert Banner -->
       <div id="duplicateAlert" class="alert-banner warning hidden">
@@ -159,10 +175,8 @@
 
           <div class="form-group">
             <label>Extracted Skills</label>
-            <div id="candSkills" class="tags-container">
-              <span class="tag">Sourcing</span>
-              <span class="tag">Engineering</span>
-            </div>
+            <div id="candSkills" class="tags-container"></div>
+            <input id="skillsInput" class="input-editable" type="text" aria-label="Skills, separated by commas" placeholder="Skills, separated by commas" />
           </div>
         </div>
 
@@ -202,12 +216,11 @@
       </div>
 
       <!-- Toast Feedback -->
-      <div id="toast" class="toast hidden"></div>
+      <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
     </main>
   </div>
 
+  <script src="profile-utils.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>
-
-

@@ -1,6 +1,7 @@
 // TalentDesk Content Script for Profile Sourcing (Grouped & Single Experience Parser)
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+if (globalThis.talentDeskCaptureListener) chrome.runtime.onMessage.removeListener(globalThis.talentDeskCaptureListener);
+globalThis.talentDeskCaptureListener = (request, sender, sendResponse) => {
   if (request.type === 'PARSE_PROFILE') {
     if (request.deepScan) {
       performDeepScroll().then(() => {
@@ -10,7 +11,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         } catch (err) {
           sendResponse({ success: false, error: err.message });
         }
-      });
+      }).catch(err => sendResponse({ success: false, error: err.message }));
       return true;
     } else {
       try {
@@ -21,77 +22,50 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
     }
   }
-  return true;
-});
+  return false;
+};
+chrome.runtime.onMessage.addListener(globalThis.talentDeskCaptureListener);
 
 async function performDeepScroll() {
-  return new Promise((resolve) => {
-    const expAnchor = document.querySelector('#experience') || 
-                      document.querySelector('[id*="experience"]') || 
-                      getSectionByHeader(['experience']);
-
-    const eduAnchor = document.querySelector('#education') || 
-                      document.querySelector('[id*="education"]') || 
-                      getSectionByHeader(['education']);
-
-    if (expAnchor) {
-      expAnchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } else {
-      window.scrollTo({ top: 1400, behavior: 'smooth' });
-    }
-
-    const hasExpItems = () => {
-      const sec = getSectionByHeader(['experience']);
-      if (!sec) return false;
-      const items = sec.querySelectorAll('li, div.pvs-entity, [class*="pvs-list"] li');
-      return items.length > 0;
-    };
-
-    let attempts = 0;
-    const maxAttempts = 20; // 2.0 seconds max wait
-
-    const checkInterval = setInterval(() => {
-      attempts++;
-
-      // Dispatch scroll event to window & document to trigger LinkedIn IntersectionObservers
-      window.dispatchEvent(new Event('scroll'));
-      document.dispatchEvent(new Event('scroll'));
-
-      if (hasExpItems() || attempts >= maxAttempts) {
-        clearInterval(checkInterval);
-
-        if (eduAnchor && attempts < maxAttempts) {
-          eduAnchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          window.dispatchEvent(new Event('scroll'));
-          document.dispatchEvent(new Event('scroll'));
-        }
-
-        setTimeout(() => {
-          window.scrollTo({ top: 0, behavior: 'instant' });
-          setTimeout(resolve, 300);
-        }, 300);
-      } else {
-        window.scrollBy(0, 350);
-      }
-    }, 100);
-  });
+  const originalPosition = { top: window.scrollY, left: window.scrollX };
+  const maxScroll = Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0);
+  const step = Math.max(window.innerHeight * 0.75, 400);
+  for (let top = 0; top <= maxScroll; top += step) {
+    window.scrollTo({ top, behavior: 'instant' });
+    window.dispatchEvent(new Event('scroll'));
+    document.dispatchEvent(new Event('scroll'));
+    await new Promise(resolve => setTimeout(resolve, 180));
+  }
+  window.scrollTo({ top: maxScroll, behavior: 'instant' });
+  await new Promise(resolve => setTimeout(resolve, 250));
+  window.scrollTo({ ...originalPosition, behavior: 'instant' });
+  await new Promise(resolve => setTimeout(resolve, 350));
 }
 
 function extractProfileData() {
   const url = window.location.href;
+  const hostname = window.location.hostname;
+  const isHost = domain => hostname === domain || hostname.endsWith(`.${domain}`);
+  const selection = window.getSelection()?.toString().trim() || '';
   
   let rawText = '';
   if (document.body) {
-    if (url.includes('linkedin.com')) {
+    if (isHost('linkedin.com')) {
       const mainContent = document.querySelector('main.scaffold-layout__main') || 
                           document.querySelector('main') || 
                           document.querySelector('.profile-detail') ||
                           document.body;
-      const clone = mainContent.cloneNode(true);
-      clone.querySelectorAll('aside, .scaffold-layout__aside, .comments-list, .feed-shared-update-v2, [class*="comment"], [class*="recommendation"], [class*="aside"]').forEach(el => el.remove());
-      rawText = clone.innerText || clone.textContent || '';
+      rawText = captureLinkedInProfileText(mainContent);
     } else {
-      rawText = document.body.innerText || document.body.textContent || '';
+      const root = document.querySelector('main, [role="main"], article') || document.body;
+      rawText = root.innerText || root.textContent || '';
+      // Accessible embedded viewers and open shadow roots expose text outside the main DOM.
+      document.querySelectorAll('iframe').forEach(frame => {
+        try { rawText += '\n' + (frame.contentDocument?.body?.innerText || ''); } catch { /* Cross-origin frames require uploading the original document. */ }
+      });
+      document.querySelectorAll('*').forEach(el => {
+        if (el.shadowRoot) rawText += '\n' + (el.shadowRoot.textContent || '');
+      });
     }
   }
   const pdfViewer = document.querySelector('pdf-viewer, embed[type="application/pdf"]');
@@ -117,15 +91,29 @@ function extractProfileData() {
     resume_text: ''
   };
 
-  if (url.includes('linkedin.com')) {
+  if (selection.length >= 30) {
+    profile.rawPageText = selection;
+    profile.resume_text = selection;
+    profile.source = 'Selected text';
+    const contacts = extractContactDetails(selection);
+    profile.email = contacts.email;
+    profile.phone = contacts.phone;
+    return profile;
+  }
+
+  if (isHost('linkedin.com')) {
     parseLinkedInProfile(profile);
-  } else if (url.includes('github.com')) {
+  } else if (isHost('github.com')) {
     parseGitHubProfile(profile);
-  } else if (url.includes('indeed.com')) {
+  } else if (isHost('indeed.com')) {
     parseIndeedProfile(profile);
   } else {
     parseGenericProfile(profile);
   }
+
+  const contacts = extractContactDetails(profile.rawPageText);
+  profile.email = profile.email || contacts.email;
+  profile.phone = profile.phone || contacts.phone;
 
   // Final cleanup & formatting
   profile.name = cleanText(profile.name);
@@ -142,6 +130,62 @@ function cleanText(str) {
             .replace(/^\s*\(\d+\+?\)\s*/, '')
             .replace(/\s*[\(\·\•\-]?\s*(He\/Him|She\/Her|They\/Them|1st|2nd|3rd\+?|Verified)\s*[\)]?/gi, '')
             .trim();
+}
+
+function nodeText(el) {
+  return (el?.innerText || el?.textContent || '').trim();
+}
+
+function captureLinkedInProfileText(mainContent) {
+  const blocks = [];
+  const seen = new Set();
+  const noiseSelector = [
+    'button', 'nav', 'footer', 'select', 'option', 'input', 'textarea',
+    '[role="button"]', '[role="menu"]', '[role="listbox"]', '[role="option"]',
+    '[role="combobox"]', '[role="dialog"]',
+    '[aria-label*="language" i]', '[aria-label*="locale" i]',
+    '[id*="language" i]', '[id*="locale" i]', '[id*="global-footer" i]',
+    '[class*="language" i]', '[class*="locale" i]', '[class*="dropdown" i]',
+    '[class*="recommendation" i]', '[class*="aside" i]', '[class*="global-footer" i]',
+    '[class*="activity" i]', '[class*="feed-shared" i]', '[class*="social-details" i]',
+    'script', 'style'
+  ].join(', ');
+
+  const cleanClone = element => {
+    const clone = element.cloneNode(true);
+    clone.querySelectorAll(noiseSelector).forEach(node => node.remove());
+    return clone;
+  };
+
+  const append = element => {
+    if (!element || seen.has(element)) return;
+    seen.add(element);
+    const clone = cleanClone(element);
+    const text = nodeText(clone);
+    if (text) blocks.push(text);
+  };
+
+  append(mainContent.querySelector('.pv-top-card') || mainContent.querySelector('.ph5') || mainContent.querySelector('section.artdeco-card'));
+  [
+    ['about'], ['experience'], ['education'], ['skills'],
+    ['licenses & certifications', 'certifications', 'licenses'],
+    ['projects'], ['volunteering'], ['publications'], ['honors'], ['courses'],
+  ].forEach(keywords => append(getSectionByHeader(keywords)));
+
+  return blocks.join('\n\n');
+}
+
+function extractContactDetails(text) {
+  const value = String(text || '');
+  const email = value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || '';
+  const phoneCandidates = value.match(/(?:\+?\d[\d\s().-]{7,}\d)/g) || [];
+  const phone = phoneCandidates
+    .map(candidate => candidate.replace(/\s+/g, ' ').trim())
+    .find(candidate => {
+      const digits = candidate.replace(/\D/g, '');
+      return digits.length >= 8 && digits.length <= 15;
+    }) || '';
+  return { email, phone };
 }
 
 function getSectionByHeader(keywords) {
@@ -174,7 +218,7 @@ function getSectionByHeader(keywords) {
 
     const headers = card.querySelectorAll('h2, h3, h4, .pvs-header__title, [class*="pvs-header"]');
     for (const h of headers) {
-      const rawTxt = (h.innerText || h.textContent || '').trim().toLowerCase();
+      const rawTxt = nodeText(h).toLowerCase();
       const words = rawTxt.split(/\s+/);
       const firstWord = words[0] || '';
 
@@ -199,7 +243,7 @@ function parseLinkedInProfile(p) {
   // 1. Candidate Name
   const nameElements = document.querySelectorAll('h1.text-heading-xlarge, .pv-text-details__left-panel h1, h1.v-card-name, .ph5 h1, div.pv-top-card-v2 h1, h1');
   for (const el of nameElements) {
-    const text = el.innerText.split('\n')[0].replace(/^\s*\(\d+\+?\)\s*/, '').trim();
+    const text = nodeText(el).split('\n')[0].replace(/^\s*\(\d+\+?\)\s*/, '').trim();
     if (text && text.length > 1 && !text.includes('LinkedIn') && !text.includes('Search')) {
       p.name = text;
       break;
@@ -220,14 +264,16 @@ function parseLinkedInProfile(p) {
   }
 
   // 2. Headline / Role Title
-  const headlineElements = document.querySelectorAll('.pv-text-details__left-panel .text-body-medium, div.text-body-medium, .top-card-layout__headline, .ph5 .text-body-medium, div.pv-top-card-v2-ctas div.text-body-small');
+  const topCardRoot = document.querySelector('.ph5, .pv-text-details__left-panel, .pv-top-card-v2-ctas, section.artdeco-card:first-of-type') || document;
+  const headlineElements = topCardRoot.querySelectorAll('.pv-text-details__left-panel .text-body-medium, .top-card-layout__headline, .ph5 .text-body-medium, .text-body-medium, div.pv-top-card-v2-ctas div.text-body-small, div.text-body-medium');
   for (const el of headlineElements) {
-    const text = el.innerText.trim();
+    const text = nodeText(el);
     if (text && text.length > 2 && 
         !text.includes('connection') && 
         !text.includes('follower') && 
         !text.includes('mutual') &&
         !text.includes('Contact info') &&
+        !looksLikeCredential(text) &&
         text.toLowerCase() !== 'linkedin') {
       p.title = text;
       break;
@@ -247,7 +293,7 @@ function parseLinkedInProfile(p) {
   // 3. Location
   const locationElements = document.querySelectorAll('.pv-text-details__left-panel span.text-body-small, span.text-body-small.inline, span.text-body-small, .top-card-layout__first-subheadline, .ph5 span.text-body-small');
   for (const el of locationElements) {
-    const text = el.innerText.trim();
+    const text = nodeText(el);
     if (text && text.length > 2 && 
         !text.includes('connection') && 
         !text.includes('follower') && 
@@ -282,7 +328,7 @@ function parseLinkedInProfile(p) {
   for (const sel of companySelectors) {
     const els = companySearchRoot.querySelectorAll(sel);
     for (const el of els) {
-      const text = el.innerText.split('\n')[0].trim();
+      const text = nodeText(el).split('\n')[0].trim();
       if (text && text.length > 1 &&
           text.toLowerCase() !== 'linkedin' &&
           !text.includes('connection') &&
@@ -313,11 +359,14 @@ function parseLinkedInProfile(p) {
   let bioSummaryText = '';
   if (aboutSection) {
     const aboutText = aboutSection.querySelector('.inline-show-more-text, span[aria-hidden="true"]');
-    if (aboutText) bioSummaryText = aboutText.innerText.trim();
+    if (aboutText) bioSummaryText = nodeText(aboutText);
   }
 
   // 7. Robust Multi-Company & Grouped Experience Scraper
   const experiences = extractLinkedInExperiences();
+  if (experiences.length === 0) {
+    experiences.push(...parseExperienceFromRawText(p.rawPageText));
+  }
   p.experience = experiences;
 
   let expTextFormatted = '';
@@ -333,7 +382,7 @@ function parseLinkedInProfile(p) {
     // Fallbacks if top card extraction missed company, title, or location
     const topExp = experiences[0];
     if (topExp) {
-      if (!p.title || p.title.length < 3) p.title = topExp.role;
+      if (!p.title || p.title.length < 3 || looksLikeCredential(p.title)) p.title = topExp.role;
       if (!p.company || p.company.toLowerCase() === 'linkedin') p.company = topExp.company;
       if (!p.location && topExp.location) p.location = topExp.location;
     }
@@ -357,7 +406,7 @@ function parseLinkedInProfile(p) {
       const eduItems = Array.from(mainEduUl.children).filter(el => el.tagName === 'LI');
       eduItems.forEach((item) => {
         const spans = Array.from(item.querySelectorAll('span[aria-hidden="true"]'))
-          .map(s => s.innerText.trim())
+          .map(s => nodeText(s))
           .filter(Boolean)
           .filter(txt => !txt.includes('Show all'));
         const uniqueSpans = spans.filter((txt, idx, arr) => arr.indexOf(txt) === idx);
@@ -375,7 +424,7 @@ function parseLinkedInProfile(p) {
   }
 
   if (educations.length === 0) {
-    const rawEdus = parseEducationFromRawText(eduSection ? eduSection.innerText : (document.body ? document.body.innerText : ''));
+    const rawEdus = parseEducationFromRawText(eduSection ? nodeText(eduSection) : (p.rawPageText || ''));
     rawEdus.forEach(ed => {
       educations.push(ed);
       eduTextFormatted += `${educations.length}. ${ed.school}${ed.degree ? ' - ' + ed.degree : ''} ${ed.dates ? '(' + ed.dates + ')' : ''}\n`;
@@ -389,7 +438,7 @@ function parseLinkedInProfile(p) {
   if (skillsSection) {
     const skillSpans = skillsSection.querySelectorAll('span[aria-hidden="true"]');
     skillSpans.forEach(s => {
-      const txt = s.innerText.trim();
+      const txt = nodeText(s);
       if (txt && txt.length < 50 && 
           !txt.includes('endorsement') && 
           !txt.includes('Skill') && 
@@ -429,49 +478,6 @@ function parseLinkedInProfile(p) {
   p.summary = resumeBlock;
   p.resume_text = resumeBlock;
 
-  // 10. Contact Info Modal Extraction (open "Contact info" popup first, then click Quick Extract)
-  const contactModal =
-    document.querySelector('.pv-contact-info') ||
-    document.querySelector('.artdeco-modal--is-open') ||
-    document.querySelector('.artdeco-modal') ||
-    document.querySelector('[role="dialog"]');
-
-  if (contactModal) {
-    // Email — try multiple selector patterns (LinkedIn has changed these over time)
-    const emailEl =
-      contactModal.querySelector('a[href^="mailto:"]') ||
-      contactModal.querySelector('.ci-email a') ||
-      contactModal.querySelector('[class*="email"] a') ||
-      contactModal.querySelector('.pv-contact-info__contact-link');
-    if (emailEl) {
-      p.email = (emailEl.innerText.trim() || emailEl.href.replace('mailto:', '').split('?')[0]).trim();
-    }
-
-    // Phone — try multiple selector patterns
-    const phoneEl =
-      contactModal.querySelector('.ci-phone .pv-contact-info__contact-link') ||
-      contactModal.querySelector('[class*="phone"] a') ||
-      contactModal.querySelector('[class*="phone"] span.t-14');
-    if (phoneEl) {
-      p.phone = phoneEl.innerText.trim();
-    }
-  }
-
-  // Regex fallback: scan the full raw page text for email
-  // This works when the Contact Info modal is open because its text is in document.body.innerText
-  if (!p.email) {
-    const allEmails = (p.rawPageText || '').match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g);
-    if (allEmails) {
-      const validEmail = allEmails.find(e =>
-        !e.includes('linkedin.com') &&
-        !e.includes('example.com') &&
-        !e.endsWith('.png') &&
-        !e.endsWith('.jpg') &&
-        !e.endsWith('.svg')
-      );
-      if (validEmail) p.email = validEmail;
-    }
-  }
 }
 
 function parseJobSpans(spans) {
@@ -484,11 +490,13 @@ function parseJobSpans(spans) {
   const dateRegex = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December|\d{4}|Present|Current)\b/i;
   const durationRegex = /\b(\d+\s*(yrs?|years?|mos?|months?))\b/i;
   const empTypeRegex = /^\s*(Full-time|Part-time|Contract|Freelance|Self-employed|Internship|Apprenticeship|Seasonal)\s*$/i;
+  const locationish = s => /(Remote|Hybrid|On-site|India|United States|USA|Canada|Europe|Maharashtra|District|Area|Nashik|Pune|Mumbai|Delhi|Bengaluru|Bangalore|Hyderabad|Chennai|Kolkata)/i.test(s);
+  const skillish = s => /\b(skills?|accounting|reporting|taxation|power bi|sql|excel|problem solving|negotiation)\b/i.test(s);
 
   const remaining = [];
 
   for (const s of spans) {
-    if (s.startsWith('Skills:') || s.startsWith('Skills :')) {
+    if (s.startsWith('Skills:') || s.startsWith('Skills :') || skillish(s)) {
       description = s;
     } else if (!dates && (dateRegex.test(s) || durationRegex.test(s))) {
       dates = s;
@@ -500,20 +508,38 @@ function parseJobSpans(spans) {
   }
 
   if (remaining.length > 0) role = remaining[0];
-  if (remaining.length > 1) company = remaining[1].split('·')[0].split('(')[0].trim();
+  if (remaining.length > 1) {
+    const second = remaining[1];
+    if (locationish(second)) {
+      location = second.split('·')[0].trim();
+    } else {
+      company = second.split('·')[0].split('(')[0].trim();
+    }
+  }
   if (remaining.length > 2) {
     const candidateLoc = remaining[2];
-    if (!candidateLoc.startsWith('Skills:') && candidateLoc.length < 80) {
+    if (!candidateLoc.startsWith('Skills:') && !skillish(candidateLoc) && candidateLoc.length < 80) {
       location = candidateLoc.split('·')[0].trim();
     }
   }
 
   // Reject non-job items (e.g. hashtags, post prose, recommendation text)
-  if (role.includes('#') || role.length > 120 || (company && company.includes('#'))) {
+  if (role.includes('#') || role.length > 120 || (company && company.includes('#')) || isLinkedInEngagementText(role) || isLinkedInEngagementText(company)) {
     return { role: '', company: '', dates: '', location: '', description: '' };
   }
 
   return { role, company, dates, location, description };
+}
+
+function isLinkedInEngagementText(value) {
+  const text = String(value || '').trim();
+  return /\b\d[\d,.]*\s*[·•-]\s*\d[\d,.]*\s+comments?\b/i.test(text) ||
+    (/\b(?:comments?|reactions?|likes?|reposts?)\b/i.test(text) && /^\s*\d[\d,.]*/.test(text));
+}
+
+function looksLikeCredential(text) {
+  const lower = String(text || '').toLowerCase();
+  return /\b(certificate|certification|credential|license|licence|course|learning|issued by|certx|live)\b/.test(lower);
 }
 
 function parseEduSpans(spans) {
@@ -523,6 +549,8 @@ function parseEduSpans(spans) {
 
   const dateRegex = /\b(\d{4})\b/;
   const remaining = [];
+
+  if (spans.some(isLinkedInEngagementText)) return { school: '', degree: '', dates: '' };
 
   for (const s of spans) {
     if (!dates && dateRegex.test(s)) {
@@ -534,6 +562,10 @@ function parseEduSpans(spans) {
 
   if (remaining.length > 0) school = remaining[0];
   if (remaining.length > 1) degree = remaining[1];
+
+  if (isLinkedInEngagementText(school) || /^grade\s*:?\s*[a-f][+-]?$/i.test(school)) {
+    return { school: '', degree: '', dates: '' };
+  }
 
   return { school, degree, dates };
 }
@@ -550,6 +582,7 @@ function parseEducationFromRawText(text) {
 
   for (const line of lines) {
     if (line.includes('Show all') || line.length < 2) continue;
+    if (isLinkedInEngagementText(line) || /^grade\s*:?\s*[a-f][+-]?$/i.test(line)) continue;
 
     if (/\b(\d{4})\b/.test(line)) {
       if (cur && !cur.dates) cur.dates = line;
@@ -568,6 +601,15 @@ function parseEducationFromRawText(text) {
   return educations;
 }
 
+function looksLikeExperienceRole(value) {
+  const role = String(value || '').trim();
+  if (!role || role.length > 90) return false;
+  if (/^(?:at\b|i\b|my\b|in my\b|as a\b|as an\b|responsible for\b|spearheaded\b|developed\b|helped\b|led\b|focused on\b)/i.test(role)) return false;
+  if (/\bI\s+(?:play|am|have|lead|manage|work|focus|help|develop|drive)\b/i.test(role)) return false;
+  if (/[.!?]/.test(role)) return false;
+  return true;
+}
+
 function cleanExperienceArray(expList) {
   if (!Array.isArray(expList)) return [];
 
@@ -581,8 +623,16 @@ function cleanExperienceArray(expList) {
   return expList.filter(e => {
     const r = (e.role || '').toLowerCase().trim();
     const c = (e.company || '').toLowerCase().trim();
+    const combined = `${r} ${c} ${(e.dates || '').toLowerCase()} ${(e.description || '').toLowerCase()}`;
 
     if (!r || r.length < 2) return false;
+    if (isLinkedInEngagementText(r) || isLinkedInEngagementText(c) || isLinkedInEngagementText(e.dates)) return false;
+    if (looksLikeCredential(combined)) return false;
+
+    // LinkedIn activity cards can leak into the Experience card on some layouts.
+    // They tend to contain prose and relative post ages rather than employment dates.
+    if (!/\b(?:19|20)\d{2}\b/.test(String(e.dates || '')) && /\b\d+\s*(?:s|m|h|d|w|mo|mos|yr|yrs)\s*[·•-]?\s*$/i.test(String(e.dates || ''))) return false;
+    if (!looksLikeExperienceRole(r) || /[!?]/.test(r) || /(^|\s)#\w+|\b(reposted|captured by|visit website)/i.test(r)) return false;
 
     // Reject exact button labels like "more", "... more", "show all", "comment"
     if (r === 'more' || r === '... more' || r === 'show all' || r === 'comment' || r === 'like' || r === 'repost') {
@@ -600,7 +650,7 @@ function cleanExperienceArray(expList) {
     }
 
     // Reject hashtags or emojis in role or company
-    if (r.includes('#') || c.includes('#')) return false;
+    if (r.startsWith('#') || c.startsWith('#')) return false;
     if (/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(r) ||
         /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(c)) {
       return false;
@@ -611,6 +661,184 @@ function cleanExperienceArray(expList) {
 
     return true;
   });
+}
+
+function prepareResumeText(text) {
+  return String(text || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/(Show all|reactions)(Experience|Education|Skills)(?=[A-Z])/gi, '$1\n$2:')
+    .replace(/(Experience|Education|Skills)(?=[A-Z][a-z])/g, '$1:\n')
+    .replace(/([a-z)])(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})/g, '$1\n$2 $3')
+    .replace(/(Remote|Hybrid|On-site)(?=[A-Z])/g, '$1\n')
+    .replace(/\b(\d+\s*(?:years?|yrs|yr|months?|mos|mo)(?:\s+\d+\s*(?:years?|yrs|yr|months?|mos|mo))*)(?=(?:Remote|Hybrid|On-site|[A-Z][a-z]))/gi, '$1\n')
+    .replace(/([.!?])([A-Z][A-Za-z0-9&@.,'() /+-]{2,140}?\s*·\s*(?:Full-time|Part-time|Contract|Freelance|Self-employed|Internship|Apprenticeship|Seasonal))/g, '$1\n$2')
+    .replace(/\s+(ABOUT|ABOUT BIO|SUMMARY|WORK EXPERIENCE(?: TIMELINE)?|EXPERIENCE|EMPLOYMENT HISTORY|PROFESSIONAL EXPERIENCE|EDUCATION|SKILLS):/gi, '\n$1:')
+    .replace(/\s+(\d+\.\s+)/g, '\n$1')
+    .replace(/\s+(Dates? & Duration:|Dates?:|Duration:|Location:|Details?:)/gi, '\n   $1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function splitCompactExperienceLine(line) {
+  const employmentTypes = '(Full-time|Part-time|Contract|Freelance|Self-employed|Internship|Apprenticeship|Seasonal)';
+  const match = String(line || '').match(new RegExp(`^(.+?)\\s*·\\s*${employmentTypes}$`));
+  if (!match) return null;
+  const combined = match[1].trim();
+  const boundary = findRoleCompanyBoundary(combined);
+  if (!boundary) return null;
+  return {
+    role: boundary.role,
+    company: boundary.company
+  };
+}
+
+function findRoleCompanyBoundary(combined) {
+  const roleTail = /\b(associate|assistant|executive|specialist|manager|lead|director|head|trainee|intern|analyst|consultant|engineer|developer|artist|educator|strategist|writer|coordinator|administrator|recruiter|designer|architect|supervisor|officer|sde|scm|hr|sales|marketing|operations|supply chain)\b/i;
+  const companyHint = /\b(inc|llc|ltd|limited|pvt|private|technologies|technology|systems|solutions|services|media|steel|amazon|flipkart|direct)\b/i;
+  const candidates = [];
+
+  for (let i = 2; i < combined.length - 1; i++) {
+    const prev = combined[i - 1];
+    const cur = combined[i];
+    const next = combined[i + 1] || '';
+    const isBoundary = prev !== ' ' && /[A-Z]/.test(cur) && /[a-z]/.test(next);
+    if (!isBoundary) continue;
+
+    const role = combined.slice(0, i).trim();
+    const company = combined.slice(i).trim();
+    if (role.length < 2 || role.length > 120 || company.length < 2 || company.length > 90) continue;
+    if (!/[a-zA-Z]/.test(role) || !/[a-zA-Z]/.test(company)) continue;
+
+    let score = 0;
+    if (roleTail.test(role)) score += 10;
+    if (companyHint.test(company)) score += 4;
+    if (/^[A-Z][A-Za-z0-9&@.,'() /+-]+$/.test(company)) score += 2;
+    if (role.split(/\s+/).length >= 2) score += 1;
+    score -= Math.abs(company.split(/\s+/).length - 2) * 0.25;
+    candidates.push({ role, company, score });
+  }
+
+  candidates.sort((a, b) => b.score - a.score || a.role.length - b.role.length);
+  return candidates[0] || null;
+}
+
+function parseExperienceLines(lines) {
+  const result = [];
+  let cur = null;
+  const push = () => {
+    if (cur && cur.role) result.push(cur);
+    cur = null;
+  };
+
+  lines.forEach(line => {
+    const clean = line.replace(/^\d+\.\s*/, '').replace(/^\s*[-*]\s*/, '').trim();
+    if (!clean) return;
+
+    const compact = splitCompactExperienceLine(clean);
+    const atMatch = clean.match(/^(.+?)\s+at\s+(.+)$/i);
+    if (compact || atMatch) {
+      push();
+      cur = compact
+        ? { role: compact.role, company: compact.company, dates: '', location: '', description: '' }
+        : { role: atMatch[1].trim(), company: atMatch[2].trim(), dates: '', location: '', description: '' };
+      return;
+    }
+
+    if (!cur) {
+      cur = { role: clean, company: '', dates: '', location: '', description: '' };
+      return;
+    }
+
+    if (/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December|\d{4}|Present|Current|yrs?|years?|mos?|months?)\b/i.test(clean) && !cur.dates) {
+      cur.dates = clean;
+    } else if (/(^|\s·\s)(Remote|Hybrid|On-site)$/i.test(clean) && !cur.location) {
+      cur.location = clean;
+    } else if (!cur.company && clean.length < 100 && !/^skills?:/i.test(clean)) {
+      cur.company = clean.split(/[•·]/)[0].trim();
+    } else {
+      cur.description = [cur.description, clean].filter(Boolean).join('\n');
+    }
+  });
+
+  push();
+  return result;
+}
+
+function parseExperienceFromRawText(text) {
+  const result = [];
+  const prepared = prepareResumeText(text);
+  const match = prepared.match(/(?:^|\n)(?:WORK EXPERIENCE(?: TIMELINE)?|EXPERIENCE|EMPLOYMENT HISTORY|PROFESSIONAL EXPERIENCE)\s*:?\s*([\s\S]*?)(?=\n(?:EDUCATION|SKILLS|LICENSES|CERTIFICATIONS|LANGUAGES|PROJECTS|HONORS|VOLUNTEERING)\b|$)/i);
+  if (!match) return result;
+
+  const section = match[1].trim();
+  result.push(...parseExperienceLines(section.split('\n').map(line => line.trim()).filter(Boolean)));
+  return cleanExperienceArray(result);
+}
+
+function parseExperienceFromSectionText(text) {
+  const lines = String(text || '')
+    .split('\n')
+    .map(line => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .filter(line => !/^experience$/i.test(line) && !/^show all/i.test(line));
+
+  const result = [];
+  if (lines.length === 0) return result;
+
+  const dateLine = line => /\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December)\s+\d{4}\s*[-–]\s*(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December)\s+\d{4}|Present|Current)|\b\d{4}\s*[-–]\s*(?:\d{4}|Present|Current)\b/i.test(line);
+  const employmentLine = line => /\b(Full-time|Part-time|Contract|Freelance|Self-employed|Internship|Apprenticeship|Seasonal)\b/i.test(line);
+  const locationLine = line => /(Remote|Hybrid|On-site|India|United States|USA|Canada|Europe|Maharashtra|District|Area|Nashik|Pune|Mumbai|Delhi|Bengaluru|Bangalore|Hyderabad|Chennai|Kolkata)/i.test(line);
+  const skipLine = line => /^(helped me get this job|skills?:|financial accounting|taxation|problem solving|show all|linkedin)$/i.test(line) || looksLikeCredential(line);
+
+  let defaultCompany = '';
+  let startIndex = 0;
+  if (lines.length >= 3 && !dateLine(lines[0]) && employmentLine(lines[1])) {
+    defaultCompany = lines[0].split('·')[0].trim();
+    startIndex = 2;
+    while (startIndex < lines.length && (employmentLine(lines[startIndex]) || locationLine(lines[startIndex])) && !dateLine(lines[startIndex])) {
+      startIndex++;
+    }
+  }
+
+  let cur = null;
+  const push = () => {
+    const plausibleRole = looksLikeExperienceRole(cur?.role) && !/[!?#]/.test(cur.role) && !/\b(reposted|captured by|visit website|#\w+)/i.test(cur.role);
+    if (plausibleRole && cur.company && dateLine(cur.dates) && !looksLikeCredential(`${cur.role} ${cur.company} ${cur.description}`)) result.push(cur);
+    cur = null;
+  };
+
+  for (let i = startIndex; i < lines.length; i++) {
+    const line = lines[i];
+    if (skipLine(line)) continue;
+
+    const next = lines[i + 1] || '';
+    const after = lines[i + 2] || '';
+    const looksLikeRole = !dateLine(line) && line.length <= 90 && (dateLine(next) || (employmentLine(next) && dateLine(after)));
+
+    if (looksLikeRole) {
+      push();
+      let company = defaultCompany;
+      if (employmentLine(next) && !dateLine(next)) {
+        company = next.split('·')[0].trim() || company;
+        i++;
+      }
+      cur = { role: line, company, dates: '', location: '', description: '' };
+      continue;
+    }
+
+    if (!cur) continue;
+    if (dateLine(line) && !cur.dates) {
+      cur.dates = line;
+    } else if (locationLine(line) && !cur.location && line.length <= 120) {
+      cur.location = line;
+    } else {
+      cur.description = [cur.description, line.replace(/^\u2022\s*/, '')].filter(Boolean).join('\n');
+    }
+  }
+  push();
+
+  return cleanExperienceArray(result);
 }
 
 function extractLinkedInExperiences() {
@@ -629,7 +857,7 @@ function extractLinkedInExperiences() {
                    u.querySelectorAll('li').length > 0
                  );
   
-  if (!mainUl) return experiences;
+  if (!mainUl) return parseExperienceFromSectionText(nodeText(expSection));
 
   const topListItems = Array.from(mainUl.children).filter(el => el.tagName === 'LI');
 
@@ -638,14 +866,14 @@ function extractLinkedInExperiences() {
     
     // A nested list is a sub-roles list ONLY if its items contain dates or durations
     const isSubRolesList = nestedUl && Array.from(nestedUl.querySelectorAll('span[aria-hidden="true"]')).some(s => 
-      /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December|\d{4}|Present|Current|yrs?|mos?)\b/i.test(s.innerText)
+      /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December|\d{4}|Present|Current|yrs?|mos?)\b/i.test(nodeText(s))
     );
 
     if (isSubRolesList) {
       const allSpans = Array.from(topLi.querySelectorAll('span[aria-hidden="true"], div.display-flex span'));
       const headerSpans = allSpans
         .filter(el => !nestedUl.contains(el))
-        .map(el => el.innerText.trim())
+        .map(el => nodeText(el))
         .filter(txt => txt.length > 0 && 
                        !txt.includes('Show all') && 
                        !txt.includes('skills') &&
@@ -660,7 +888,7 @@ function extractLinkedInExperiences() {
 
       subListItems.forEach(subLi => {
         const subSpans = Array.from(subLi.querySelectorAll('span[aria-hidden="true"]'))
-          .map(s => s.innerText.trim())
+          .map(s => nodeText(s))
           .filter(Boolean)
           .filter(txt => !txt.includes('Show all'));
 
@@ -670,7 +898,7 @@ function extractLinkedInExperiences() {
           const parsed = parseJobSpans(uniqueSubSpans);
           
           const descNode = subLi.querySelector('.inline-show-more-text span[aria-hidden="true"], .inline-show-more-text');
-          const desc = descNode ? descNode.innerText.trim() : '';
+          const desc = descNode ? nodeText(descNode) : '';
 
           if (parsed.role && parsed.role.length > 1) {
             experiences.push({
@@ -686,7 +914,7 @@ function extractLinkedInExperiences() {
     } else {
       const spans = Array.from(topLi.querySelectorAll('span[aria-hidden="true"]'))
         .filter(el => !nestedUl || !nestedUl.contains(el))
-        .map(s => s.innerText.trim())
+        .map(s => nodeText(s))
         .filter(Boolean)
         .filter(txt => !txt.includes('Show all'));
 
@@ -696,7 +924,7 @@ function extractLinkedInExperiences() {
         const parsed = parseJobSpans(uniqueSpans);
         
         const descNode = topLi.querySelector('.inline-show-more-text span[aria-hidden="true"], .inline-show-more-text');
-        const desc = descNode ? descNode.innerText.trim() : '';
+        const desc = descNode ? nodeText(descNode) : '';
 
         if (parsed.role && parsed.role.length > 1) {
           experiences.push({
@@ -711,7 +939,17 @@ function extractLinkedInExperiences() {
     }
   });
 
-  return cleanExperienceArray(experiences);
+  const cleaned = cleanExperienceArray(experiences);
+  const textFallback = parseExperienceFromSectionText(nodeText(expSection));
+  if (cleaned.length === 0) return textFallback;
+
+  const merged = [...cleaned];
+  textFallback.forEach(candidate => {
+    const key = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const duplicate = merged.some(existing => key(existing.role) === key(candidate.role) && key(existing.company) === key(candidate.company) && key(existing.dates) === key(candidate.dates));
+    if (!duplicate) merged.push(candidate);
+  });
+  return merged;
 }
 
 function parseGitHubProfile(p) {
@@ -732,11 +970,6 @@ function parseGitHubProfile(p) {
 
   const avatarEl = document.querySelector('img.avatar-user') || document.querySelector('.avatar');
   p.avatarUrl = avatarEl ? avatarEl.src : '';
-
-  const emailEl = document.querySelector('li[itemprop="email"] a');
-  if (emailEl) {
-    p.email = emailEl.innerText.trim() || emailEl.href.replace('mailto:', '');
-  }
 
   const langEls = document.querySelectorAll('[itemprop="programmingLanguage"]');
   const skillsSet = new Set();
@@ -822,21 +1055,7 @@ function parseGenericProfile(p) {
     }
   }
 
-  p.name = candName || 'Candidate';
-
-  // 2. Email Extraction
-  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
-  const emailMatch = (p.rawPageText || '').match(emailRegex);
-  if (emailMatch) {
-    p.email = emailMatch[0];
-  }
-
-  // 3. Phone Extraction
-  const phoneRegex = /(?:\+?\d{1,3}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/;
-  const phoneMatch = (p.rawPageText || '').match(phoneRegex);
-  if (phoneMatch) {
-    p.phone = phoneMatch[0];
-  }
+  p.name = candName;
 
   // 4. Location Extraction (City, State / Country)
   const locRegex = /([A-Z][a-zA-Z\s]+,\s*[A-Z]{2}(?:\s+[A-Z][a-zA-Z\s]+)?)/;
