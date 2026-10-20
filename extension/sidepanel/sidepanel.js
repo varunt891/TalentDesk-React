@@ -964,6 +964,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   function renderProfileCard(profile) {
     if (operationRevision !== captureRevision) return;
     profile = normalize(profile);
+    // Contact details are recruiter-entered only; page text often contains unrelated contacts.
+    profile.email = '';
+    profile.phone = '';
     hideScanning();
     currentProfileData = profile;
 

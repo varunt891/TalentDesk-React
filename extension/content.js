@@ -95,9 +95,6 @@ function extractProfileData() {
     profile.rawPageText = selection;
     profile.resume_text = selection;
     profile.source = 'Selected text';
-    const contacts = extractContactDetails(selection);
-    profile.email = contacts.email;
-    profile.phone = contacts.phone;
     return profile;
   }
 
@@ -110,10 +107,6 @@ function extractProfileData() {
   } else {
     parseGenericProfile(profile);
   }
-
-  const contacts = extractContactDetails(profile.rawPageText);
-  profile.email = profile.email || contacts.email;
-  profile.phone = profile.phone || contacts.phone;
 
   // Final cleanup & formatting
   profile.name = cleanText(profile.name);
@@ -173,19 +166,6 @@ function captureLinkedInProfileText(mainContent) {
   ].forEach(keywords => append(getSectionByHeader(keywords)));
 
   return blocks.join('\n\n');
-}
-
-function extractContactDetails(text) {
-  const value = String(text || '');
-  const email = value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || '';
-  const phoneCandidates = value.match(/(?:\+?\d[\d\s().-]{7,}\d)/g) || [];
-  const phone = phoneCandidates
-    .map(candidate => candidate.replace(/\s+/g, ' ').trim())
-    .find(candidate => {
-      const digits = candidate.replace(/\D/g, '');
-      return digits.length >= 8 && digits.length <= 15;
-    }) || '';
-  return { email, phone };
 }
 
 function getSectionByHeader(keywords) {
@@ -406,6 +386,7 @@ function parseLinkedInProfile(p) {
       const eduItems = Array.from(mainEduUl.children).filter(el => el.tagName === 'LI');
       eduItems.forEach((item) => {
         const spans = Array.from(item.querySelectorAll('span[aria-hidden="true"]'))
+          .filter(span => span.closest('ul') === mainEduUl)
           .map(s => nodeText(s))
           .filter(Boolean)
           .filter(txt => !txt.includes('Show all'));
@@ -604,6 +585,7 @@ function parseEducationFromRawText(text) {
 function looksLikeExperienceRole(value) {
   const role = String(value || '').trim();
   if (!role || role.length > 90) return false;
+  if (/^(?:united states|usa|canada|india|united kingdom|remote|hybrid|on-site)(?:\s*[·,|-].*)?$/i.test(role)) return false;
   if (/^(?:at\b|i\b|my\b|in my\b|as a\b|as an\b|responsible for\b|spearheaded\b|developed\b|helped\b|led\b|focused on\b)/i.test(role)) return false;
   if (/\bI\s+(?:play|am|have|lead|manage|work|focus|help|develop|drive)\b/i.test(role)) return false;
   if (/[.!?]/.test(role)) return false;
@@ -860,14 +842,19 @@ function extractLinkedInExperiences() {
   if (!mainUl) return parseExperienceFromSectionText(nodeText(expSection));
 
   const topListItems = Array.from(mainUl.children).filter(el => el.tagName === 'LI');
+  const hasEmploymentDateRange = value =>
+    /\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December)\s+\d{4}\s*[-–]\s*(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December)\s+\d{4}|Present|Current)|\b(?:19|20)\d{2}\s*[-–]\s*(?:(?:19|20)\d{2}|Present|Current)\b/i.test(String(value || ''));
 
   topListItems.forEach(topLi => {
     const nestedUl = topLi.querySelector('ul');
     
     // A nested list is a sub-roles list ONLY if its items contain dates or durations
-    const isSubRolesList = nestedUl && Array.from(nestedUl.querySelectorAll('span[aria-hidden="true"]')).some(s => 
-      /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December|\d{4}|Present|Current|yrs?|mos?)\b/i.test(nodeText(s))
-    );
+    const subListItems = nestedUl ? Array.from(nestedUl.children).filter(el => el.tagName === 'LI') : [];
+    const isSubRolesList = subListItems.some(subLi => {
+      const spans = Array.from(subLi.querySelectorAll('span[aria-hidden="true"]')).map(nodeText).filter(Boolean);
+      const parsed = parseJobSpans([...new Set(spans)]);
+      return looksLikeExperienceRole(parsed.role) && hasEmploymentDateRange(parsed.dates);
+    });
 
     if (isSubRolesList) {
       const allSpans = Array.from(topLi.querySelectorAll('span[aria-hidden="true"], div.display-flex span'));
@@ -884,8 +871,6 @@ function extractLinkedInExperiences() {
       const rawCompanyName = uniqueHeaderSpans[0] || 'Company';
       const companyName = rawCompanyName.split('·')[0].split('(')[0].trim();
 
-      const subListItems = Array.from(nestedUl.children).filter(el => el.tagName === 'LI');
-
       subListItems.forEach(subLi => {
         const subSpans = Array.from(subLi.querySelectorAll('span[aria-hidden="true"]'))
           .map(s => nodeText(s))
@@ -900,7 +885,7 @@ function extractLinkedInExperiences() {
           const descNode = subLi.querySelector('.inline-show-more-text span[aria-hidden="true"], .inline-show-more-text');
           const desc = descNode ? nodeText(descNode) : '';
 
-          if (parsed.role && parsed.role.length > 1) {
+          if (looksLikeExperienceRole(parsed.role) && hasEmploymentDateRange(parsed.dates)) {
             experiences.push({
               role: parsed.role,
               company: companyName,
@@ -926,7 +911,7 @@ function extractLinkedInExperiences() {
         const descNode = topLi.querySelector('.inline-show-more-text span[aria-hidden="true"], .inline-show-more-text');
         const desc = descNode ? nodeText(descNode) : '';
 
-        if (parsed.role && parsed.role.length > 1) {
+        if (looksLikeExperienceRole(parsed.role) && hasEmploymentDateRange(parsed.dates)) {
           experiences.push({
             role: parsed.role,
             company: parsed.company,
@@ -940,16 +925,7 @@ function extractLinkedInExperiences() {
   });
 
   const cleaned = cleanExperienceArray(experiences);
-  const textFallback = parseExperienceFromSectionText(nodeText(expSection));
-  if (cleaned.length === 0) return textFallback;
-
-  const merged = [...cleaned];
-  textFallback.forEach(candidate => {
-    const key = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-    const duplicate = merged.some(existing => key(existing.role) === key(candidate.role) && key(existing.company) === key(candidate.company) && key(existing.dates) === key(candidate.dates));
-    if (!duplicate) merged.push(candidate);
-  });
-  return merged;
+  return cleaned.length > 0 ? cleaned : parseExperienceFromSectionText(nodeText(expSection));
 }
 
 function parseGitHubProfile(p) {
