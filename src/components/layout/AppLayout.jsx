@@ -4,6 +4,8 @@ import TopBar from './TopBar'
 import { db } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import { cn } from '../ui/utils'
+import { isDemoMode } from '../../lib/demoMode'
+import DemoNotice from './DemoNotice'
 
 export default function AppLayout({ currentPage, onNavigate, children }) {
   const { user, profile } = useAuth()
@@ -178,6 +180,7 @@ export default function AppLayout({ currentPage, onNavigate, children }) {
       </div>
 
       <div className="flex-1 min-w-0 h-full min-h-0 flex flex-col overflow-hidden">
+        {isDemoMode() && <DemoNotice />}
         <TopBar
           onOpenSidebar={() => setSidebarOpen(true)}
           theme={theme}

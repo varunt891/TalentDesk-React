@@ -3,6 +3,7 @@
 // action/generate). Every AI feature in the app should go through this
 // module instead of hand-rolling its own fetch/auth logic.
 import { API_BASE, getAuthToken, apiRequest } from '../api'
+import { isDemoMode, DEMO_UNAVAILABLE } from '../demoMode'
 
 // Generic AI Action Framework entry point — Summarize/Rewrite/Improve/
 // Compare/Explain/Score/Analyze/Recommend/Draft/Translate/Extract all
@@ -16,6 +17,7 @@ export async function runAiAction({ action, content, context }) {
 // chunk arrives so the UI can render incrementally. Pass an AbortSignal to
 // support cancellation (e.g. a "Stop" button).
 async function streamSSE(path, body, { onDelta, signal } = {}) {
+  if (isDemoMode()) throw new Error(DEMO_UNAVAILABLE)
   const token = getAuthToken()
   const response = await fetch(`${API_BASE}${path}`, {
     method: 'POST',

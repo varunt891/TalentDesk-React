@@ -7,6 +7,7 @@ import Avatar from '../ui/Avatar'
 import Menu from '../ui/Menu'
 import { cn } from '../ui/utils'
 import { hasPermission } from '../../lib/admin/permissions'
+import { isDemoMode } from '../../lib/demoMode'
 
 const navItems = [
   { id: 'dashboard', icon: 'dashboard', label: 'Dashboard', section: 'Main' },
@@ -76,6 +77,7 @@ export default function Sidebar({ currentPage, onNavigate, isCollapsed, isOverla
   }
 
   const handleSignOut = async () => {
+    if (isDemoMode()) { window.location.assign('/demo'); return }
     onClose?.()
     await signOut()
     navigate('/login', { replace: true })
@@ -195,7 +197,7 @@ export default function Sidebar({ currentPage, onNavigate, isCollapsed, isOverla
           items={[
             { label: user?.email || displayName, disabled: true },
             'divider',
-            { label: 'Sign out', icon: 'logout', danger: true, onClick: handleSignOut },
+            { label: isDemoMode() ? 'Reload demo' : 'Sign out', icon: 'logout', danger: true, onClick: handleSignOut },
           ]}
         />
 

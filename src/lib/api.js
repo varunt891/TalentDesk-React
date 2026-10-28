@@ -1,3 +1,5 @@
+import { isDemoMode, DEMO_UNAVAILABLE } from './demoMode'
+
 const DEFAULT_PROD_API = 'https://talentdesk-react.onrender.com'
 // vercel.json proxies /api/* to the Render backend, so on the Vercel deployment
 // we stay same-origin (relative '/api') instead of calling onrender.com directly
@@ -18,6 +20,7 @@ export { API_BASE }
 const TOKEN_KEY = 'td_session_token'
 
 export function getAuthToken() {
+  if (isDemoMode()) return null
   try {
     return window.localStorage.getItem(TOKEN_KEY)
   } catch {
@@ -26,6 +29,7 @@ export function getAuthToken() {
 }
 
 export function setAuthToken(token) {
+  if (isDemoMode()) return
   try {
     if (token) window.localStorage.setItem(TOKEN_KEY, token)
     else window.localStorage.removeItem(TOKEN_KEY)
@@ -88,7 +92,7 @@ async function fetchWithColdStartRetry(url, init, timeoutMs = 60000) {
       const isTimeout = err.name === 'AbortError'
       if (attempt >= COLD_START_RETRY_DELAYS_MS.length) {
         if (isTimeout) {
-          throw new Error('Request timed out — the server took too long to respond. Please try again.')
+          throw new Error('Request timed out — the server took too long to respond. Please try again.', { cause: err })
         }
         throw err
       }
@@ -113,6 +117,7 @@ function formatError(err) {
 }
 
 export async function apiRequest(path, options = {}) {
+  if (isDemoMode()) return (await import('./demoApi')).demoRequest(path, options)
   const url = `${API_BASE}${path}`
   const token = getAuthToken()
 
@@ -153,6 +158,7 @@ export async function apiRequest(path, options = {}) {
 // straight through instead of JSON.stringify-ing it, and lets the browser set
 // its own Content-Type (with multipart boundary) rather than forcing JSON.
 export async function apiUpload(path, formData) {
+  if (isDemoMode()) throw new Error(DEMO_UNAVAILABLE)
   const url = `${API_BASE}${path}`
   const token = getAuthToken()
 

@@ -1,9 +1,10 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { authApi, organizationApi } from '../lib/api'
+import { isDemoMode } from '../lib/demoMode'
 
 const AuthContext = createContext({})
 
-const CACHE_KEY = 'talentdesk_session'
+const CACHE_KEY = isDemoMode() ? 'talentdesk_demo_session' : 'talentdesk_session'
 
 function readCache() {
   try {

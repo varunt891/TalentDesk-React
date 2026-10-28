@@ -10,6 +10,7 @@ import { Modal, Button, Badge } from '../ui'
 import { cn } from '../ui/utils'
 import { fetchNotifications, markNotificationRead, markNotificationsRead } from '../../lib/admin/notifications'
 import { SETTINGS_TAB_FLAG } from '../../lib/admin/settingsNav'
+import { isDemoMode } from '../../lib/demoMode'
 
 const ROLE_LABELS = {
   superadmin: 'Super Admin', admin: 'Admin', owner: 'Owner', manager: 'Manager',
@@ -150,6 +151,7 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
   }
 
   const handleSignOut = async () => {
+    if (isDemoMode()) { window.location.assign('/demo'); return }
     await signOut()
     navigate('/login', { replace: true })
   }
@@ -343,7 +345,7 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
             { label: theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode', icon: theme === 'dark' ? 'sun' : 'moon', onClick: onToggleTheme },
             { label: 'Company settings', icon: 'admin', onClick: () => onNavigate?.('org_settings') },
             'divider',
-            { label: 'Sign out', icon: 'logout', danger: true, onClick: handleSignOut },
+            { label: isDemoMode() ? 'Reload demo' : 'Sign out', icon: 'logout', danger: true, onClick: handleSignOut },
           ]}
         />
       </div>

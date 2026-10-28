@@ -23,6 +23,14 @@ This software codebase, database schemas, UI designs, and custom AI integration 
 
 ## ⚙️ Local Setup
 
+### Temporary hosted preview
+
+Production builds currently open a no-login browser demo while Neon is unavailable.
+It uses fictional data, with supported CRM edits saved only in the current browser.
+To restore hosted login, set `VITE_DEMO_MODE=false` in Vercel and redeploy.
+Local development continues using normal authentication; `/demo` opens the preview.
+See [temporary demo details](docs/temporary-demo.md) for limits and restoration.
+
 ### Work locally without Neon
 
 ```bash
