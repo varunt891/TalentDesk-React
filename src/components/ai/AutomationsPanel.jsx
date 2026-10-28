@@ -13,11 +13,12 @@ import { logUsageEvent } from '../../lib/ai/usage'
  * the real workspace snapshot. No backend scheduler — "Run Now" only —
  * but the definitions are already shaped for future scheduling.
  */
-export default function AutomationsPanel({ orgId, userId }) {
+export default function AutomationsPanel({ orgId, userId, disabled = false, onResult }) {
   const [runningId, setRunningId] = useState(null)
   const [results, setResults] = useState({})
 
   const run = async (automation) => {
+    if (disabled || runningId) return
     setRunningId(automation.id)
     setResults(prev => ({ ...prev, [automation.id]: null }))
     const startedAt = new Date().getTime()
@@ -34,12 +35,13 @@ export default function AutomationsPanel({ orgId, userId }) {
       logUsageEvent(orgId, userId, { type: 'automation', action: automation.actionId, source: 'automations', success: false, error: message, durationMs: new Date().getTime() - startedAt })
     } finally {
       setRunningId(null)
+      onResult?.()
     }
   }
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-xs text-text3 max-w-2xl">Reusable, one-click recruiting briefs built from your real workspace data. Run any of these now — the same definitions are ready to be triggered on a schedule once automation scheduling ships.</p>
+      <p className="text-xs text-text3 max-w-2xl">One-click recruiting briefings built from your accessible workspace records. Run a briefing when you need it.</p>
       <div className="grid sm:grid-cols-2 gap-3">
         {AUTOMATIONS.map(automation => {
           const result = results[automation.id]
@@ -55,7 +57,7 @@ export default function AutomationsPanel({ orgId, userId }) {
                   <div className="text-xs text-text3 mt-0.5">{automation.description}</div>
                 </div>
               </div>
-              <Button size="sm" variant="secondary" leftIcon="send" loading={isRunning} onClick={() => run(automation)}>Run Now</Button>
+              <Button size="sm" variant="secondary" leftIcon="send" loading={isRunning} disabled={disabled || Boolean(runningId)} onClick={() => run(automation)}>Run briefing</Button>
               {result?.error && <p className="text-xs text-red">{result.error}</p>}
               {result?.text && (
                 <div className="rounded-[var(--radius-md)] bg-surface2 border border-border p-3 max-h-64 overflow-y-auto">

@@ -10,9 +10,6 @@ import { Modal, Button, Badge } from '../ui'
 import { cn } from '../ui/utils'
 import { fetchNotifications, markNotificationRead, markNotificationsRead } from '../../lib/admin/notifications'
 import { SETTINGS_TAB_FLAG } from '../../lib/admin/settingsNav'
-import { useTopBarInsights } from '../../lib/ai/topBarInsights'
-import { useAIBotLines } from '../../lib/ai/botLines'
-import PixelRobot from '../ui/PixelRobot'
 
 const ROLE_LABELS = {
   superadmin: 'Super Admin', admin: 'Admin', owner: 'Owner', manager: 'Manager',
@@ -40,7 +37,7 @@ const COMMAND_ITEMS = [
   { id: 'styleguide', title: 'Component Style Guide', category: 'Design', path: '/style-guide', icon: 'edit' },
 ]
 
-export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate, currentPage }) {
+export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate, currentPage, navigationAsDrawer = false, navigationOpen = false }) {
   const { user, profile, signOut } = useAuth()
   const navigate = useNavigate()
   const userId = user?.id
@@ -124,8 +121,6 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
   }, [notifOpen])
 
   const unread = notifications.filter(n => !n.read)
-  const { robotInsights, applicantInsights } = useTopBarInsights({ unreadCount: unread.length, userName: displayName })
-  const { candidateLines: aiCandidateLines, robotLines: aiRobotLines, bicker: aiBicker } = useAIBotLines()
 
   const handleMarkAllRead = async () => {
     const ids = unread.map(n => n.id)
@@ -221,37 +216,36 @@ export default function TopBar({ onOpenSidebar, theme, onToggleTheme, onNavigate
       className="app-topbar h-16 shrink-0 flex items-center justify-between gap-3 px-4 sm:px-5 border-b border-border bg-surface/90 backdrop-blur-xl shadow-xs relative z-[var(--z-sticky)]"
       style={searchOpen ? { zIndex: 100000 } : undefined}
     >
-      {/* Left section: Mobile menu button + Pixel Robot Playground in left TopBar area */}
+      {/* Left section: Mobile menu button and workspace shortcuts */}
       <div className="flex items-center gap-3 min-w-0 shrink-0 h-full relative">
         <button
           type="button"
           onClick={onOpenSidebar}
           aria-label="Open navigation"
-          className="focus-ring lg:hidden w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center text-text2 hover:bg-surface2"
+          aria-expanded={navigationOpen}
+          aria-controls="workspace-navigation"
+          className={cn('focus-ring w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center text-text2 hover:bg-surface2', !navigationAsDrawer && 'lg:hidden')}
         >
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round">
             <line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" />
           </svg>
         </button>
 
-        {/* Pixel Robot playground inside the left TopBar space */}
-        <div className="hidden sm:flex w-36 sm:w-56 h-full relative items-end overflow-visible">
-          {currentPage !== 'ai_center' && (
-            <PixelRobot
-              currentPage={currentPage}
-              robotInsights={robotInsights}
-              applicantInsights={applicantInsights}
-              aiCandidateLines={aiCandidateLines}
-              aiRobotLines={aiRobotLines}
-              aiBicker={aiBicker}
-              onNavigate={onNavigate}
-            />
-          )}
-        </div>
+        <nav aria-label="Workspace shortcuts" className="workspace-shortcuts hidden xl:flex">
+          {[
+            ['dashboard', 'Overview'], ['candidates', 'Candidates'], ['pipeline', 'Pipeline'],
+            ['jobs', 'Jobs'], ['tasks', 'Tasks'], ['reports', 'Reports'],
+          ].map(([page, label]) => (
+            <button key={page} type="button" onClick={() => onNavigate?.(page)} aria-current={currentPage === page ? 'page' : undefined}>
+              {label}
+            </button>
+          ))}
+        </nav>
+        <span className="xl:hidden text-sm font-semibold tracking-tight">TalentDesk <span className="text-text3 font-normal hidden sm:inline">/ Workspace</span></span>
       </div>
 
       {/* Center Section: Global Search Bar */}
-      <div className="flex-1 flex justify-center max-w-xs sm:max-w-sm mx-auto px-2 relative min-w-0 h-full items-center">
+      <div className="workspace-global-search flex-1 flex justify-center max-w-xs sm:max-w-sm mx-auto px-2 relative min-w-0 h-full items-center">
         <button
           type="button"
           onClick={() => setSearchOpen(true)}

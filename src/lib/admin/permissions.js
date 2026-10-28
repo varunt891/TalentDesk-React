@@ -1,10 +1,10 @@
+import { PERMISSION_MATRIX } from '../../../shared/permissions.js'
+export { PERMISSION_MATRIX } from '../../../shared/permissions.js'
 // Phase 6 — the reusable Roles & Permissions architecture. Pure
 // configuration, no UI, no server calls: a single source of truth for
 // "what can this role do" that the rest of the app can grow into. Role ids
 // are the REAL uppercase values already used by OrganizationMember.role /
-// server/src/auth.js's mapProfileRole() — nothing invented here. Not yet
-// enforced server-side (no Role/Permission table exists), so this
-// currently governs UI presentation only; hasPermission() is the one
+// server/src/auth.js's mapProfileRole() — nothing invented here. Enforced by the API through shared/permissions.js; hasPermission() is the one
 // function future code should call instead of scattering
 // `profile.role === '...'` checks throughout the UI.
 export const LEVELS = { NONE: 'none', VIEW: 'view', EDIT: 'edit', FULL: 'full' }
@@ -42,21 +42,8 @@ export const ROLES = [
 
 export const MODULES = ['Dashboard', 'Candidates', 'Jobs', 'Pipeline', 'Tasks', 'Communication', 'AI', 'Reports', 'Administration', 'Settings']
 
-const { NONE, VIEW, EDIT, FULL } = LEVELS
-export const PERMISSION_MATRIX = {
-  OWNER: { Dashboard: FULL, Candidates: FULL, Jobs: FULL, Pipeline: FULL, Tasks: FULL, Communication: FULL, AI: FULL, Reports: FULL, Administration: FULL, Settings: FULL },
-  SUPERADMIN: { Dashboard: FULL, Candidates: FULL, Jobs: FULL, Pipeline: FULL, Tasks: FULL, Communication: FULL, AI: FULL, Reports: FULL, Administration: FULL, Settings: FULL },
-  ADMIN: { Dashboard: FULL, Candidates: FULL, Jobs: FULL, Pipeline: FULL, Tasks: FULL, Communication: FULL, AI: FULL, Reports: FULL, Administration: FULL, Settings: FULL },
-  RECRUITMENT_MANAGER: { Dashboard: FULL, Candidates: FULL, Jobs: FULL, Pipeline: FULL, Tasks: FULL, Communication: FULL, AI: EDIT, Reports: FULL, Administration: VIEW, Settings: VIEW },
-  ACCOUNT_MANAGER: { Dashboard: FULL, Candidates: FULL, Jobs: FULL, Pipeline: FULL, Tasks: FULL, Communication: FULL, AI: EDIT, Reports: FULL, Administration: VIEW, Settings: VIEW },
-  OPERATIONS_MANAGER: { Dashboard: FULL, Candidates: FULL, Jobs: FULL, Pipeline: FULL, Tasks: FULL, Communication: FULL, AI: EDIT, Reports: FULL, Administration: VIEW, Settings: VIEW },
-  MANAGER: { Dashboard: FULL, Candidates: FULL, Jobs: FULL, Pipeline: FULL, Tasks: FULL, Communication: FULL, AI: EDIT, Reports: FULL, Administration: VIEW, Settings: VIEW },
-  RECRUITER: { Dashboard: VIEW, Candidates: EDIT, Jobs: EDIT, Pipeline: EDIT, Tasks: EDIT, Communication: EDIT, AI: EDIT, Reports: VIEW, Administration: NONE, Settings: NONE },
-  HR_TEAM: { Dashboard: VIEW, Candidates: EDIT, Jobs: VIEW, Pipeline: EDIT, Tasks: EDIT, Communication: EDIT, AI: VIEW, Reports: VIEW, Administration: NONE, Settings: NONE },
-  HR_MANAGER: { Dashboard: VIEW, Candidates: VIEW, Jobs: VIEW, Pipeline: VIEW, Tasks: NONE, Communication: VIEW, AI: NONE, Reports: VIEW, Administration: NONE, Settings: NONE },
-  EMPLOYEE: { Dashboard: VIEW, Candidates: VIEW, Jobs: VIEW, Pipeline: VIEW, Tasks: EDIT, Communication: EDIT, AI: VIEW, Reports: VIEW, Administration: NONE, Settings: NONE },
-  VIEWER: { Dashboard: VIEW, Candidates: VIEW, Jobs: VIEW, Pipeline: VIEW, Tasks: VIEW, Communication: VIEW, AI: NONE, Reports: VIEW, Administration: NONE, Settings: NONE },
-}
+const { NONE, VIEW } = LEVELS
+
 
 export function getRole(id) {
   const key = (id || '').toUpperCase()

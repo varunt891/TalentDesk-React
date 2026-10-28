@@ -60,7 +60,7 @@ export default function Signup() {
   // If no inviteToken is present, platform personnel/members cannot self-register without an invitation
   if (!inviteToken) {
     return (
-      <main className="relative min-h-dvh w-full bg-bg text-text overflow-hidden flex items-center justify-center p-6">
+      <main className="auth-workspace relative min-h-dvh w-full bg-bg text-text overflow-hidden flex items-center justify-center p-6">
         <div aria-hidden="true" className="pointer-events-none absolute inset-0">
           <div className="absolute -top-40 -left-32 w-[560px] h-[560px] rounded-full opacity-[0.12] blur-[120px]" style={{ background: 'var(--accent)' }} />
           <div className="absolute -bottom-48 -right-32 w-[560px] h-[560px] rounded-full opacity-[0.10] blur-[120px]" style={{ background: 'var(--ai)' }} />
@@ -113,7 +113,7 @@ export default function Signup() {
   }
 
   return (
-    <main className="relative min-h-dvh w-full bg-bg text-text overflow-hidden flex items-center justify-center p-6">
+    <main className="auth-workspace relative min-h-dvh w-full bg-bg text-text overflow-hidden flex items-center justify-center p-6">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
         <div
           className="absolute -top-40 -left-32 w-[560px] h-[560px] rounded-full opacity-[0.12] blur-[120px]"

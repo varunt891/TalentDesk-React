@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { requireAdmin, requireAuth } from '../auth.js'
 import { prisma } from '../prisma.js'
 import bcrypt from 'bcryptjs'
+import { assertRoleChange } from '../access.js'
 const router = Router()
 
 router.use(requireAuth, requireAdmin)
@@ -11,11 +12,12 @@ router.post('/invite-user', async (req, res, next) => {
     const { email, role = 'recruiter', team = null, manager_id = null, department = null } = req.body
     if (!email?.trim()) return res.status(400).json({ error: 'Email is required' })
 
+    const checkedRole = assertRoleChange(req, 'RECRUITER', role)
     const invitation = await prisma.userInvitation.create({
       data: {
         org_id: req.profile.org_id,
         email: email.trim().toLowerCase(),
-        role,
+        role: checkedRole,
         team,
         manager_id,
         invited_by: req.user.id,
@@ -130,8 +132,7 @@ const candidatesTemplates = [
 // touches any other organization. Only a superadmin may target an org other than their own.
 router.post('/seed-demo-profiles', async (req, res, next) => {
   try {
-    const role = (req.memberRole || req.profile.role || '').toUpperCase()
-    const isSuperAdmin = role === 'SUPERADMIN'
+    const isSuperAdmin = req.isPlatformAdmin
     const organizationId = (isSuperAdmin && req.body.organization_id) || req.organizationId
     if (!organizationId) return res.status(400).json({ error: 'No organization selected' })
 
@@ -297,6 +298,9 @@ router.post('/seed-demo-profiles', async (req, res, next) => {
       deptOffset += 3
     }
 
+    const seededProfiles = await prisma.profile.findMany({ where: { org_id: organizationId, email: { endsWith: `.${runTag}@${domain}` } } })
+    await prisma.organizationMember.createMany({ data: seededProfiles.map(p => ({ user_id: p.id, organization_id: organizationId, role: p.role.toUpperCase(), status: 'ACTIVE' })), skipDuplicates: true })
+
     // Seed 10 demo candidates linked to the new recruiters (existing candidates are left untouched)
     let seededCandidatesCount = 0
     const candidateRecruiters = newRecruiters.slice(0, 10)
@@ -347,8 +351,7 @@ router.post('/seed-demo-profiles', async (req, res, next) => {
 // GET /api/admin/platform/ai-usage - Real platform-wide AI usage for Superadmins
 router.get('/platform/ai-usage', async (req, res, next) => {
   try {
-    const role = (req.memberRole || req.profile?.role || '').toUpperCase()
-    const isSuperAdmin = role === 'SUPERADMIN' || req.profile?.role === 'superadmin'
+    const isSuperAdmin = req.isPlatformAdmin || req.profile?.role === 'superadmin'
 
     if (!isSuperAdmin) {
       return res.status(403).json({ error: 'Superadmin privileges required to access platform AI usage.' })

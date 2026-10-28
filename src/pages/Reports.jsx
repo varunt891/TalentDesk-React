@@ -382,9 +382,9 @@ export default function Reports() {
   const followupMetrics = useMemo(() => {
     const total = reportFollowups.length
     const resolved = reportFollowups.filter(f => ['done', 'contacted'].includes(f.status)).length
-    const overdue = reportFollowups.filter(f => f.status !== 'done' && f.date && f.date < todayStr()).length
+    const overdue = reportFollowups.filter(f => f.status !== 'done' && f.date && f.date < getTodayDateString(organization?.timezone)).length
     return { total, resolved, overdue, rate: total ? Math.round((resolved / total) * 100) : null }
-  }, [reportFollowups])
+  }, [reportFollowups, organization?.timezone])
 
   const taskMetrics = useMemo(() => {
     const withStatus = reportTasks.map(t => ({ ...t, computedStatus: taskComputedStatus(t) }))

@@ -3,7 +3,7 @@ import { Icon } from './icons'
 import { cn } from './utils'
 
 const fieldBase =
-  'w-full bg-surface2 border rounded-[var(--radius-sm)] text-text placeholder:text-text3 ' +
+  'w-full bg-surface border rounded-[var(--radius-sm)] text-text placeholder:text-text3 ' +
   'transition-colors duration-[var(--duration-fast)] ease-[var(--ease-standard)] ' +
   'focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 ' +
   'disabled:opacity-50 disabled:cursor-not-allowed'
@@ -38,7 +38,7 @@ export const Input = forwardRef(function Input(
   { className = '', error, leftIcon, rightIcon, size = 'md', ...rest },
   ref
 ) {
-  const sizeCls = size === 'sm' ? 'h-8 text-xs px-2.5' : 'h-9 text-sm px-3'
+  const sizeCls = size === 'sm' ? 'h-9 text-xs px-3' : 'h-10 text-sm px-3.5'
   return (
     <div className="relative w-full">
       {leftIcon && (

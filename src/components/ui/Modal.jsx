@@ -62,7 +62,7 @@ export default function Modal({ open, isOpen, onClose, title, subtitle, size = '
     >
       <div
         className={cn(
-          'w-full bg-surface border border-border rounded-[var(--radius-lg)] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-lg)] max-h-[90vh] flex flex-col',
+          'workspace-dialog w-full bg-surface border border-border rounded-[var(--radius-lg)] shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-lg)] max-h-[90vh] flex flex-col',
           'animate-[modal-in_var(--duration-base)_var(--ease-standard)]',
           MODAL_SIZES[size] || MODAL_SIZES.md,
           className
@@ -106,7 +106,7 @@ export function Drawer({ open, isOpen, onClose, title, subtitle, size = 'md', si
     >
       <div
         className={cn(
-          'h-full bg-surface border-border flex flex-col shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-lg)] transition-[width] duration-300',
+          'workspace-drawer h-full bg-surface border-border flex flex-col shadow-[0_1px_0_0_rgba(255,255,255,0.06)_inset,var(--shadow-lg)] transition-[width] duration-300',
           side === 'right' ? 'border-l animate-[drawer-in-right_var(--duration-base)_var(--ease-standard)]' : 'border-r animate-[drawer-in-left_var(--duration-base)_var(--ease-standard)]',
           DRAWER_SIZES[effectiveSize] || DRAWER_SIZES.md,
           className

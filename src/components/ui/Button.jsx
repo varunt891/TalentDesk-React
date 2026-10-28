@@ -3,11 +3,11 @@ import { Icon } from './icons'
 import { cn } from './utils'
 
 const VARIANTS = {
-  primary: 'bg-accent text-white shadow-[0_1px_0_0_rgba(255,255,255,0.16)_inset,0_3px_10px_-2px_color-mix(in_srgb,var(--accent)_45%,transparent)] hover:shadow-[0_1px_0_0_rgba(255,255,255,0.16)_inset,0_6px_18px_-2px_color-mix(in_srgb,var(--accent)_55%,transparent)] hover:brightness-110 active:brightness-95 active:scale-[0.98]',
+  primary: 'td-button-primary bg-[var(--action)] text-[var(--action-text)] hover:opacity-90 active:scale-[0.98]',
   secondary: 'bg-surface2 text-text border border-border shadow-xs hover:bg-surface3 hover:border-border-strong active:scale-[0.98]',
   ghost: 'bg-transparent text-text2 hover:bg-surface2 hover:text-text active:scale-[0.98]',
   danger: 'bg-red text-white shadow-[0_1px_0_0_rgba(255,255,255,0.16)_inset,0_3px_10px_-2px_rgba(239,68,68,0.45)] hover:shadow-[0_1px_0_0_rgba(255,255,255,0.16)_inset,0_6px_18px_-2px_rgba(239,68,68,0.55)] hover:brightness-110 active:brightness-95 active:scale-[0.98]',
-  ai: 'bg-ai text-white shadow-[0_1px_0_0_rgba(255,255,255,0.16)_inset,0_3px_10px_-2px_rgba(139,92,246,0.45)] hover:shadow-[0_1px_0_0_rgba(255,255,255,0.16)_inset,0_6px_18px_-2px_rgba(139,92,246,0.55)] hover:brightness-110 active:brightness-95 active:scale-[0.98]',
+  ai: 'bg-accent text-white hover:brightness-95 active:scale-[0.98]',
   outline: 'bg-transparent text-text border border-border hover:border-accent hover:text-accent active:scale-[0.98]',
 }
 
@@ -50,7 +50,7 @@ const Button = forwardRef(function Button(
       disabled={isDisabled}
       aria-busy={loading || undefined}
       className={cn(
-        'inline-flex items-center justify-center font-semibold whitespace-nowrap select-none',
+        'td-button inline-flex items-center justify-center font-medium whitespace-nowrap select-none',
         'transition-[filter,background-color,border-color,color,box-shadow,transform] duration-[var(--duration-fast)] ease-[var(--ease-standard)]',
         'focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
         'disabled:opacity-50 disabled:pointer-events-none',

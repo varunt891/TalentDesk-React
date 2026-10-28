@@ -28,7 +28,6 @@ export default function Login() {
   const [newPassword, setNewPassword] = useState('')
   // resetStep: 'email' | 'set-password' | 'manual-token'
   const [resetStep, setResetStep] = useState('email')
-  const [tokenGenerated, setTokenGenerated] = useState(false)
 
   const closeForgotModal = () => {
     setShowForgotModal(false)
@@ -37,7 +36,6 @@ export default function Login() {
     setManualToken('')
     setNewPassword('')
     setResetStep('email')
-    setTokenGenerated(false)
   }
 
   useEffect(() => {
@@ -68,17 +66,8 @@ export default function Login() {
     setForgotLoading(true)
     try {
       const res = await authApi.requestPasswordReset(forgotEmail.trim())
-      if (res.token) {
-        // Token returned from server — store it and go straight to set-password step
-        setResetToken(res.token)
-        setTokenGenerated(true)
-        setResetStep('set-password')
-        toast({ tone: 'success', title: 'Token Generated!', description: 'Now enter your new password below.' })
-      } else {
-        // No email service configured — show manual token entry step
-        toast({ tone: 'info', title: 'Check with Admin', description: res.message || 'Contact your admin for a reset token.' })
-        setResetStep('manual-token')
-      }
+      toast({ tone: 'info', title: 'Account recovery', description: res.message })
+      setResetStep('contact-admin')
     } catch (err) {
       toast({ tone: 'error', title: 'Failed to request reset', description: err.message })
     } finally {
@@ -112,7 +101,7 @@ export default function Login() {
   }
 
   return (
-    <main className="relative min-h-dvh w-full bg-bg text-text overflow-hidden flex items-center justify-center p-6">
+    <main className="auth-workspace relative min-h-dvh w-full bg-bg text-text overflow-hidden flex items-center justify-center p-6">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
         <div
           className="absolute -top-40 -left-32 w-[560px] h-[560px] rounded-full opacity-[0.12] blur-[120px]"
@@ -251,12 +240,13 @@ export default function Login() {
         title="Reset Your Password"
         subtitle={
           resetStep === 'email'
-            ? 'Enter your account email to generate a secure reset token.'
+            ? 'Enter your account email for recovery instructions.'
             : resetStep === 'set-password'
             ? 'Token generated! Enter your new password below.'
             : 'Paste your reset token and enter a new password.'
         }
       >
+        {resetStep === 'contact-admin' && <p className="text-sm text-text2 leading-relaxed">Contact your company Owner or Admin to verify your identity and reset your password. Automatic recovery email delivery is not configured.</p>}
         {/* ── Step 1: Enter email ─────────────────── */}
         {resetStep === 'email' && (
           <form onSubmit={handleRequestReset} className="flex flex-col gap-4">
@@ -280,7 +270,7 @@ export default function Login() {
                 Already have a token?
               </button>
               <Button type="submit" loading={forgotLoading}>
-                Generate Reset Token
+                Get recovery instructions
               </Button>
             </div>
           </form>
@@ -352,7 +342,7 @@ export default function Login() {
                 onClick={() => setResetStep('email')}
                 className="text-xs text-text3 hover:text-text underline"
               >
-                ← Generate a new token
+                ← Back to account recovery
               </button>
               <Button type="submit" loading={forgotLoading} disabled={!manualToken || !newPassword}>
                 Reset Password

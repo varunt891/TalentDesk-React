@@ -2,6 +2,8 @@ import { Router } from 'express';
 import multer from 'multer';
 import * as XLSX from 'xlsx';
 import { requireAuth } from '../auth.js';
+import { assertModule } from '../access.js';
+import { scopedRowWhere } from '../services/recordAccess.js';
 import { prisma } from '../prisma.js';
 import { storageService } from '../services/storageService.js';
 import { extractText } from '../services/documentTextService.js';
@@ -9,6 +11,9 @@ import { parseResumeText, readScannedResume } from '../services/resumeParsingSer
 
 const router = Router();
 router.use(requireAuth);
+router.use((req, res, next) => {
+  try { assertModule(req, 'Candidates', req.method === 'GET' ? 'view' : 'edit'); next(); } catch (error) { next(error); }
+});
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -259,8 +264,8 @@ router.post('/candidates/bulk-xlsx', upload.single('file'), async (req, res) => 
 
 router.get('/resume-url/:candidateId', async (req, res) => {
   try {
-    const candidate = await prisma.candidate.findUnique({
-      where: { id: req.params.candidateId },
+    const candidate = await prisma.candidate.findFirst({
+      where: await scopedRowWhere(req, 'candidates', { orgScoped: true }, req.params.candidateId),
     });
     if (!candidate) return res.status(404).json({ success: false, error: 'Candidate not found.' });
 

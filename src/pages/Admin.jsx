@@ -658,8 +658,8 @@ function CommandCenter({ adminUsers, onSeed, saving, teamGroups, userStats }) {
               const maxSub = Math.max(...teamGroups.map(g => g.submissions), 1)
               const percent = Math.min(Math.round((group.submissions / maxSub) * 100), 100)
               return (
-                <div className="flex items-center gap-4" key={group.key}>
-                  <div className="min-w-0 w-56 shrink-0">
+                <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 sm:gap-4" key={group.key}>
+                  <div className="min-w-0 w-full sm:w-56 shrink-0">
                     <strong className="block text-[13px] font-semibold text-text truncate">{group.title}</strong>
                     <span className="text-xs text-text3">{group.department} Department · {group.recruiters.length} recruiters</span>
                   </div>

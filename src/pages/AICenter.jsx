@@ -4,15 +4,16 @@ import { PageContainer } from '../components/layout/PageContainer'
 import { Button, Card, CardHeader, Icon, EmptyState, Drawer, cn } from '../components/ui'
 import { WorkspaceSearch, EntityDrawer } from '../components/workspace'
 import MessageBubble from '../components/ai/MessageBubble'
-import ActionsPanel from '../components/ai/ActionsPanel'
-import SalaryAnalysisPanel from '../components/ai/SalaryAnalysisPanel'
+import HiringTools from '../components/ai/HiringTools'
 import AnalyticsPanel from '../components/ai/AnalyticsPanel'
 import AutomationsPanel from '../components/ai/AutomationsPanel'
 import SettingsPanel from '../components/ai/SettingsPanel'
+import RecruitingWorkbench from '../components/ai/RecruitingWorkbench'
 import { useAIWorkspaceContext } from '../lib/ai/context'
 import { useCopilotChat } from '../lib/ai/useCopilotChat'
-import { runAiAction } from '../lib/ai/aiClient'
-import { fetchWorkspaceSnapshot } from '../lib/ai/workspaceSnapshot'
+import { useRecruitingSnapshot } from '../lib/ai/useRecruitingSnapshot'
+import { RECRUITING_WORKFLOWS, recruitingSummary } from '../lib/ai/recruitingWorkbench'
+import { getTodayDateString } from '../lib/timezone'
 import { SUGGESTED_PROMPTS } from '../lib/ai/memory'
 import { getUsageSummary, loadUsageEvents } from '../lib/ai/usage'
 import { loadSavedPrompts, savePrompt, deleteSavedPrompt, togglePinSavedPrompt, loadFavoriteTemplates, toggleFavoriteTemplate } from '../lib/ai/promptLibrary'
@@ -28,19 +29,24 @@ const ACTION_GROUPS = [
 ]
 
 const MODE_TABS_BASE = [
-  { id: 'chat', label: 'Chat', gate: 'chat' },
-  { id: 'actions', label: 'Actions', gate: 'actions' },
-  { id: 'analytics', label: 'Analytics', gate: null },
-  { id: 'automations', label: 'Automations', gate: 'automations' },
-  { id: 'settings', label: 'Settings', gate: null },
+  { id: 'workbench', label: 'Workbench', gate: 'actions' },
+  { id: 'chat', label: 'Copilot', gate: 'chat' },
+  { id: 'actions', label: 'Hiring tools', gate: 'actions' },
+  { id: 'analytics', label: 'Usage', gate: null },
+  { id: 'automations', label: 'Briefings', gate: 'automations' },
+  { id: 'settings', label: 'Preferences', gate: null },
 ]
 
 // getAiAction() only knows the generic Action Framework ids (Summarize/Draft/
 // Compare/...); 'salary' is logged by SalaryAnalysisPanel's purpose-built
 // flow, so it needs its own label/icon rather than silently falling back to
 // AI_ACTIONS[0] ("Summarize") in the activity feed and usage insights below.
-function describeAction(actionId) {
+function describeAction(actionId, workflowId) {
+  const hiringWorkflow = AI_CATEGORIES.find(item => item.id === workflowId)
+  if (hiringWorkflow) return hiringWorkflow
   if (actionId === 'salary') return { label: 'Market Salary & Demand', icon: 'trendUp' }
+  const workflow = RECRUITING_WORKFLOWS.find(item => item.id === actionId)
+  if (workflow) return workflow
   return getAiAction(actionId)
 }
 
@@ -68,19 +74,9 @@ function relTime(iso) {
   return `${d}d ago`
 }
 
-/**
- * The AI Center — a full-bleed conversational canvas (Claude.ai/ChatGPT
- * shaped) rather than a permanent 3-column dashboard: a slim top strip, a
- * centered hero/conversation column with a docked composer, and everything
- * that used to live in fixed side columns (history, categories, saved
- * prompts, workspace context, recent activity) now lives in two on-demand
- * slide-out drawers. Five modes still share this shell — Chat + Actions
- * (the day-to-day workspace), Analytics + Automations + Settings (the
- * platform's measurement, automation, and governance surface). No AI
- * service logic changes here — same useCopilotChat/ActionsPanel/aiClient/
- * workspaceSnapshot/memory/usage foundation, only the presentation shell.
- */
-export default function AICenter() {
+// A database-connected recruiting workbench with the shared Copilot, writing
+// tools, saved conversations, usage reporting and preferences alongside it.
+export default function AICenter({ onNavigate }) {
   const { user, profile, organization } = useAuth()
   const { currentPage, pageContext } = useAIWorkspaceContext()
   const orgId = organization?.id || profile?.org_id
@@ -88,6 +84,15 @@ export default function AICenter() {
   const userName = profile?.full_name || user?.email
 
   const { settings: aiSettings } = useAIGovernance(orgId)
+  const workspace = useRecruitingSnapshot(orgId, userId)
+  const workspaceSummary = recruitingSummary(workspace.snapshot, getTodayDateString(organization?.timezone))
+  const snapshotCounts = workspace.snapshot ? {
+    candidates: workspace.snapshot.candidates.length,
+    activeCandidates: workspaceSummary.active.length,
+    jobs: workspace.snapshot.jobs.length,
+    openJobs: workspaceSummary.openJobs.length,
+    tasksDue: workspaceSummary.tasksDue.length,
+  } : null
 
   const chat = useCopilotChat({
     orgId, userId, orgName: organization?.name, userName, role: profile?.role, currentPage, pageContext,
@@ -96,31 +101,22 @@ export default function AICenter() {
     source: currentPage || 'ai_center',
   })
   const {
-    sortedConversations, activeId, messages, streaming, streamingText, errorMsg, recentPromptsList, setRecentPromptsList,
+    sortedConversations, activeId, messages, streaming, streamingText, errorMsg, recentPromptsList,
     sendMessage, addMessage, updateMessage, regenerate, stopStreaming, newChat, switchConversation, togglePin, renameConversation, deleteConversation,
   } = chat
 
-  const [centerMode, setCenterMode] = useState('chat')
+  const [centerMode, setCenterMode] = useState('workbench')
   const [selectedCategory, setSelectedCategory] = useState(null)
   const [input, setInput] = useState('')
   const [convSearch, setConvSearch] = useState('')
   const [historyOpen, setHistoryOpen] = useState(false)
   const [contextOpen, setContextOpen] = useState(false)
 
-  const snapshotRef = useRef(null)
-
-  // Fetch a fresh workspace snapshot for CRM execution context
-  const getSnapshot = async () => {
-    if (snapshotRef.current && (Date.now() - snapshotRef.current.ts) < 90000) return snapshotRef.current.data
-    const snap = await fetchWorkspaceSnapshot()
-    snapshotRef.current = { data: snap, ts: Date.now() }
-    return snap
-  }
-
   const handleExecuteCrmAction = async (msgId, action) => {
     updateMessage(msgId, { actionStatus: 'executing' })
     try {
-      const snap = await getSnapshot()
+      const snap = await workspace.refresh()
+      if (!snap) throw new Error('Could not refresh the selected records. Try again before executing.')
       const result = await executeCrmAction(action, {
         candidates: snap.candidates || [],
         jobs: snap.jobs || [],
@@ -129,7 +125,8 @@ export default function AICenter() {
         userId,
         orgId,
         profile,
-        onRefresh: () => { snapshotRef.current = null },
+        organization,
+        onRefresh: workspace.refresh,
       })
       if (result.success) {
         updateMessage(msgId, {
@@ -161,10 +158,10 @@ export default function AICenter() {
   const [favoriteTemplates, setFavoriteTemplates] = useState([])
   const [usageSummary, setUsageSummary] = useState({ requestsToday: 0, totalRequests: 0, requestsThisWeek: 0, avgResponseMs: null, topAction: null, estimatedMinutesSaved: 0 })
   const [recentEvents, setRecentEvents] = useState([])
-  const [snapshotCounts, setSnapshotCounts] = useState(null)
   const [previewPrompt, setPreviewPrompt] = useState(null)
-  const [followupSuggestions, setFollowupSuggestions] = useState([])
-  const lastProcessedMsgId = useRef(null)
+  const lastMessage = messages[messages.length - 1]
+  const followupSuggestions = lastMessage?.role === 'assistant' && !lastMessage.pendingAction && !lastMessage.stopped
+    ? ['Which recorded details should I verify next?', 'Turn this into a concise recruiter checklist.', 'Draft a follow-up using only the recorded facts.'] : []
   const prevStreamingRef = useRef(false)
   const listRef = useRef(null)
 
@@ -183,18 +180,6 @@ export default function AICenter() {
   }, [orgId, userId])
 
   useEffect(() => {
-    fetchWorkspaceSnapshot().then(snap => {
-      setSnapshotCounts({
-        candidates: snap.candidates.length,
-        activeCandidates: snap.candidates.filter(c => !['Hired', 'Rejected'].includes(c.internal_status)).length,
-        jobs: snap.jobs.length,
-        openJobs: snap.jobs.filter(j => (j.status || 'Open') === 'Open').length,
-        tasksDue: snap.tasks.filter(t => t.status !== 'Completed').length,
-      })
-    }).catch(() => { /* workspace context is supplementary */ })
-  }, [])
-
-  useEffect(() => {
     if (prevStreamingRef.current && !streaming) refreshUsage()
     prevStreamingRef.current = streaming
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -204,31 +189,9 @@ export default function AICenter() {
     if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
   }, [messages.length, streamingText])
 
-  // Suggested Follow-up Questions — reuses the shared Action Framework
-  // ('recommend') rather than inventing a new AI capability.
-  useEffect(() => {
-    if (streaming) return
-    const lastMsg = messages[messages.length - 1]
-    if (!lastMsg || lastMsg.role !== 'assistant' || lastMsg.stopped) return
-    if (lastProcessedMsgId.current === lastMsg.id) return
-    lastProcessedMsgId.current = lastMsg.id
-    setFollowupSuggestions([])
-    runAiAction({
-      action: 'recommend',
-      content: lastMsg.content,
-      context: 'Suggest exactly 3 short, specific follow-up questions a recruiter might ask next. Return them ONLY as a markdown bullet list (each line starting with "- "), no extra commentary.',
-    }).then(res => {
-      if (res.success === false || !res.text) return
-      const bullets = res.text.split('\n').map(l => l.trim())
-        .filter(l => l.startsWith('- ') || l.startsWith('* '))
-        .map(l => l.replace(/^[-*]\s*/, '').trim()).filter(Boolean).slice(0, 3)
-      setFollowupSuggestions(bullets)
-    }).catch(() => { /* follow-up suggestions are a nice-to-have, fail silently */ })
-  }, [messages, streaming])
-
   const overLimit = isOverDailyLimit(aiSettings, usageSummary.requestsToday)
   const handleSend = async (text) => {
-    if (overLimit) return
+    if (overLimit || streaming) return
     const trimmed = (text || '').trim()
     if (!trimmed) return
     setInput('')
@@ -236,8 +199,8 @@ export default function AICenter() {
     const detectedAction = parseCrmActionFromText(trimmed)
     if (detectedAction) {
       const now = new Date().toISOString()
-      const userMsgId = `u_${Date.now()}`
-      const aiMsgId = `a_${Date.now() + 1}`
+      const userMsgId = `u_${new Date().getTime()}`
+      const aiMsgId = `a_${new Date().getTime() + 1}`
 
       addMessage({
         id: userMsgId,
@@ -272,19 +235,20 @@ export default function AICenter() {
   }
 
   const runSavedPrompt = (prompt) => {
+    if (overLimit || streaming) return
     setPreviewPrompt(null)
     setHistoryOpen(false)
     if (!prompt.actionId || prompt.actionId === 'chat') {
       setCenterMode('chat')
-      sendMessage(prompt.content)
+      handleSend(prompt.content)
     } else {
       setCenterMode('actions')
-      setSelectedCategory({ id: `saved_${prompt.id}_${new Date().getTime()}`, mode: 'action', actionId: prompt.actionId, presetContent: prompt.content, presetContext: prompt.context })
+      setSelectedCategory({ id: prompt.workflowId || `saved_${prompt.id}`, savedPromptId: prompt.id, launchedAt: new Date().getTime(), mode: 'action', actionId: prompt.actionId, presetContent: prompt.content, presetContentB: prompt.contentB, presetContext: prompt.context, comparisonMode: prompt.comparisonMode })
     }
   }
 
-  const handleSaveFromActions = ({ actionId, content, context }) => {
-    savePrompt(orgId, userId, { title: content, actionId, content, context })
+  const handleSaveFromActions = (prompt) => {
+    savePrompt(orgId, userId, { title: prompt.content, ...prompt })
     refreshLibrary()
   }
 
@@ -305,25 +269,19 @@ export default function AICenter() {
   const showHero = effectiveMode === 'chat' && messages.length === 0 && !streaming
 
   return (
-    <PageContainer variant="flush">
-      <div className="relative h-full min-h-0 flex flex-col">
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 h-[420px] opacity-20 blur-3xl"
-          style={{ background: 'radial-gradient(55% 60% at 50% 0%, var(--ai), transparent)' }}
-        />
+    <PageContainer variant="flush" style={{ maxWidth: 'none' }}>
+      <div className="ai-recruiting-studio relative h-full min-h-0 flex flex-col">
 
         {/* TOP STRIP */}
-        <div className="relative shrink-0 flex items-center justify-between gap-2 sm:gap-3 px-3 sm:px-6 h-14 border-b border-border">
-          <div className="flex items-center gap-2 min-w-0">
+        <div className="ai-studio-topbar relative shrink-0 flex items-center justify-between gap-2 sm:gap-3 px-3 sm:px-6 border-b border-border">
+          <div className="ai-studio-brand flex items-center gap-2 min-w-0">
             <button
               type="button"
               onClick={() => setHistoryOpen(true)}
-              aria-label="Open history and workflows"
-              className="focus-ring w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center text-text2 hover:bg-surface2 shrink-0"
+              aria-label="Open history and saved prompts"
+              className="ai-history-toggle focus-ring flex items-center justify-center text-text2 hover:bg-surface2 shrink-0"
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" />
-              </svg>
+              <Icon name="clock" size={14} /><span>History</span>
             </button>
             <span className="hidden sm:flex items-center gap-2 min-w-0">
               <span className="w-6 h-6 rounded-[var(--radius-sm)] flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, var(--accent), var(--ai))' }}>
@@ -333,12 +291,13 @@ export default function AICenter() {
             </span>
           </div>
 
-          <div className="flex items-center gap-1 bg-surface2 rounded-full p-1 border border-border overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+          <nav className="ai-studio-modes flex items-center gap-1 bg-surface2 rounded-full p-1 border border-border overflow-x-auto" aria-label="AI Center sections" style={{ scrollbarWidth: 'none' }}>
             {modeTabs.map(t => (
               <button
                 key={t.id}
                 type="button"
                 onClick={() => setCenterMode(t.id)}
+                aria-current={effectiveMode === t.id ? 'page' : undefined}
                 className={cn(
                   'px-3 h-7 rounded-full text-[11.5px] font-bold whitespace-nowrap transition-colors duration-[var(--duration-fast)] shrink-0',
                   effectiveMode === t.id ? 'bg-surface text-text shadow-xs' : 'text-text3 hover:text-text2'
@@ -347,7 +306,7 @@ export default function AICenter() {
                 {t.label}
               </button>
             ))}
-          </div>
+          </nav>
 
           <div className="flex items-center gap-1.5 shrink-0">
             {usageSummary.requestsToday > 0 && (
@@ -370,7 +329,16 @@ export default function AICenter() {
         </div>
 
         {/* CANVAS */}
-        <div ref={effectiveMode === 'chat' ? listRef : undefined} className="relative flex-1 min-h-0 overflow-y-auto">
+        <div ref={effectiveMode === 'chat' ? listRef : undefined} className="ai-studio-canvas relative flex-1 min-h-0 overflow-y-auto">
+          <div hidden={effectiveMode !== 'workbench'}>
+            {aiSettings.features.actions !== false && <RecruitingWorkbench
+              key={`${orgId}:${userId}`}
+              snapshot={workspace.snapshot} loading={workspace.loading} error={workspace.error} onRefresh={workspace.refresh}
+              orgId={orgId} userId={userId} userName={userName} timezone={organization?.timezone}
+              aiSettings={aiSettings} overLimit={overLimit} onResult={refreshUsage}
+              onAskCopilot={text => { setCenterMode('chat'); setInput(text) }}
+            />}
+          </div>
           {effectiveMode === 'chat' && (
             showHero ? (
               <div className="w-full px-4 sm:px-6 pt-3 pb-8 flex flex-col items-center justify-start">
@@ -386,7 +354,7 @@ export default function AICenter() {
 
                   return (
                     <div key={m.id} className="flex flex-col gap-3">
-                      <MessageBubble message={m} onRegenerate={m.role === 'assistant' && i === messages.length - 1 && !isCrmActionMsg ? regenerate : undefined} />
+                      <MessageBubble message={m} onRegenerate={m.role === 'assistant' && i === messages.length - 1 && !isCrmActionMsg && !overLimit && !streaming ? regenerate : undefined} />
 
                       {isCrmActionMsg && (
                         <div className="pl-9">
@@ -466,7 +434,7 @@ export default function AICenter() {
                     <Icon name="alertCircle" size={14} className="text-red shrink-0 mt-0.5" />
                     <div className="min-w-0 flex-1">
                       <p className="text-xs text-red">{errorMsg}</p>
-                      <button type="button" onClick={regenerate} className="text-[11px] font-bold text-red underline mt-1">Retry</button>
+                      <button type="button" disabled={overLimit || streaming} onClick={regenerate} className="text-[11px] font-bold text-red underline mt-1 disabled:opacity-50">Retry</button>
                     </div>
                   </div>
                 )}
@@ -474,30 +442,17 @@ export default function AICenter() {
             )
           )}
 
-          {effectiveMode === 'actions' && (
-            <div className="max-w-[760px] mx-auto px-4 sm:px-6 py-8">
-              <ActionsModeHeader category={selectedCategory} onBrowse={() => setHistoryOpen(true)} />
-              {selectedCategory?.mode === 'salary' ? (
-                <SalaryAnalysisPanel key={selectedCategory?.id || 'salary'} orgId={orgId} userId={userId} source="ai_center" streamingEnabled={aiSettings.streamingEnabled} />
-              ) : (
-                <ActionsPanel
-                  key={selectedCategory?.id || 'default'}
-                  orgId={orgId}
-                  userId={userId}
-                  source="ai_center"
-                  initialActionId={selectedCategory?.actionId || 'summarize'}
-                  initialContent={selectedCategory?.presetContent || ''}
-                  initialContext={selectedCategory?.actionContext || selectedCategory?.presetContext || ''}
-                  placeholder={selectedCategory?.placeholder}
-                  dualInputModes={selectedCategory?.dualInputModes}
-                  restrictActionsTo={selectedCategory?.restrictActionsTo}
-                  streamingEnabled={aiSettings.streamingEnabled}
-                  onResult={refreshUsage}
-                  onSavePrompt={handleSaveFromActions}
-                />
-              )}
-            </div>
-          )}
+          <div hidden={effectiveMode !== 'actions'}>
+            {aiSettings.features.actions !== false && <HiringTools
+              key={`${orgId}:${userId}`}
+              launch={selectedCategory} orgId={orgId} userId={userId} userName={userName}
+              timezone={organization?.timezone} workspace={workspace} aiSettings={aiSettings}
+              overLimit={overLimit} active={effectiveMode === 'actions'}
+              onResult={refreshUsage} onSavePrompt={handleSaveFromActions} onLaunchChat={launchCategory} onNavigate={onNavigate}
+              favorites={favoriteTemplates}
+              onToggleFavorite={id => { toggleFavoriteTemplate(orgId, userId, id); refreshLibrary() }}
+            />}
+          </div>
 
           {effectiveMode === 'analytics' && (
             <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
@@ -506,7 +461,7 @@ export default function AICenter() {
           )}
           {effectiveMode === 'automations' && (
             <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-              <AutomationsPanel orgId={orgId} userId={userId} />
+              <AutomationsPanel orgId={orgId} userId={userId} disabled={overLimit} onResult={refreshUsage} />
             </div>
           )}
           {effectiveMode === 'settings' && (
@@ -537,7 +492,7 @@ export default function AICenter() {
       </div>
 
       {/* LEFT DRAWER — history, categories, saved prompts */}
-      <Drawer open={historyOpen} onClose={() => setHistoryOpen(false)} side="left" size="sm" title="History & Workflows" subtitle="Conversations, saved prompts, and every AI workflow">
+      <Drawer open={historyOpen} onClose={() => setHistoryOpen(false)} side="left" size="sm" title="History & Saved Prompts" subtitle="Your conversations and reusable prompts">
         <HistoryDrawerBody
           onNewChat={() => { newChat(); setCenterMode('chat'); setHistoryOpen(false) }}
           convSearch={convSearch}
@@ -548,12 +503,8 @@ export default function AICenter() {
           onPin={togglePin}
           onDelete={deleteConversation}
           onRename={renameConversation}
-          favoriteTemplates={favoriteTemplates}
-          onToggleFavorite={(id) => { toggleFavoriteTemplate(orgId, userId, id); refreshLibrary() }}
-          onLaunchCategory={launchCategory}
-          selectedCategory={selectedCategory}
           savedPrompts={savedPrompts}
-          onPreviewPrompt={setPreviewPrompt}
+          onPreviewPrompt={prompt => { setHistoryOpen(false); setPreviewPrompt(prompt) }}
           onRunPrompt={runSavedPrompt}
           onPinPrompt={(id) => { togglePinSavedPrompt(orgId, userId, id); refreshLibrary() }}
           onDeletePrompt={(id) => { deleteSavedPrompt(orgId, userId, id); refreshLibrary() }}
@@ -579,12 +530,13 @@ export default function AICenter() {
           onClose={() => setPreviewPrompt(null)}
           eyebrow="Saved Prompt"
           title={previewPrompt.title}
-          subtitle={getAiAction(previewPrompt.actionId).label}
+          subtitle={AI_CATEGORIES.find(item => item.id === previewPrompt.workflowId)?.label || getAiAction(previewPrompt.actionId).label}
           size="md"
           actions={<Button variant="primary" leftIcon="send" onClick={() => runSavedPrompt(previewPrompt)}>Run</Button>}
         >
           <div className="flex flex-col gap-3">
-            <Card><CardHeader title="Prompt" /><p className="text-sm text-text2 whitespace-pre-wrap">{previewPrompt.content}</p></Card>
+            <Card><CardHeader title={previewPrompt.actionId === 'compare' ? previewPrompt.comparisonMode === 'candidate_vs_candidate' ? 'Candidate A' : 'Resume' : 'Prompt'} /><p className="text-sm text-text2 whitespace-pre-wrap">{previewPrompt.content}</p></Card>
+            {previewPrompt.contentB && <Card><CardHeader title={previewPrompt.comparisonMode === 'candidate_vs_candidate' ? 'Candidate B' : 'Job description'} /><p className="text-sm text-text2 whitespace-pre-wrap">{previewPrompt.contentB}</p></Card>}
             {previewPrompt.context && <Card><CardHeader title="Instructions" /><p className="text-sm text-text2 whitespace-pre-wrap">{previewPrompt.context}</p></Card>}
           </div>
         </EntityDrawer>
@@ -630,25 +582,6 @@ function ComposerBar({ value, onChange, onSend, streaming, onStop, disabled }) {
   )
 }
 
-function ActionsModeHeader({ category, onBrowse }) {
-  return (
-    <div className="flex items-center justify-between gap-3 mb-5">
-      <div className="flex items-center gap-2.5 min-w-0">
-        <span className="w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center shrink-0 bg-ai-soft text-ai">
-          <Icon name={category?.icon || 'sparkles'} size={15} />
-        </span>
-        <div className="min-w-0">
-          <p className="text-[15px] font-extrabold text-text tracking-tight truncate">{category?.label || 'Actions'}</p>
-          {category?.description && <p className="text-[11.5px] text-text3 truncate">{category.description}</p>}
-        </div>
-      </div>
-      <button type="button" onClick={onBrowse} className="shrink-0 text-[11px] font-bold text-ai hover:brightness-110 flex items-center gap-1">
-        Browse workflows <Icon name="chevronRight" size={11} />
-      </button>
-    </div>
-  )
-}
-
 function SectionLabel({ children }) {
   return <p className="text-[10px] font-bold text-text3 uppercase tracking-wider mb-2">{children}</p>
 }
@@ -656,7 +589,6 @@ function SectionLabel({ children }) {
 function HistoryDrawerBody({
   onNewChat, convSearch, setConvSearch, filteredConversations, activeId,
   onSelectConversation, onPin, onDelete, onRename,
-  favoriteTemplates, onToggleFavorite, onLaunchCategory, selectedCategory,
   savedPrompts, onPreviewPrompt, onRunPrompt, onPinPrompt, onDeletePrompt,
 }) {
   return (
@@ -678,22 +610,6 @@ function HistoryDrawerBody({
               onPin={() => onPin(c.id)}
               onDelete={() => onDelete(c.id)}
               onRename={(title) => onRename(c.id, title)}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <SectionLabel>Categories</SectionLabel>
-        <div className="flex flex-col gap-0.5">
-          {AI_CATEGORIES.map(cat => (
-            <CategoryRow
-              key={cat.id}
-              category={cat}
-              active={selectedCategory?.id === cat.id}
-              favorite={favoriteTemplates.includes(cat.id)}
-              onClick={() => onLaunchCategory(cat)}
-              onToggleFavorite={() => onToggleFavorite(cat.id)}
             />
           ))}
         </div>
@@ -760,9 +676,9 @@ function ContextDrawerBody({ isChatMode, onQuickAction, recentEvents, userName, 
           <div className="flex flex-col gap-2.5">
             {recentEvents.map((e, i) => (
               <div key={i} className="flex items-start gap-2">
-                <Icon name={e.type === 'chat' ? 'sparkles' : describeAction(e.action).icon} size={11} className={e.success === false ? 'text-red shrink-0 mt-0.5' : 'text-accent shrink-0 mt-0.5'} />
+                <Icon name={e.type === 'chat' ? 'sparkles' : describeAction(e.action, e.workflowId).icon} size={11} className={e.success === false ? 'text-red shrink-0 mt-0.5' : 'text-accent shrink-0 mt-0.5'} />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-semibold text-text2 truncate">{e.type === 'chat' ? 'Copilot reply' : describeAction(e.action).label}{e.success === false ? ' (failed)' : ''}</p>
+                  <p className="text-[11px] font-semibold text-text2 truncate">{e.type === 'chat' ? 'Copilot reply' : describeAction(e.action, e.workflowId).label}{e.success === false ? ' (failed)' : ''}</p>
                   {e.preview && <p className="text-[10px] text-text3 truncate">{stripMarkdown(e.preview)}</p>}
                 </div>
                 <span className="text-[10px] text-text3 shrink-0">{relTime(e.at)}</span>
@@ -824,40 +740,6 @@ function ConversationRow({ conversation, active, onSelect, onPin, onDelete, onRe
   )
 }
 
-function CategoryRow({ category, active, favorite, onClick, onToggleFavorite }) {
-  return (
-    // A <div role="button"> wrapper, not a <button> — the favorite toggle inside is itself a
-    // real <button>, and nesting <button> in <button> is invalid HTML (React warns "cannot be
-    // a descendant of" and browsers mishandle the nested click target).
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } }}
-      className={cn(
-        'group relative flex items-center gap-2.5 rounded-[var(--radius-sm)] pl-2.5 pr-2 py-1.5 text-left cursor-pointer transition-colors duration-[var(--duration-fast)]',
-        active ? 'bg-ai-soft text-text' : 'hover:bg-surface2 text-text2'
-      )}
-    >
-      {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-[2.5px] rounded-full bg-ai" />}
-      <span className={cn('w-6 h-6 rounded-[var(--radius-sm)] flex items-center justify-center shrink-0 transition-colors duration-[var(--duration-fast)]', active ? 'bg-ai text-white' : 'bg-surface2 text-text3 group-hover:text-text2')}>
-        <Icon name={category.icon} size={12} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <span className="text-xs font-semibold truncate block">{category.label}</span>
-      </div>
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); onToggleFavorite() }}
-        aria-label={favorite ? 'Unfavorite' : 'Favorite'}
-        className={cn('shrink-0', favorite ? 'text-yellow' : 'text-text3/40 opacity-40 group-hover:opacity-100 hover:text-yellow')}
-      >
-        <Icon name="pin" size={10} />
-      </button>
-    </div>
-  )
-}
-
 function SavedPromptRow({ prompt, onPreview, onRun, onPin, onDelete }) {
   return (
     <div className="group flex items-center gap-1.5 rounded-[var(--radius-sm)] px-2 py-1.5 hover:bg-surface2 cursor-pointer" onClick={onPreview}>
@@ -882,7 +764,7 @@ function ContextRow({ label, value, muted }) {
 function HeroEmptyState({ onPick, recent, onLaunchCategory }) {
   const featured = AI_CATEGORIES.slice(0, 6)
   return (
-    <div className="w-full max-w-xl mx-auto flex flex-col items-center text-center gap-4.5 pt-2">
+    <div className="ai-welcome w-full max-w-xl mx-auto flex flex-col items-center text-center gap-4.5 pt-2">
       <span className="relative">
         <span className="absolute inset-0 rounded-full blur-xl opacity-50 animate-pulse" style={{ background: 'linear-gradient(135deg, var(--accent), var(--ai))' }} />
         <span
@@ -896,7 +778,7 @@ function HeroEmptyState({ onPick, recent, onLaunchCategory }) {
         <p className="text-[26px] font-extrabold text-text tracking-tight">Ask Copilot anything</p>
         <p className="text-[13.5px] text-text3 mt-2 max-w-sm mx-auto leading-relaxed">Workspace-aware — it can see your live candidates, jobs, and tasks.</p>
       </div>
-      <div className="flex flex-wrap justify-center gap-1.5 max-w-lg">
+      <div className="ai-suggested-prompts flex flex-wrap justify-center gap-1.5 max-w-lg">
         {SUGGESTED_PROMPTS.map(p => <button key={p} type="button" onClick={() => onPick(p)} className="text-[11.5px] font-semibold text-accent bg-accent/10 border border-accent/15 hover:bg-accent/15 hover:border-accent/30 transition-colors duration-[var(--duration-fast)] rounded-full px-3 py-1.5">{p}</button>)}
       </div>
       {recent.length > 0 && (

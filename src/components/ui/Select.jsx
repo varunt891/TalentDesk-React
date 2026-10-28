@@ -24,7 +24,7 @@ export default function Select({ value, onChange, options, disabled, placeholder
   }, [open])
 
   const selected = options.find(o => o.value === value)
-  const sizeCls = size === 'sm' ? 'h-8 text-xs px-2.5' : 'h-9 text-sm px-3'
+  const sizeCls = size === 'sm' ? 'h-9 text-xs px-3' : 'h-10 text-sm px-3.5'
 
   return (
     <div ref={ref} className={cn('relative w-full', className)}>
@@ -33,7 +33,7 @@ export default function Select({ value, onChange, options, disabled, placeholder
         disabled={disabled}
         onClick={() => setOpen(o => !o)}
         className={cn(
-          'w-full flex items-center justify-between gap-2 bg-surface2 border rounded-[var(--radius-sm)]',
+          'w-full flex items-center justify-between gap-2 bg-surface border rounded-[var(--radius-sm)]',
           'transition-colors duration-[var(--duration-fast)] disabled:opacity-50 disabled:cursor-not-allowed',
           open ? 'border-accent ring-2 ring-accent/15' : 'border-border',
           sizeCls

@@ -42,31 +42,40 @@ async function streamSSE(path, body, { onDelta, signal } = {}) {
   let buffer = ''
   let fullText = ''
   let meta = {}
+  let completed = false
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const events = buffer.split('\n\n')
-    buffer = events.pop() || ''
-    for (const evt of events) {
-      const dataLine = evt.split('\n').find(line => line.startsWith('data:'))
-      if (!dataLine) continue
-      const jsonStr = dataLine.slice(5).trim()
-      if (!jsonStr) continue
-      let parsed
-      try { parsed = JSON.parse(jsonStr) } catch { continue }
-      if (parsed.delta) {
-        fullText += parsed.delta
-        onDelta?.(parsed.delta, fullText)
-      } else if (parsed.error) {
-        const err = new Error(parsed.error)
-        err.code = parsed.code
-        throw err
-      } else if (parsed.done) {
-        meta = parsed
-      }
+  const consumeEvent = evt => {
+    const dataLine = evt.split('\n').find(line => line.startsWith('data:'))
+    if (!dataLine) return
+    const jsonStr = dataLine.slice(5).trim()
+    if (!jsonStr) return
+    let parsed
+    try { parsed = JSON.parse(jsonStr) } catch { return }
+    if (parsed.error) {
+      const error = new Error(parsed.error)
+      error.code = parsed.code
+      throw error
     }
+    if (parsed.delta) {
+      fullText += parsed.delta
+      onDelta?.(parsed.delta, fullText)
+    }
+    if (parsed.done) { completed = true; meta = parsed }
+  }
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer = (buffer + decoder.decode(value, { stream: true })).replace(/\r\n/g, '\n')
+      const events = buffer.split('\n\n')
+      buffer = events.pop() || ''
+      events.forEach(consumeEvent)
+    }
+    if (buffer.trim()) consumeEvent(buffer)
+    if (!completed) throw new Error('The AI connection ended before the response completed. Please retry.')
+  } finally {
+    reader.releaseLock()
   }
 
   return { text: fullText, ...meta }

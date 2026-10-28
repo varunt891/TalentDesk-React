@@ -963,8 +963,9 @@ export default function SourcedCandidates({ onNavigate }) {
       <BulkResumeUploadModal
         isOpen={showBulkUpload}
         preserveResumeTitle
+        destination="sourced"
         onClose={() => setShowBulkUpload(false)}
-        addCandidates={rows => addCandidates(rows.map(row => ({ ...row, internal_status: 'Sourced', submission_date: null })))}
+        addCandidates={addCandidates}
         showToast={showToast}
       />
 

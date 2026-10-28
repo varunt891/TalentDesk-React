@@ -7,18 +7,18 @@ import { cn } from './utils'
  */
 export default function PageHeader({ eyebrow, title, subtitle, search, filters, actions, className = '' }) {
   return (
-    <div className={cn('flex flex-col gap-5 pb-6 border-b border-border', className)}>
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+    <div className={cn('page-heading flex flex-col gap-5 pb-6', className)}>
+      <div className="flex flex-col md:flex-row md:flex-wrap md:items-center justify-between gap-3 min-w-0">
         <div className="min-w-0">
           {eyebrow && (
             <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-accent bg-accent/10 rounded-full px-2.5 py-1 mb-2.5">
               {eyebrow}
             </span>
           )}
-          <h1 className="font-serif text-[28px] font-medium text-text leading-[1.15] tracking-[-0.01em] truncate">{title}</h1>
+          <h1 className="text-[30px] font-semibold text-text leading-[1.15] tracking-[-0.045em] truncate">{title}</h1>
           {subtitle && <p className="text-[13px] text-text3 mt-1.5 leading-relaxed max-w-2xl">{subtitle}</p>}
         </div>
-        {actions && <div className="flex items-center gap-2 shrink-0 flex-wrap">{actions}</div>}
+        {actions && <div className="flex items-center gap-2 shrink-0 flex-wrap min-w-0 max-w-full">{actions}</div>}
       </div>
       {(search || filters) && (
         <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">

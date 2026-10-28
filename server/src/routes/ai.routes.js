@@ -4,9 +4,18 @@ import { buildActionPrompt, toolIdForAction } from '../services/promptService.js
 import { parseResumeText } from '../services/resumeParsingService.js';
 import { recordAiUsage } from '../services/usageService.js';
 import { requireAuth } from '../auth.js';
+import { assertModule } from '../access.js';
+import { authorizeAiRequest } from '../services/aiPolicyService.js';
 
 const router = Router();
 router.use(requireAuth);
+router.use(async (req, res, next) => {
+  try {
+    assertModule(req, 'AI', req.method === 'GET' ? 'view' : 'edit');
+    if (req.method === 'POST') req.aiPolicy = await authorizeAiRequest(req);
+    next();
+  } catch (error) { next(error); }
+});
 
 // Shared identity fields every usage-event log needs, pulled off the
 // authenticated request the same way logActivity() does in data.routes.js.
@@ -321,7 +330,8 @@ function streamingRoute(buildRequest) {
     res.flushHeaders?.();
 
     const controller = new AbortController();
-    req.on('close', () => controller.abort());
+    const onClose = () => { if (!res.writableEnded) controller.abort(); };
+    res.on('close', onClose);
     const send = (event) => { res.write(`data: ${JSON.stringify(event)}\n\n`); };
 
     try {
@@ -342,6 +352,8 @@ function streamingRoute(buildRequest) {
       recordAiUsage({ ...usageContext(req), type, toolId, success: false, durationMs: Date.now() - startedAt, error: err.message });
       send({ error: err.message || 'AI request failed. Please try again.', code: err.code || 'STREAM_ERROR' });
       res.end();
+    } finally {
+      res.off('close', onClose);
     }
   };
 }

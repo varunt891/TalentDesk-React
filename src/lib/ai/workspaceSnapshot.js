@@ -18,6 +18,9 @@ export async function fetchWorkspaceSnapshot() {
     db.from('callbacks').select('*'),
     db.from('followups').select('*'),
   ])
+  const results = [candRes, jobsRes, tasksRes, cbRes, fuRes]
+  const failed = results.find(result => result.error)
+  if (failed) throw new Error(failed.error.message || 'Could not load workspace records. Please refresh.')
   return {
     candidates: candRes.data || [],
     jobs: jobsRes.data || [],

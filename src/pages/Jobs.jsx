@@ -1,9 +1,11 @@
+import { hasPermission } from '../lib/admin/permissions'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { db } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useCandidates } from '../hooks/useCandidates'
 import { useJobForm } from '../hooks/useJobForm'
 import JobFormDrawer from '../components/jobs/JobFormDrawer'
+import JobPreviewOverview from '../components/jobs/JobPreviewOverview'
 import { canManageJobAssignment } from '../lib/roles'
 import SubmissionPacketModal from '../components/SubmissionPacketModal'
 import AIMatchModal from '../components/AIMatchModal'
@@ -134,10 +136,11 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
   const [allOrgsView, setAllOrgsView] = useState(false)
   const { candidates } = useCandidates({ allOrgs: isSuperAdmin && allOrgsView })
   const orgId = organization?.id || profile?.org_id
+  const canEdit = hasPermission(profile?.role, 'Jobs', 'edit')
   const userId = user?.id
   const { preferences: orgPrefs } = useOrgPreferences(orgId)
   const { settings: aiSettings } = useAIGovernance(orgId)
-  const aiEnabled = aiSettings.workspaces.jobs !== false
+  const aiEnabled = hasPermission(profile?.role, 'AI', 'edit') && aiSettings.workspaces.jobs !== false
   const [jobs, setJobs] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -483,6 +486,30 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
     { key: 'age', header: 'Age', width: 65, hideable: true, align: 'right', sortable: true, sortValue: (j) => j.health.openDays, render: (j) => <span className="text-[11.5px] font-mono tabular-nums text-text3">{j.health.openDays}d</span> },
   ]
 
+  const jobViewControls = (
+    <div className="flex items-center justify-between flex-wrap gap-2">
+        <span className="text-xs text-text3 font-medium">
+          {filtered.length !== jobs.length ? `${filtered.length} / ${jobs.length} shown` : `${jobs.length} roles`}
+        </span>
+        <div className="flex items-center gap-1 bg-surface2/80 p-0.5 rounded-lg border border-border">
+          <button
+            type="button"
+            onClick={() => setViewMode('table')}
+            className={cn("px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer", viewMode === 'table' ? "bg-surface text-accent shadow-xs border border-border/80" : "text-text3 hover:text-text")}
+          >
+            <Icon name="list" size={13} /> Table
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('board')}
+            className={cn("px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer", viewMode === 'board' ? "bg-surface text-accent shadow-xs border border-border/80" : "text-text3 hover:text-text")}
+          >
+            <Icon name="grid" size={13} /> Grid / Board
+          </button>
+        </div>
+      </div>
+  )
+
   return (
     <PageContainer>
       <PageHeader
@@ -537,27 +564,7 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
         ))}
       </div>
 
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <span className="text-xs text-text3 font-medium">
-          {filtered.length !== jobs.length ? `${filtered.length} / ${jobs.length} shown` : `${jobs.length} roles`}
-        </span>
-        <div className="flex items-center gap-1 bg-surface2/80 p-0.5 rounded-lg border border-border">
-          <button
-            type="button"
-            onClick={() => setViewMode('table')}
-            className={cn("px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer", viewMode === 'table' ? "bg-surface text-accent shadow-xs border border-border/80" : "text-text3 hover:text-text")}
-          >
-            <Icon name="list" size={13} /> Table
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('board')}
-            className={cn("px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer", viewMode === 'board' ? "bg-surface text-accent shadow-xs border border-border/80" : "text-text3 hover:text-text")}
-          >
-            <Icon name="grid" size={13} /> Grid / Board
-          </button>
-        </div>
-      </div>
+      {viewMode === 'board' && <div className="mb-2">{jobViewControls}</div>}
 
       {viewMode === 'board' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 mb-6">
@@ -622,7 +629,7 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
                       <Icon name="users" size={12} /> {matches.length} matched candidates
                     </span>
                     <div className="flex items-center gap-1">
-                      <Button size="xs" variant="ghost" onClick={() => openEdit(j)}>Edit</Button>
+                      {canEdit && <Button size="xs" variant="ghost" onClick={() => openEdit(j)}>Edit</Button>}
                       <Button size="xs" variant="secondary" onClick={() => openFullPage(j)}>View</Button>
                     </div>
                   </div>
@@ -633,11 +640,12 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
         </div>
       ) : (
         <Table
+          toolbar={jobViewControls}
           columns={jobColumns}
           data={jobsWithHealth}
           loading={loading}
           resizable
-          selectable
+          selectable={canEdit}
           selectedIds={selected}
           onSelectionChange={setSelected}
           compact={orgPrefs.tableDensity === 'compact'}
@@ -673,20 +681,20 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
                 { label: 'Quick preview', icon: 'eye', onClick: () => { setShowDetail(j); setPreviewTab('overview') } },
                 { label: 'View full details', icon: 'arrowUpRight', onClick: () => openFullPage(j) },
                 { label: 'View pipeline / matches', icon: 'pipeline', onClick: () => { setShowDetail(j); setPreviewTab('pipeline') } },
-                { label: 'Edit job', icon: 'edit', onClick: () => openEdit(j) },
+                { hidden: !canEdit, label: 'Edit job', icon: 'edit', onClick: () => openEdit(j) },
                 'divider',
-                { label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleteId(j.id) },
-              ]}
+                { hidden: !canEdit, label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleteId(j.id) },
+              ].filter(item => !item?.hidden)}
             />
           )}
           contextMenuItems={(j) => [
             { label: 'Quick preview', icon: 'eye', onClick: () => { setShowDetail(j); setPreviewTab('overview') } },
             { label: 'View full details', icon: 'arrowUpRight', onClick: () => openFullPage(j) },
             { label: 'View pipeline / matches', icon: 'pipeline', onClick: () => { setShowDetail(j); setPreviewTab('pipeline') } },
-            { label: 'Edit job', icon: 'edit', onClick: () => openEdit(j) },
+            { hidden: !canEdit, label: 'Edit job', icon: 'edit', onClick: () => openEdit(j) },
             'divider',
-            { label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleteId(j.id) },
-          ]}
+            { hidden: !canEdit, label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleteId(j.id) },
+          ].filter(item => !item?.hidden)}
         />
       )}
 
@@ -704,141 +712,33 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
           <EntityDrawer
             open={!!showDetail}
             onClose={() => setShowDetail(null)}
-            avatarName={showDetail.client || showDetail.title || '?'}
+            icon="jobs"
+            className="job-preview-drawer"
             eyebrow="Job Requisition"
             title={showDetail.title || 'Untitled role'}
-            subtitle={<>Job ID: <span className="text-accent font-mono">{showDetail.job_id || 'n/a'}</span> · {showDetail.client || 'Client n/a'}</>}
+            subtitle={<><span className="job-preview-client">{showDetail.client || 'Client not recorded'}</span><span className="job-preview-reference">{showDetail.job_id || 'No requisition ID'}</span></>}
             status={<StatusPill status={showDetail.status || 'Open'} tone={STATUS_TONE[showDetail.status] || 'neutral'} size="sm" />}
-            size="lg"
+            size="2xl"
             tabs={[{ id: 'overview', label: 'Overview' }, { id: 'pipeline', label: 'Pipeline', count: matches.length }, { id: 'activity', label: 'Activity', count: jobTimeline.length }, ...(aiEnabled ? [{ id: 'ai', label: 'AI' }] : [])]}
             activeTab={previewTab}
             onTabChange={setPreviewTab}
             actions={
               <>
-                <Button variant="secondary" leftIcon="edit" onClick={() => { const job = showDetail; setShowDetail(null); openEdit(job) }}>Edit Job</Button>
-                <Button variant="danger" leftIcon="trash" onClick={() => { setShowDetail(null); setDeleteId(showDetail.id) }}>Delete Job</Button>
-                <Button variant="primary" leftIcon="arrowUpRight" onClick={() => { const job = showDetail; setShowDetail(null); openFullPage(job) }}>View Full Details</Button>
+                {canEdit && <Button variant="secondary" leftIcon="edit" onClick={() => { const job = showDetail; setShowDetail(null); openEdit(job) }}>Edit job</Button>}
+                {canEdit && <Menu align="end" items={[{ label: 'Delete job', icon: 'trash', danger: true, onClick: () => { setShowDetail(null); setDeleteId(showDetail.id) } }]} trigger={({ toggle, open }) => <Button variant="ghost" iconOnly aria-label="More job actions" aria-expanded={open} onClick={toggle}><Icon name="moreHorizontal" size={17} /></Button>} />}
+                <Button variant="primary" className="job-preview-open" rightIcon="arrowUpRight" onClick={() => { const job = showDetail; setShowDetail(null); openFullPage(job) }}>View full details</Button>
               </>
             }
           >
-            {previewTab === 'overview' && (
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center justify-between p-3 rounded-[var(--radius-md)] bg-surface2 border border-border">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-7 h-7 rounded-full bg-accent/15 text-accent flex items-center justify-center shrink-0">
-                      <Icon name="clock" size={14} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[10px] font-bold text-text3 uppercase tracking-wide">Last Update</div>
-                      <div className="text-xs font-bold text-text truncate">
-                        Updated {formatRelativeTimeAgo(showDetail.updated_at) || 'recently'}
-                      </div>
-                    </div>
-                  </div>
-                  <Badge size="sm" tone="accent">Modified</Badge>
-                </div>
-
-                <div className="grid sm:grid-cols-3 gap-3">
-                  {[['Location', showDetail.location], ['Type', showDetail.type], ['Rate', showDetail.rate], ['Priority', showDetail.priority], ['Recruiter', resolveAssignees(showDetail).join(', ')], ['Open Date', showDetail.open_date]].map(([label, value]) => (
-                    <div key={label} className="bg-surface2 border border-border rounded-[var(--radius-sm)] p-3">
-                      <div className="text-[11px] text-text3 uppercase tracking-wide mb-1">{label}</div>
-                      <div className="text-sm text-text font-semibold">{value || '-'}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <Card className={health.statusTag === 'Critical' ? 'border-red/30 bg-red/5' : health.statusTag === 'At Risk' ? 'border-yellow/30 bg-yellow/5' : 'border-green/30 bg-green/5'}>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-bold uppercase tracking-wide text-text2">Job Health</span>
-                    <StatusPill status={health.statusTag} tone={health.statusTone === 'amber' ? 'yellow' : health.statusTone} />
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {[
-                      { label: 'Submittals', value: health.submittals, tone: 'accent' },
-                      { label: 'Interviews', value: health.interviews, tone: 'ai' },
-                      { label: 'Offers', value: health.offers, tone: 'yellow' },
-                      { label: 'Placed', value: health.hires, tone: 'green' },
-                      { label: 'Days Open', value: `${health.openDays}d`, tone: 'neutral' },
-                    ].map((item) => (
-                      <div
-                        key={item.label}
-                        className="flex items-center gap-2.5 p-2 rounded-xl bg-surface/90 border border-border/60 shadow-2xs"
-                      >
-                        <div
-                          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 font-mono font-extrabold text-xs"
-                          style={{
-                            background: `color-mix(in srgb, var(--${item.tone === 'neutral' ? 'text3' : item.tone}) 16%, var(--surface2))`,
-                            color: `var(--${item.tone === 'neutral' ? 'text' : item.tone})`,
-                            border: `1px solid color-mix(in srgb, var(--${item.tone === 'neutral' ? 'text3' : item.tone}) 25%, transparent)`,
-                          }}
-                        >
-                          {item.value}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-[11px] font-bold text-text truncate">{item.label}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-3 pt-3 border-t border-border text-xs text-text3">Placement probability: <b className="text-text2">{health.placementProb}</b> · Last activity {formatLastActivity(showDetail.updated_at)}</div>
-
-                  {submittedCandidates.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-border">
-                      <div className="text-[10px] font-bold text-text3 uppercase tracking-wide mb-2">Submitted Candidates ({submittedCandidates.length})</div>
-                      <div className="flex flex-wrap gap-2">
-                        {submittedCandidates.map(c => (
-                          <button
-                            key={c.id}
-                            type="button"
-                            onClick={() => setViewingCandidate(c)}
-                            className="focus-ring flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-full bg-surface2 border border-border hover:border-accent/40 hover:bg-surface3 transition-colors duration-[var(--duration-fast)]"
-                          >
-                            <Avatar name={`${c.first_name || ''} ${c.last_name || ''}`.trim() || 'C'} size="xs" />
-                            <span className="text-xs font-semibold text-text truncate max-w-[120px]">{c.first_name} {c.last_name}</span>
-                            <StatusPill status={c.internal_status || 'Pending'} size="sm" />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </Card>
-
-                {ensureArray(showDetail.skills).length > 0 && (
-                  <Card>
-                    <CardHeader title="Skills Required" />
-                    <div className="flex flex-wrap gap-1.5">
-                      {showDetail.skills.map(s => <Badge key={s} tone="accent">{s}</Badge>)}
-                    </div>
-                  </Card>
-                )}
-
-                {showDetail.description && (
-                  <Card>
-                    <CardHeader
-                      title="Description & Position Requirements"
-                      action={
-                        <Button
-                          size="xs"
-                          variant="secondary"
-                          leftIcon="expand"
-                          onClick={() => setExpandedFieldModal({
-                            title: `Job Description — ${showDetail.title || 'Requisition'}`,
-                            subtitle: `Job ID: ${showDetail.job_id || 'n/a'} · ${showDetail.client || 'Client n/a'}`,
-                            content: showDetail.description
-                          })}
-                        >
-                          View in full
-                        </Button>
-                      }
-                    />
-                    <div className="text-sm text-text2 leading-relaxed line-clamp-6 overflow-hidden"><MarkdownView content={showDetail.description} /></div>
-                  </Card>
-                )}
-              </div>
-            )}
+            {previewTab === 'overview' && <JobPreviewOverview
+              job={showDetail} health={health} candidates={submittedCandidates} assignees={resolveAssignees(showDetail)}
+              updatedLabel={formatRelativeTimeAgo(showDetail.updated_at)} lastActivity={formatLastActivity(showDetail.updated_at)}
+              onCandidate={setViewingCandidate} onPipeline={() => setPreviewTab('pipeline')}
+              onExpandDescription={() => setExpandedFieldModal({ title: `Job Description — ${showDetail.title || 'Requisition'}`, subtitle: `Job ID: ${showDetail.job_id || 'n/a'} · ${showDetail.client || 'Client n/a'}`, content: showDetail.description })}
+            />}
 
             {previewTab === 'pipeline' && (
-              <div className="flex flex-col gap-4">
+              <div className="job-preview-pipeline flex flex-col gap-4">
                 <div className="bg-surface2/50 border border-border/80 rounded-2xl p-3.5 shadow-2xs">
                   <div className="flex items-center justify-between mb-3 px-0.5">
                     <div className="flex items-center gap-2">
@@ -939,7 +839,7 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
             )}
 
             {previewTab === 'activity' && (
-              <div className="flex flex-col gap-2">
+              <div className="job-preview-activity flex flex-col gap-2">
                 {jobTimeline.length === 0 ? (
                   <EmptyState icon="calendar" title="No activity yet" description="Submissions, callbacks, and follow-ups for this job's candidates will show up here." />
                 ) : (
@@ -973,7 +873,7 @@ export default function Jobs({ onNavigate, openEditJobId } = {}) {
               ].filter(Boolean).join('\n')
 
               return (
-                <div className="flex flex-col gap-3">
+                <div className="job-preview-ai flex flex-col gap-3">
                   <AIInsightCard
                     orgId={orgId} userId={userId} source="jobs"
                     title="Job Summary" icon="sparkles" actionId="summarize"

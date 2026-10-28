@@ -1,3 +1,5 @@
+import { formatRecordDate } from '../lib/formatRecordDate'
+import { hasPermission } from '../lib/admin/permissions'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { db, apiRequest } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
@@ -6,8 +8,8 @@ import { useJobForm } from '../hooks/useJobForm'
 import JobFormDrawer from '../components/jobs/JobFormDrawer'
 import { PageContainer } from '../components/layout/PageContainer'
 import {
-  Button, Badge, StatusPill, Card, CardHeader, KPICard, PageHeader, Table, Textarea,
-  EmptyState, Avatar, Icon, useToast, Skeleton, PageSpinner, UserMultiSelect,
+  Button, Badge, StatusPill, Card, CardHeader, Table, Textarea,
+  EmptyState, Avatar, Icon, useToast, Skeleton, PageSpinner,
 } from '../components/ui'
 import MarkdownView from '../components/MarkdownView'
 import { ensureArray, STATUS_TONE } from '../lib/candidateHealth'
@@ -30,9 +32,9 @@ function relativeTime(iso) {
 
 function InfoRow({ label, value }) {
   return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-[10.5px] font-semibold uppercase tracking-wide text-text3">{label}</span>
-      <span className="text-[13px] text-text font-medium">{value || <span className="text-text3">Not set</span>}</span>
+    <div className="job-detail-field">
+      <span className="job-detail-field-label">{label}</span>
+      <span className="job-detail-field-value">{value !== null && value !== undefined && value !== '' ? value : <span className="text-text3">Not recorded</span>}</span>
     </div>
   )
 }
@@ -40,9 +42,11 @@ function InfoRow({ label, value }) {
 export default function JobDetail({ jobId, onNavigate }) {
   const { user, organization, profile } = useAuth()
   const orgId = organization?.id || profile?.org_id
+  const canEdit = hasPermission(profile?.role, 'Jobs', 'edit')
+  const canUseAI = hasPermission(profile?.role, 'AI', 'edit')
   const userId = user?.id
   const { settings: aiSettings } = useAIGovernance(orgId)
-  const aiEnabled = aiSettings.workspaces.jobs !== false
+  const aiEnabled = canUseAI && aiSettings.workspaces.jobs !== false
   const [job, setJob] = useState(null)
   const [candidates, setCandidates] = useState([])
   const [profiles, setProfiles] = useState([])
@@ -51,6 +55,9 @@ export default function JobDetail({ jobId, onNavigate }) {
   const [notFound, setNotFound] = useState(false)
   const [remarks, setRemarks] = useState('')
   const [savingRemarks, setSavingRemarks] = useState(false)
+  const [remarksEditing, setRemarksEditing] = useState(false)
+  const [activeView, setActiveView] = useState('overview')
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const { toast } = useToast()
 
   const load = useCallback(async () => {
@@ -124,6 +131,7 @@ export default function JobDetail({ jobId, onNavigate }) {
     try {
       const { data } = await apiRequest(`/data/jobs/${job.id}/remarks`, { method: 'PATCH', body: { notes: remarks } })
       setJob(j => ({ ...j, notes: data.notes }))
+      setRemarksEditing(false)
       toast({ tone: 'success', title: 'Remarks saved' })
     } catch (err) {
       toast({ tone: 'error', title: 'Failed to save remarks', description: err.message })
@@ -162,7 +170,7 @@ export default function JobDetail({ jobId, onNavigate }) {
         <span className="flex items-center gap-2 min-w-0">
           <Avatar name={`${c.first_name || ''} ${c.last_name || ''}`.trim() || '?'} size="xs" className="shrink-0" />
           <span className="min-w-0">
-            <strong className="text-[12.5px] text-text font-semibold whitespace-nowrap block">{c.first_name} {c.last_name}</strong>
+            <button type="button" className="job-detail-candidate-name" onClick={() => onNavigate?.('candidate_detail', { candidateId: c.id })}>{c.first_name} {c.last_name}</button>
             <small className="block text-[11px] text-text3 truncate leading-tight">{c.email || 'No email'}</small>
           </span>
         </span>
@@ -174,159 +182,67 @@ export default function JobDetail({ jobId, onNavigate }) {
     { key: 'submission_date', header: 'Submitted', render: (c) => c.submission_date || '—' },
   ]
 
+  const dateLabel = value => formatRecordDate(value, organization?.date_format)
+  const hasLongDescription = (job.description || '').length > 1000
+  const overviewFields = [
+    ['Location', job.location], ['Work mode', job.work_mode], ['Employment type', job.type],
+    ['Experience level', job.experience_level], ['Openings', job.openings], ['Open date', dateLabel(job.open_date)],
+  ]
+  const additionalFields = [
+    ['Job ID', job.job_id], ['Optional reference', job.optional_ref], ['Workers comp code', job.workers_comp_code],
+    ['End date', dateLabel(job.end_date)], ['Submittal due', dateLabel(job.submittal_due)], ['Max allowed submittals', job.max_submittals],
+  ]
+
   return (
-    <PageContainer>
-      <PageHeader
-        eyebrow={job.job_id || 'Job Requisition'}
-        title={job.title || 'Untitled role'}
-        subtitle={`${job.client || 'No client'} · ${job.location || 'No location'}`}
-        actions={
-          <>
-            <Button variant="ghost" onClick={() => onNavigate?.('jobs')}>Back to Jobs</Button>
-            <Button variant="primary" leftIcon="edit" onClick={() => jobForm.openEdit(job)}>Edit Job</Button>
-          </>
-        }
-      />
+    <PageContainer className="job-detail-page">
+      <div className="job-detail-breadcrumb"><Button size="sm" variant="ghost" leftIcon="chevronLeft" onClick={() => onNavigate?.('jobs')}>Back to Jobs</Button><span aria-hidden="true">/</span><span className="job-detail-reference">{job.job_id || 'Job requisition'}</span>{job.updated_at && <span className="job-detail-updated">Updated {relativeTime(job.updated_at)}</span>}</div>
+      <header className="job-detail-header">
+        <div className="job-detail-identity"><span className="job-detail-eyebrow">JOB REQUISITION</span><div className="job-detail-title"><h1>{job.title || 'Untitled role'}</h1><StatusPill status={job.status || 'Open'} tone={STATUS_TONE_JOB[job.status] || 'neutral'} size="sm" /></div><div className="job-detail-meta"><span><Icon name="building" size={13} />{job.client || 'Client not recorded'}</span><span>{job.location || 'Location not recorded'}</span>{job.work_mode && <span>{job.work_mode}</span>}<Badge tone={job.priority === 'Urgent' ? 'red' : job.priority === 'High' ? 'orange' : 'neutral'}>{job.priority || 'Medium'} priority</Badge></div></div>
+        {canEdit && <Button variant="primary" leftIcon="edit" onClick={() => jobForm.openEdit(job)}>Edit Job</Button>}
+      </header>
 
-      <div className="flex flex-wrap items-center gap-2 mt-5 mb-1">
-        <StatusPill status={job.status || 'Open'} tone={STATUS_TONE_JOB[job.status] || 'neutral'} size="sm" />
-        <Badge tone={job.priority === 'High' ? 'red' : job.priority === 'Low' ? 'neutral' : 'yellow'}>{job.priority || 'Medium'} Priority</Badge>
-        <Badge tone="neutral">{job.type || 'Contract'}</Badge>
-      </div>
+      <section className="job-detail-summary" aria-label="Hiring snapshot">{[
+        ['Submissions', health.submittals, 'Recorded candidate submissions'], ['Interviews', health.interviews, 'Scheduled or completed'],
+        ['Offers', health.offers, 'Recorded offers extended'], ['Hires', job.openings ? `${health.hires} / ${job.openings}` : health.hires, job.openings ? `${job.openings} openings on this requisition` : 'Recorded placements'],
+      ].map(([label, value, helper]) => <div key={label}><span>{label}</span><strong>{value}</strong><small>{helper}</small></div>)}</section>
 
-      <div className="grid sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-4 mb-6">
-        <KPICard label="Submissions" value={health.submittals} tone="accent" />
-        <KPICard label="Interviews" value={health.interviews} tone="ai" />
-        <KPICard label="Offers" value={health.offers} tone="green" />
-        <KPICard label="Hires" value={job.openings ? `${health.hires} / ${job.openings}` : health.hires} tone="green" />
-        <KPICard label="Days Open" value={health.openDays} tone={health.statusTone} />
-        <KPICard label="Placement Prob." value={health.placementProb} tone={health.statusTone} />
-      </div>
+      <nav className="job-detail-views" aria-label="Job detail views">{[['overview', 'Overview', null], ['submissions', 'Submissions', candidates.length], ['activity', 'Activity', activity.length]].map(([id, label, count]) => <button type="button" key={id} aria-current={activeView === id ? 'page' : undefined} aria-controls="job-detail-content" onClick={() => setActiveView(id)}>{label}{count !== null && <span>{count}</span>}</button>)}</nav>
 
-      <div className="grid lg:grid-cols-3 gap-5">
-        <div className="lg:col-span-2 flex flex-col gap-5">
-          <Card>
-            <CardHeader title="Job Details" />
-            <div className="grid sm:grid-cols-3 gap-4 mt-3">
-              <InfoRow label="Job ID" value={job.job_id} />
-              <InfoRow label="Optional Ref #" value={job.optional_ref} />
-              <InfoRow label="Client" value={job.client} />
-              <InfoRow label="Location" value={job.location} />
-              <InfoRow label="Work Mode" value={job.work_mode} />
-              <InfoRow label="Employment Type" value={job.type} />
-              <InfoRow label="Experience Level" value={job.experience_level} />
-              {job.bill_rate || job.pay_rate ? (
-                <>
-                  <InfoRow label="Bill Rate" value={job.bill_rate} />
-                  <InfoRow label="Pay Rate" value={job.pay_rate} />
-                </>
-              ) : (
-                <InfoRow label="Rate" value={job.rate} />
-              )}
-              <InfoRow label="Workers Comp Code" value={job.workers_comp_code} />
-              <InfoRow label="Open Date" value={job.open_date} />
-              <InfoRow label="End Date" value={job.end_date} />
-              <InfoRow label="Submittal Due" value={job.submittal_due} />
-              <InfoRow label="Openings" value={job.openings} />
-              <InfoRow label="Max Allowed Submittals" value={job.max_submittals} />
-            </div>
-          </Card>
+      <div className="job-detail-columns">
+        <div id="job-detail-content" className="job-detail-content">
+          {activeView === 'overview' && <>
+            <Card className="job-detail-panel">
+              <CardHeader title="Job Details" subtitle="Role essentials and hiring terms" />
+              <div className="job-detail-fields">{overviewFields.map(([label, value]) => <InfoRow label={label} value={value} key={label} />)}</div>
+              <div className="job-detail-compensation"><h3>Compensation</h3><div className="job-detail-fields">{job.bill_rate || job.pay_rate ? <><InfoRow label="Bill rate" value={job.bill_rate} /><InfoRow label="Pay rate" value={job.pay_rate} /></> : <InfoRow label="Rate" value={job.rate} />}</div></div>
+              <details className="job-detail-additional"><summary>Additional requisition details <Icon name="chevronDown" size={13} /></summary><div className="job-detail-fields">{additionalFields.map(([label, value]) => <InfoRow key={label} label={label} value={value} />)}</div></details>
+            </Card>
+            <Card className="job-detail-panel job-detail-description-panel">
+              <CardHeader title="Description & Skills" subtitle="The role and requirements shared with your team" />
+              <div className="job-detail-skill-list">{ensureArray(job.skills).length ? ensureArray(job.skills).map((skill, index) => <Badge key={`${skill}-${index}`} tone="neutral">{skill}</Badge>) : <p className="job-detail-empty-copy">No required skills recorded.</p>}</div>
+              <div id="job-description-content" className={`job-detail-description${hasLongDescription && !descriptionExpanded ? ' is-collapsed' : ''}`}>{job.description ? <MarkdownView content={job.description} /> : <p className="job-detail-empty-copy">No description yet.</p>}</div>
+              {hasLongDescription && <Button size="sm" variant="ghost" rightIcon={descriptionExpanded ? 'chevronUp' : 'chevronDown'} aria-expanded={descriptionExpanded} aria-controls="job-description-content" onClick={() => setDescriptionExpanded(previous => !previous)}>{descriptionExpanded ? 'Show less' : 'Read full description'}</Button>}
+            </Card>
+          </>}
 
-          <Card>
-            <CardHeader title="Description & Skills" />
-            <div className="text-[13px] text-text2 leading-relaxed mt-2">
-              {job.description ? <MarkdownView content={job.description} /> : <span className="text-text3">No description yet.</span>}
-            </div>
-            {ensureArray(job.skills).length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-3">
-                {ensureArray(job.skills).map(s => <Badge key={s} tone="accent">{s}</Badge>)}
-              </div>
-            )}
-          </Card>
+          {activeView === 'submissions' && <Card className="job-detail-panel job-detail-submissions"><CardHeader title="Submissions" subtitle={`${candidates.length} candidate${candidates.length === 1 ? '' : 's'} submitted to this requisition`} /><Table columns={submissionColumns} data={candidates} compact mobileCard={candidate => <div className="job-detail-mobile-candidate"><div><Avatar name={[candidate.first_name, candidate.last_name].filter(Boolean).join(' ') || 'Candidate'} size="sm" /><span><button type="button" className="job-detail-candidate-name" onClick={() => onNavigate?.('candidate_detail', { candidateId: candidate.id })}>{candidate.first_name} {candidate.last_name}</button><small>{candidate.email || 'Email not recorded'}</small></span></div><dl><div><dt>Recruiter</dt><dd>{candidate.recruiter_name || 'Not recorded'}</dd></div><div><dt>Internal</dt><dd><StatusPill status={candidate.internal_status || 'Pending'} tone={STATUS_TONE[candidate.internal_status] || 'neutral'} size="sm" /></dd></div><div><dt>Client status</dt><dd><StatusPill status={candidate.external_status || 'Pending'} tone={STATUS_TONE[candidate.external_status] || 'neutral'} size="sm" /></dd></div><div><dt>Submitted</dt><dd>{dateLabel(candidate.submission_date) || 'Not recorded'}</dd></div></dl></div>} emptyState={<EmptyState icon="users" title="No submissions yet" description="No candidate has been submitted to this job." />} /></Card>}
 
-          <Card padding="none" className="p-3">
-            <CardHeader title="Submissions" subtitle={`${candidates.length} candidate${candidates.length === 1 ? '' : 's'} submitted to this job, across the org`} />
-            <Table
-              columns={submissionColumns}
-              data={candidates}
-              emptyState={<EmptyState icon="users" title="No submissions yet" description="No candidate has been submitted to this job." />}
-            />
-          </Card>
-
-          <Card>
-            <CardHeader title="Activity" subtitle="Every create/update on this job and its submissions, org-wide" />
-            {activity.length === 0 ? (
-              <EmptyState icon="reports" title="No activity yet" description="Changes to this job or its candidates will show up here." />
-            ) : (
-              <div className="flex flex-col gap-3 mt-2 max-h-96 overflow-y-auto">
-                {activity.slice(0, 50).map(a => (
-                  <div key={a.id} className="flex items-start gap-2.5 text-[12.5px]">
-                    <Icon name={a.action === 'created' ? 'plus' : a.action === 'deleted' ? 'trash' : 'edit'} size={13} className="text-text3 mt-0.5 shrink-0" />
-                    <div className="min-w-0">
-                      <span className="text-text font-medium">{a.actor_name || 'Someone'}</span>{' '}
-                      <span className="text-text3">{a.action} {a.entity === 'jobs' ? 'this job' : 'a candidate'}{a.summary ? ` — ${a.summary}` : ''}</span>
-                      <div className="text-[10.5px] text-text3">{relativeTime(a.created_at)}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+          {activeView === 'activity' && <Card className="job-detail-panel"><CardHeader title="Activity" subtitle="Recorded updates to this job and its submissions" />{activity.length === 0 ? <EmptyState icon="reports" title="No activity yet" description="Changes to this job or its candidates will show up here." /> : <div className="job-detail-timeline">{activity.slice(0, 50).map(entry => <div className="job-detail-timeline-item" key={entry.id}><span className="job-detail-timeline-icon"><Icon name={entry.action === 'created' ? 'plus' : entry.action === 'deleted' ? 'trash' : 'edit'} size={14} /></span><div><p><strong>{entry.actor_name || 'Someone'}</strong> {entry.action} {entry.entity === 'jobs' ? 'this job' : 'a candidate'}{entry.summary ? ` — ${entry.summary}` : ''}</p><time dateTime={entry.created_at}>{relativeTime(entry.created_at)}</time></div></div>)}</div>}</Card>}
         </div>
 
-        <div className="flex flex-col gap-5">
-          <Card>
-            <CardHeader title="Team & Ownership" />
-            {assignedProfiles.length > 0 ? (
-              <UserMultiSelect users={profiles} selected={assignedIds} readOnly />
-            ) : legacyFe ? (
-              <div className="flex items-center gap-3 mt-2">
-                <Avatar name={legacyFe} size="sm" />
-                <div className="min-w-0">
-                  <div className="text-[13px] font-semibold text-text truncate">{legacyFe}</div>
-                  <div className="text-[11px] text-text3 truncate">Legacy assignment — reassign via Edit Job</div>
-                </div>
-              </div>
-            ) : (
-              <p className="text-[12px] text-text3 mt-2">Unassigned</p>
-            )}
-            {job.contact_name && (
-              <div className="flex items-center gap-3 mt-3 pt-3 border-t border-border">
-                <Avatar name={job.contact_name} size="sm" />
-                <div className="min-w-0">
-                  <div className="text-[13px] font-semibold text-text truncate">{job.contact_name}</div>
-                  <div className="text-[11px] text-text3 truncate">Client contact at {job.client || 'this client'}</div>
-                </div>
-              </div>
-            )}
+        <aside className="job-detail-sidebar" aria-label="Requisition team and notes">
+          <Card className="job-detail-panel job-detail-team">
+            <div className="job-detail-health-heading"><h3>Requisition health</h3><StatusPill status={health.statusTag} tone={health.statusTone === 'amber' ? 'yellow' : health.statusTone} size="sm" /></div>
+            <div className="job-detail-health-meta"><span><Icon name="clock" size={13} />{health.openDays} days open</span><span>{job.openings !== null && job.openings !== undefined ? `${job.openings} openings` : 'Openings not recorded'}</span></div>
+            <details className="job-detail-indicator"><summary>Pipeline indicator <span>{health.placementProb}<Icon name="chevronDown" size={12} /></span></summary><p>Rule-based indicator from recorded recruiting stages. This is not a verified placement probability.</p></details>
+            <div className="job-detail-ownership"><h3>Team &amp; Ownership</h3>{assignedProfiles.length ? <div className="job-detail-owner-list">{assignedProfiles.map(owner => <div className="job-detail-person" key={owner.id}><Avatar name={owner.full_name || owner.email || 'Recruiter'} size="sm" /><span><strong>{owner.full_name || owner.email || 'Recruiter'}</strong><small>Assigned recruiter</small></span></div>)}</div> : legacyFe ? <div className="job-detail-person"><Avatar name={legacyFe} size="sm" /><span><strong>{legacyFe}</strong><small>Legacy assignment · update with Edit Job</small></span></div> : <p className="job-detail-empty-copy">Unassigned</p>}{job.contact_name && <div className="job-detail-person job-detail-client-contact"><Avatar name={job.contact_name} size="sm" /><span><strong>{job.contact_name}</strong><small>Client contact at {job.client || 'this client'}</small></span></div>}</div>
           </Card>
 
-          <Card>
-            <CardHeader title="Remarks" subtitle="Internal notes about this requisition — visible to the whole org" />
-            <Textarea value={remarks} onChange={e => setRemarks(e.target.value)} rows={5} placeholder="e.g. client is flexible on rate, prioritize local candidates..." className="mt-2" />
-            <div className="flex justify-end mt-2">
-              <Button size="sm" variant="primary" loading={savingRemarks} disabled={remarks === (job.notes || '')} onClick={saveRemarks}>Save Remarks</Button>
-            </div>
-          </Card>
+          <Card className="job-detail-panel job-detail-remarks"><CardHeader title="Remarks" subtitle="Shared internal notes for this requisition" action={canEdit && !remarksEditing && <Button size="sm" variant="ghost" leftIcon={job.notes ? 'edit' : 'plus'} onClick={() => setRemarksEditing(true)}>{job.notes ? 'Edit remarks' : 'Add remarks'}</Button>} />{remarksEditing ? <><label htmlFor="job-detail-remarks-input" className="job-detail-sr-label">Requisition remarks</label><Textarea id="job-detail-remarks-input" value={remarks} onChange={event => setRemarks(event.target.value)} rows={7} placeholder="Add role context, sourcing searches, or client updates…" /><div className="job-detail-note-actions"><Button size="sm" variant="ghost" disabled={savingRemarks} onClick={() => { setRemarks(job.notes || ''); setRemarksEditing(false) }}>Cancel</Button><Button size="sm" loading={savingRemarks} disabled={remarks === (job.notes || '')} onClick={saveRemarks}>Save Remarks</Button></div></> : <div className="job-detail-remarks-body">{job.notes ? <MarkdownView content={job.notes} /> : <p className="job-detail-empty-copy">No remarks yet. Add context or save a reviewed AI draft to this job.</p>}</div>}</Card>
 
-          <Card>
-            <CardHeader title="Candidate Notes" subtitle="Rolled up from every submission on this job" />
-            {notesRollup.length === 0 ? (
-              <p className="text-[12px] text-text3 mt-2">No candidate notes on this job yet.</p>
-            ) : (
-              <div className="flex flex-col gap-3 mt-2 max-h-80 overflow-y-auto">
-                {notesRollup.map(c => (
-                  <div key={c.id} className="text-[12.5px] border-l-2 border-border pl-2.5">
-                    <div className="font-semibold text-text">{c.first_name} {c.last_name}</div>
-                    <div className="text-text2 whitespace-pre-wrap">{c.notes}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-        </div>
+          <Card className="job-detail-panel job-detail-candidate-notes"><details><summary><span>Candidate Notes <b>{notesRollup.length}</b></span><Icon name="chevronDown" size={13} /></summary><p className="job-detail-empty-copy">Notes recorded on submissions to this requisition.</p>{notesRollup.length ? <div className="job-detail-note-rollup">{notesRollup.map(candidate => <div key={candidate.id}><strong>{candidate.first_name} {candidate.last_name}</strong><p>{candidate.notes}</p></div>)}</div> : <p className="job-detail-empty-copy">No candidate notes on this job yet.</p>}</details></Card>
+        </aside>
       </div>
-
       <JobFormDrawer jobForm={jobForm} showToast={showFormToast} onSaved={() => load()} />
     </PageContainer>
   )

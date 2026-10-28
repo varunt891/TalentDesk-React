@@ -10,14 +10,9 @@ const SIZES = {
 
 // Guaranteed valid CSS color tokens from index.css
 const COLOR_TOKENS = [
-  'var(--accent)',    // Teal
-  'var(--accent2)',   // Cyan
-  'var(--accent3)',   // Pink
-  'var(--ai)',        // Purple
-  'var(--green)',     // Emerald
-  'var(--orange)',    // Orange
-  'var(--chart-7)',   // Indigo/Violet
-  'var(--chart-4)',   // Amber
+  'var(--text2)',
+  'var(--accent)',
+  'var(--accent3)',
 ]
 
 function themeFor(seed = '') {

@@ -54,9 +54,7 @@ const LEVEL_CONFIG = {
 /**
  * Read-only render of the shared PERMISSION_MATRIX config
  * (src/lib/admin/permissions.js) — every role × module access level in one
- * grid. Not enforced server-side yet (no Role/Permission table exists);
- * this is the intended model, documented and centralized rather than
- * scattered across per-page role checks.
+ * grid. Uses the same shared permission matrix enforced by the API.
  */
 export default function PermissionMatrix() {
   return (

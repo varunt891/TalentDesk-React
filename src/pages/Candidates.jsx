@@ -1,3 +1,4 @@
+import { hasPermission } from '../lib/admin/permissions'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useCandidates } from '../hooks/useCandidates'
 import { useAuth } from '../context/AuthContext'
@@ -30,14 +31,15 @@ const FEEDBACK = ['Awaiting', 'Positive', 'Negative', 'No Response']
 export default function Candidates({ onNavigate, openEditCandidateId, showAll = false }) {
   const { profile, organization, user } = useAuth()
   const orgId = organization?.id || profile?.org_id
+  const canEdit = hasPermission(profile?.role, 'Candidates', 'edit')
   const userId = user?.id
   const { preferences: orgPrefs } = useOrgPreferences(orgId)
   const { settings: aiSettings } = useAIGovernance(orgId)
-  const aiEnabled = aiSettings.workspaces.candidates !== false
+  const aiEnabled = hasPermission(profile?.role, 'AI', 'edit') && aiSettings.workspaces.candidates !== false
   const isSuperAdmin = profile?.role === 'superadmin' || profile?.role === 'SUPERADMIN'
   const isAdmin = isSuperAdmin || profile?.role === 'admin'
   const [allOrgsView, setAllOrgsView] = useState(false)
-  const { candidates, loading, addCandidate, addCandidates, updateCandidate, deleteCandidate, refetch } = useCandidates({ allOrgs: isSuperAdmin && allOrgsView })
+  const { candidates, loading, addCandidates, updateCandidate, deleteCandidate, refetch } = useCandidates({ allOrgs: isSuperAdmin && allOrgsView })
 
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState({ status: [], fe: [], job: [], location: [], feedback: [], org: [], recruiter: [], priority: [] })
@@ -348,12 +350,11 @@ export default function Candidates({ onNavigate, openEditCandidateId, showAll = 
         </span>
       ),
     },
-    { key: 'submission_date', header: 'Date', sortable: true, hideable: true, className: 'text-[11px] text-text3 font-medium tabular-nums' },
+    { key: 'submission_date', header: 'Date', width: 110, sortable: true, hideable: true, className: 'text-[11px] text-text3 font-medium tabular-nums' },
     { key: 'location', header: 'Location', sortable: true, hideable: true, className: 'text-[12px] text-text2' },
     ...(isSuperAdmin && allOrgsView ? [{ key: 'org_name', header: 'Organization', sortable: true, hideable: true, render: (c) => <Badge tone="accent" size="sm">{c.org_name || organization?.name || 'TalentDesk'}</Badge> }] : []),
-    { key: 'internal_status', header: 'Int. Status', sortable: true, render: (c) => <StatusPill status={c.internal_status} tone={STATUS_TONE[c.internal_status] || 'neutral'} size="sm" /> },
-    { key: 'external_status', header: 'Ext. Status', sortable: true, render: (c) => <StatusPill status={c.external_status} tone={STATUS_TONE[c.external_status] || 'neutral'} size="sm" /> },
-    { key: 'fe_name', header: 'Front End', hideable: true, className: 'text-[12px] text-text2' },
+    { key: 'internal_status', header: 'Int. Status', width: 120, sortable: true, render: (c) => <StatusPill status={c.internal_status} tone={STATUS_TONE[c.internal_status] || 'neutral'} size="sm" /> },
+    { key: 'external_status', header: 'Ext. Status', width: 120, sortable: true, render: (c) => <StatusPill status={c.external_status} tone={STATUS_TONE[c.external_status] || 'neutral'} size="sm" /> },
     ...(isAdmin ? [{ key: 'recruiter_name', header: 'Recruiter', sortable: true, hideable: true, className: 'text-[12px] text-text2' }] : []),
   ]
 
@@ -371,6 +372,30 @@ export default function Candidates({ onNavigate, openEditCandidateId, showAll = 
     ...(profile?.full_name ? [{ label: 'My Candidates', values: { recruiter: [profile.full_name] } }] : []),
     { label: 'High Priority', values: { priority: ['High'] } },
   ]
+
+  const candidateViewControls = (
+    <div className="flex items-center justify-between flex-wrap gap-2">
+        <span className="text-xs text-text3 font-medium">
+          {filtered.length !== candidates.length ? `${filtered.length} / ${candidates.length} shown` : `${candidates.length} records`}
+        </span>
+        <div className="flex items-center gap-1 bg-surface2/80 p-0.5 rounded-lg border border-border">
+          <button
+            type="button"
+            onClick={() => setViewMode('table')}
+            className={cn("px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer", viewMode === 'table' ? "bg-surface text-accent shadow-xs border border-border/80" : "text-text3 hover:text-text")}
+          >
+            <Icon name="list" size={13} /> Table
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('board')}
+            className={cn("px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer", viewMode === 'board' ? "bg-surface text-accent shadow-xs border border-border/80" : "text-text3 hover:text-text")}
+          >
+            <Icon name="grid" size={13} /> Grid / Board
+          </button>
+        </div>
+      </div>
+  )
 
   return (
     <PageContainer ref={pageRef}>
@@ -420,8 +445,8 @@ export default function Candidates({ onNavigate, openEditCandidateId, showAll = 
           <>
             {isSuperAdmin && <Switch checked={allOrgsView} onChange={setAllOrgsView} label="All orgs" />}
             <Button variant="secondary" leftIcon="download" onClick={exportAll}>Export XLSX</Button>
-            <Button variant="secondary" leftIcon="inbox" onClick={() => setShowBulkUpload(true)}>Bulk Upload</Button>
-            <Button variant="primary" leftIcon="plus" onClick={openAdd}>Add Candidate</Button>
+            {canEdit && <Button variant="secondary" leftIcon="inbox" onClick={() => setShowBulkUpload(true)}>Bulk Upload</Button>}
+            {canEdit && <Button variant="primary" leftIcon="plus" onClick={openAdd}>Add Candidate</Button>}
           </>
         }
         search={<WorkspaceSearch value={search} onChange={setSearch} storageKey="td_candidates" placeholder="Name, job, client, skill..." />}
@@ -443,27 +468,7 @@ export default function Candidates({ onNavigate, openEditCandidateId, showAll = 
         ))}
       </div>
 
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <span className="text-xs text-text3 font-medium">
-          {filtered.length !== candidates.length ? `${filtered.length} / ${candidates.length} shown` : `${candidates.length} records`}
-        </span>
-        <div className="flex items-center gap-1 bg-surface2/80 p-0.5 rounded-lg border border-border">
-          <button
-            type="button"
-            onClick={() => setViewMode('table')}
-            className={cn("px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer", viewMode === 'table' ? "bg-surface text-accent shadow-xs border border-border/80" : "text-text3 hover:text-text")}
-          >
-            <Icon name="list" size={13} /> Table
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('board')}
-            className={cn("px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer", viewMode === 'board' ? "bg-surface text-accent shadow-xs border border-border/80" : "text-text3 hover:text-text")}
-          >
-            <Icon name="grid" size={13} /> Grid / Board
-          </button>
-        </div>
-      </div>
+      {viewMode === 'board' && <div className="mb-2">{candidateViewControls}</div>}
 
       {viewMode === 'board' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5 mb-6">
@@ -472,7 +477,7 @@ export default function Candidates({ onNavigate, openEditCandidateId, showAll = 
               <EmptyState
                 icon="users"
                 title={hasFilters ? 'No candidates match your filters' : 'No candidates yet'}
-                action={!hasFilters ? <Button variant="primary" leftIcon="plus" onClick={openAdd}>Add Candidate</Button> : undefined}
+                action={!hasFilters && canEdit ? <Button variant="primary" leftIcon="plus" onClick={openAdd}>Add Candidate</Button> : undefined}
               />
             </div>
           ) : (
@@ -523,7 +528,7 @@ export default function Candidates({ onNavigate, openEditCandidateId, showAll = 
                 <div className="flex items-center justify-between pt-2 border-t border-border/50 text-[11px] text-text3" onClick={e => e.stopPropagation()}>
                   <span>Submitted {c.submission_date || '—'}</span>
                   <div className="flex items-center gap-1">
-                    <Button size="xs" variant="ghost" onClick={() => openEdit(c)}>Edit</Button>
+                    {canEdit && <Button size="xs" variant="ghost" onClick={() => openEdit(c)}>Edit</Button>}
                     <Button size="xs" variant="secondary" onClick={() => { setShowDetail(c); setPreviewTab('overview') }}>View</Button>
                   </div>
                 </div>
@@ -533,11 +538,13 @@ export default function Candidates({ onNavigate, openEditCandidateId, showAll = 
         </div>
       ) : (
         <Table
+          toolbar={candidateViewControls}
           columns={columns}
           data={filtered}
           loading={loading}
           resizable
-          selectable
+          stickyRowActions
+          selectable={canEdit}
           selectedIds={selected}
           onSelectionChange={setSelected}
           compact={orgPrefs.tableDensity === 'compact'}
@@ -548,7 +555,7 @@ export default function Candidates({ onNavigate, openEditCandidateId, showAll = 
             <EmptyState
               icon="users"
               title={hasFilters ? 'No candidates match your filters' : 'No candidates yet'}
-              action={!hasFilters ? <Button variant="primary" leftIcon="plus" onClick={openAdd}>Add Candidate</Button> : undefined}
+              action={!hasFilters && canEdit ? <Button variant="primary" leftIcon="plus" onClick={openAdd}>Add Candidate</Button> : undefined}
             />
           }
           bulkActions={
@@ -572,23 +579,23 @@ export default function Candidates({ onNavigate, openEditCandidateId, showAll = 
               items={[
                 { label: 'Quick preview', icon: 'eye', onClick: () => { setShowDetail(c); setPreviewTab('overview') } },
                 { label: 'View full details', icon: 'arrowUpRight', onClick: () => onNavigate ? onNavigate('candidate_detail', { candidateId: c.id }) : (() => { setShowDetail(c); setPreviewTab('overview') })() },
-                { label: 'Edit candidate', icon: 'edit', onClick: () => openEdit(c) },
-                { label: 'Deep AI Fit', icon: 'sparkles', onClick: () => openAiMatchForCandidate(c) },
-                { label: '1-Click Packet', icon: 'arrowUpRight', onClick: () => openPacketForCandidate(c) },
+                { hidden: !canEdit, label: 'Edit candidate', icon: 'edit', onClick: () => openEdit(c) },
+                { hidden: !aiEnabled, label: 'Deep AI Fit', icon: 'sparkles', onClick: () => openAiMatchForCandidate(c) },
+                { hidden: !aiEnabled, label: '1-Click Packet', icon: 'arrowUpRight', onClick: () => openPacketForCandidate(c) },
                 'divider',
-                { label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleteId(c.id) },
-              ]}
+                { hidden: !canEdit, label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleteId(c.id) },
+              ].filter(item => !item?.hidden)}
             />
           )}
           contextMenuItems={(c) => [
             { label: 'Quick preview', icon: 'eye', onClick: () => { setShowDetail(c); setPreviewTab('overview') } },
             { label: 'View full details', icon: 'arrowUpRight', onClick: () => onNavigate ? onNavigate('candidate_detail', { candidateId: c.id }) : (() => { setShowDetail(c); setPreviewTab('overview') })() },
-            { label: 'Edit candidate', icon: 'edit', onClick: () => openEdit(c) },
-            { label: 'Deep AI Fit', icon: 'sparkles', onClick: () => openAiMatchForCandidate(c) },
-            { label: '1-Click Packet', icon: 'arrowUpRight', onClick: () => openPacketForCandidate(c) },
+            { hidden: !canEdit, label: 'Edit candidate', icon: 'edit', onClick: () => openEdit(c) },
+            { hidden: !aiEnabled, label: 'Deep AI Fit', icon: 'sparkles', onClick: () => openAiMatchForCandidate(c) },
+            { hidden: !aiEnabled, label: '1-Click Packet', icon: 'arrowUpRight', onClick: () => openPacketForCandidate(c) },
             'divider',
-            { label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleteId(c.id) },
-          ]}
+            { hidden: !canEdit, label: 'Delete', icon: 'trash', danger: true, onClick: () => setDeleteId(c.id) },
+          ].filter(item => !item?.hidden)}
         />
       )}
 
@@ -617,7 +624,7 @@ export default function Candidates({ onNavigate, openEditCandidateId, showAll = 
                 )}
                 <Button variant="secondary" leftIcon="sparkles" onClick={() => openAiMatchForCandidate(showDetail)}>Deep AI Fit</Button>
                 <Button variant="ai" leftIcon="arrowUpRight" onClick={() => openPacketForCandidate(showDetail)}>1-Click Packet</Button>
-                <Button variant="secondary" leftIcon="edit" onClick={() => { const cand = showDetail; setShowDetail(null); openEdit(cand) }}>Edit</Button>
+                {canEdit && <Button variant="secondary" leftIcon="edit" onClick={() => { const cand = showDetail; setShowDetail(null); openEdit(cand) }}>Edit</Button>}
                 {onNavigate && (
                   <Button variant="primary" leftIcon="arrowUpRight" onClick={() => { const cId = showDetail.id; setShowDetail(null); onNavigate('candidate_detail', { candidateId: cId }) }}>View Full Details</Button>
                 )}
@@ -969,6 +976,7 @@ export default function Candidates({ onNavigate, openEditCandidateId, showAll = 
 
       {/* Bulk Resume Upload Modal */}
       <BulkResumeUploadModal
+        destination="candidates"
         isOpen={showBulkUpload}
         onClose={() => setShowBulkUpload(false)}
         addCandidates={addCandidates}

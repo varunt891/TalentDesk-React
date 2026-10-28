@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Button, Input, Checkbox, Badge, Icon, Modal } from '../ui'
 import { apiUpload } from '../../lib/api'
+import { prepareCandidateImport } from '../../lib/candidateImport'
 
 const ACCEPTED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.txt', '.html', '.htm', '.xlsx']
 const MAX_FILES = 20
@@ -16,7 +17,7 @@ function emptyProfile() {
   return { first_name: '', last_name: '', email: '', phone: '', job_title: '' }
 }
 
-export default function BulkResumeUploadModal({ isOpen, onClose, addCandidates, showToast, preserveResumeTitle = false }) {
+export default function BulkResumeUploadModal({ isOpen, onClose, addCandidates, showToast, preserveResumeTitle = false, destination = 'candidates' }) {
   const [files, setFiles] = useState([])
   const [rejected, setRejected] = useState([])
   const [uploading, setUploading] = useState(false)
@@ -149,7 +150,7 @@ export default function BulkResumeUploadModal({ isOpen, onClose, addCandidates, 
         resume_file_name: r.resume_file_name || undefined,
         resume_file_size: r.resume_file_size || undefined,
       }))
-      .map(row => ({ ...row, first_name: (row.first_name || '').trim() }))
+      .map(row => prepareCandidateImport({ ...row, first_name: (row.first_name || '').trim() }, destination))
 
     if (!rows.length) return showToast?.('Nothing selected to import.', 'error')
     if (rows.some(row => !row.first_name)) return showToast?.('Enter a first name for every selected candidate.', 'error')
@@ -173,7 +174,7 @@ export default function BulkResumeUploadModal({ isOpen, onClose, addCandidates, 
       open={isOpen}
       onClose={handleClose}
       title="Bulk Upload Resumes"
-      subtitle="Upload multiple resumes (.pdf, .docx, .doc, .txt, .html) or a structured roster (.xlsx) — review before importing."
+      subtitle={`Upload resumes or an Excel roster — review before importing into ${destination === 'sourced' ? 'Sourced Candidates' : 'Candidates'}.`}
       size="xl"
       footer={
         results ? (

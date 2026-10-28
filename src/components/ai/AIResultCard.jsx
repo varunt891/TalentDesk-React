@@ -1,5 +1,6 @@
 import { Icon, Menu, cn } from '../ui'
 import MarkdownView from '../MarkdownView'
+import { useAiOutputScroll } from '../../lib/ai/useAiOutputScroll'
 
 /**
  * The shared "AI output" surface — used by ActionsPanel and
@@ -19,11 +20,12 @@ import MarkdownView from '../MarkdownView'
  * than two separate buttons crowding the header row.
  */
 export default function AIResultCard({ streaming, streamingText, result, subject, copied, onCopy, onExportWord, onExportPdf }) {
+  const outputRef = useAiOutputScroll(streaming)
   if (!streaming && !result) return null
   const showThinking = streaming && !streamingText
 
   return (
-    <div className="relative rounded-[var(--radius-lg)] border border-border bg-surface shadow-xs overflow-hidden">
+    <div ref={outputRef} className="ai-result-card relative rounded-[var(--radius-lg)] border border-border bg-surface shadow-xs overflow-hidden">
       <div className="h-[2px] w-full shrink-0" style={{ background: 'linear-gradient(90deg, var(--accent), var(--ai))' }} />
       <div className="p-4">
         <div className={cn('flex items-center justify-between gap-3', subject ? 'mb-1' : 'mb-3')}>

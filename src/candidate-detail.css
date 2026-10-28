@@ -1,0 +1,71 @@
+.candidate-detail-identity { display: flex; align-items: center; gap: 17px; min-width: 0; }
+.candidate-detail-identity > .td-avatar { flex-shrink: 0; }
+.candidate-detail-header-actions { display: flex; gap: 7px; flex-wrap: wrap; justify-content: flex-end; flex-shrink: 0; }
+.candidate-detail-header-actions .td-button { font-size: 11px; }
+.candidate-detail-personal a { color: var(--text); text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 4px; }
+.candidate-detail-personal a:hover { color: var(--accent); text-decoration-color: currentColor; }
+.candidate-detail-contact-links { display: flex; flex-wrap: wrap; gap: 15px; border-top: 1px solid var(--border-light); padding-top: 17px; margin-top: 21px; }
+.candidate-detail-contact-links > a, .candidate-detail-job-link { display: inline-flex; align-items: center; gap: 5px; color: var(--text2); font-size: 11px; }
+.candidate-detail-job-link { font-family: var(--mono); color: var(--accent); }
+.candidate-detail-section-label { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500; color: var(--text2); }
+.candidate-detail-pipeline > div:last-child { gap: 8px; }
+.candidate-detail-pipeline > div:last-child > div { gap: 9px; }
+.candidate-detail-pipeline > div:last-child > div > div { height: 3px; }
+.candidate-detail-pipeline > div:last-child > div > span { font-size: 10px; font-weight: 400; line-height: 1.4; }
+.candidate-detail-skills { border: 0; padding: 0; margin: 0; }
+.candidate-detail-page :is(.candidate-detail-health, .candidate-detail-margin, .candidate-detail-status) summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text2); font-size: 12px; cursor: pointer; }
+.candidate-detail-health summary > span:last-child { display: inline-flex; align-items: center; gap: 7px; color: var(--text); font-size: 15px; }
+.candidate-detail-health summary small { font-size: 10px; color: var(--text3); }
+.candidate-detail-score-disclaimer { margin: 14px 0 18px; }
+.candidate-detail-margin details[open] > summary { margin-bottom: 20px; }
+.candidate-detail-margin .grid > div { min-width: 0; }
+.candidate-detail-margin .grid > div > div { overflow-wrap: anywhere; }
+.candidate-detail-status summary strong { display: block; font-size: 12px; font-weight: 500; color: var(--text); }
+.candidate-detail-status summary small { display: block; color: var(--text3); font-size: 10px; line-height: 1.7; margin-top: 5px; }
+.candidate-detail-status-fields { display: flex; flex-direction: column; gap: 15px; padding-top: 21px; }
+.candidate-detail-status-fields label { font-size: 10px; font-weight: 400; text-transform: none; letter-spacing: normal; }
+.candidate-detail-status-fields button { font-size: 11px; }
+.candidate-detail-status-fields [role="option"] { font-size: 11px; }
+.candidate-detail-status-fields input { font-size: 11px; }
+.candidate-detail-owner-list { display: flex; flex-direction: column; gap: 17px; }
+.candidate-detail-owner-list .job-detail-person + .job-detail-person { padding-top: 17px; border-top: 1px solid var(--border-light); }
+.candidate-detail-submission-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 18px 0; }
+.candidate-detail-submission-row > div:first-child { flex-basis: 220px; }
+.candidate-detail-submission-row > div:last-child { flex-wrap: wrap; }
+.candidate-detail-submission-row .td-button { font-size: 10px; padding-right: 0; }
+.candidate-detail-timeline { display: flex; flex-direction: column; gap: 12px; }
+.candidate-detail-activity .td-card-heading + div > div > div:first-child, .candidate-detail-timeline-item > div:first-child { background: var(--surface2) !important; color: var(--text3) !important; border-radius: 8px; }
+.candidate-detail-activity .font-semibold.text-accent { color: var(--text); font-weight: 500; }
+.candidate-detail-resume-file { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+.candidate-detail-resume-file > div { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1 1 220px; }
+.candidate-detail-resume-file > div > span:last-child { min-width: 0; }
+.candidate-detail-resume-file strong { color: var(--text); font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
+.candidate-detail-resume-file small { display: block; font-size: 10px; color: var(--text3); margin-top: 4px; }
+.candidate-detail-file-icon { width: 36px; height: 36px; background: var(--surface2); color: var(--text3); border-radius: 9px; display: grid; place-items: center; flex-shrink: 0; }
+.candidate-detail-resume-file .td-button { font-size: 11px; }
+.candidate-detail-resume-text { font-size: 12px; line-height: 1.9; color: var(--text2); overflow-wrap: anywhere; }
+.candidate-detail-ai { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.candidate-detail-page .candidate-detail-ai > .td-card { padding: 23px; border-radius: 14px; background: var(--surface); box-shadow: none; border-color: var(--border-light); overflow-wrap: anywhere; }
+.candidate-detail-ai > .td-card > div:first-child > span { font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: normal; color: var(--text2); }
+.candidate-detail-page summary::marker { content: ''; }
+.candidate-detail-page summary::-webkit-details-marker { display: none; }
+.candidate-detail-page details[open] > summary > svg:last-child { transform: rotate(180deg); }
+@container job-details (max-width: 900px) {
+  .candidate-detail-header-actions { flex-shrink: 1; }
+}
+@container job-details (max-width: 640px) {
+  .candidate-detail-identity { gap: 12px; }
+  .candidate-detail-identity > span:first-child { width: 40px; height: 40px; font-size: 13px; }
+  .candidate-detail-header-actions { justify-content: flex-start; width: 100%; }
+  .candidate-detail-header-actions .td-button { font-size: 10px; }
+  .candidate-detail-views { gap: 18px; overflow-x: auto; scrollbar-width: thin; }
+  .candidate-detail-views > button { font-size: 10px; gap: 4px; }
+  .candidate-detail-views > button > span { padding: 1px 4px; }
+  .candidate-detail-pipeline > div:last-child { gap: 5px; flex-wrap: wrap; }
+  .candidate-detail-pipeline > div:last-child > div { min-width: 60px; flex-basis: 22%; }
+  .candidate-detail-pipeline > div:last-child > div > span { font-size: 9px; }
+  .candidate-detail-margin .grid { grid-template-columns: 1fr; gap: 8px; }
+  .candidate-detail-margin .grid > div { display: flex; gap: 10px; justify-content: space-between; align-items: center; }
+  .candidate-detail-margin .grid > div > div:first-child { margin-bottom: 0; }
+  .candidate-detail-page .candidate-detail-ai > .td-card { padding: 18px; }
+}

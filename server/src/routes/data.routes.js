@@ -3,6 +3,7 @@ import { requireAdmin, requireAuth } from '../auth.js'
 import { prisma } from '../prisma.js'
 import { storageService } from '../services/storageService.js'
 import { detectAndRecordCollisions } from '../services/collisionService.js'
+import { appendRecordNote } from '../services/recordNotesService.js'
 
 const router = Router()
 
@@ -18,7 +19,7 @@ const tables = {
   task_comments: { model: 'taskComment', orgScoped: false },
   notifications: { model: 'notification', orgScoped: true },
   user_invitations: { model: 'userInvitation', orgScoped: true, adminWrite: true, adminRead: true },
-  admin_audit_log: { model: 'adminAuditLog', orgScoped: true, adminWrite: true, adminRead: true },
+  admin_audit_log: { model: 'adminAuditLog', orgScoped: true, readOnly: true, adminRead: true },
   activity_logs: { model: 'activityLog', orgScoped: true, readOnly: true },
   submission_collisions: { model: 'submissionCollision', orgScoped: true, readOnly: true },
 }
@@ -27,7 +28,9 @@ const publicFields = {
   profiles: ['id', 'org_id', 'email', 'full_name', 'phone', 'extension', 'role', 'team', 'department', 'manager_id', 'is_active', 'created_at', 'updated_at'],
 }
 
-const ownedTables = ['candidates', 'jobs', 'callbacks', 'followups', 'postings']
+import { ownedTables, buildWhere, scopedRowWhere, canManageJobAssignment, visibleOwnerIds } from '../services/recordAccess.js'
+import { TABLE_MODULES, assertModule, isCompanyAdmin, forbidden, roleOf, assertRoleChange } from '../access.js'
+import { updateMemberRole, removeMember } from '../services/memberAccess.js'
 
 function configFor(table) {
   const config = tables[table]
@@ -47,192 +50,13 @@ function sanitize(table, row) {
   return Object.fromEntries(allowed.map(key => [key, row[key]]))
 }
 
-function coerce(value) {
-  if (value === 'true') return true
-  if (value === 'false') return false
-  if (value === 'null') return null
-  return value
-}
-
-async function getDescendantProfileIds(managerId, orgId) {
-  const allOrgProfiles = await prisma.profile.findMany({
-    where: { org_id: orgId },
-    select: { id: true, manager_id: true, team: true },
-  })
-
-  const descendantIds = new Set([managerId])
-  let added = true
-  while (added) {
-    added = false
-    for (const p of allOrgProfiles) {
-      if (!descendantIds.has(p.id) && p.manager_id && descendantIds.has(p.manager_id)) {
-        descendantIds.add(p.id)
-        added = true
-      }
-    }
-  }
-  return Array.from(descendantIds)
-}
-
-async function getDirectTeamProfileIds(managerId, orgId, team) {
-  const whereConditions = [{ manager_id: managerId }, { id: managerId }]
-  if (team) whereConditions.push({ team })
-
-  const teamProfiles = await prisma.profile.findMany({
-    where: { org_id: orgId, OR: whereConditions },
-    select: { id: true },
-  })
-  return teamProfiles.map(p => p.id)
-}
-
-function isRMRole(profile) {
-  if (!profile) return false
-  if (['recruitment_manager', 'operations_manager'].includes(profile.role)) return true
-  if (profile.role === 'manager' && !profile.manager_id) return true
-  return false
-}
-
-function isAMRole(profile) {
-  if (!profile) return false
-  if (profile.role === 'account_manager') return true
-  if (profile.role === 'manager' && !!profile.manager_id) return true
-  return false
-}
-
-// req.profile.role / req.memberRole are always the UPPERCASE OrganizationMember
-// role (requireAuth overwrites profile.role with it) — unlike isRMRole/isAMRole
-// above, this compares uppercase-to-uppercase deliberately.
-const JOB_CREATE_ROLES = ['ACCOUNT_MANAGER', 'RECRUITMENT_MANAGER', 'OPERATIONS_MANAGER', 'MANAGER', 'ADMIN', 'SUPERADMIN', 'OWNER']
-function canManageJobAssignment(req) {
-  const role = (req.memberRole || req.profile?.role || '').toUpperCase()
-  return JOB_CREATE_ROLES.includes(role)
-}
-
-async function visibleOwnerIds(req) {
-  const role = (req.memberRole || req.profile?.role || '').toLowerCase()
-  if (['admin', 'superadmin', 'owner'].includes(role)) return null
-
-  if (isRMRole(req.profile)) {
-    return await getDescendantProfileIds(req.user.id, req.profile.org_id)
-  }
-
-  if (isAMRole(req.profile)) {
-    return await getDirectTeamProfileIds(req.user.id, req.profile.org_id, req.profile.team)
-  }
-
-  return [req.user.id]
-}
-
-function isSuperAdminUser(req) {
-  const role = (req.memberRole || req.profile?.role || '').toLowerCase()
-  return role === 'superadmin'
-}
-
-async function buildWhere(req, table, config) {
-  const filters = req.query.filter ? JSON.parse(req.query.filter) : []
-  const where = {}
-
-  for (const filter of filters) {
-    if (filter.op === 'eq') where[filter.column] = coerce(filter.value)
-  }
-
-  const isSuper = isSuperAdminUser(req)
-  const wantsAllOrgs = isSuper && (req.query.all_orgs === 'true' || req.query.all_orgs === '1')
-  // A superadmin inspecting another org from the admin panel explicitly filters by org_id;
-  // honor that instead of forcing their own org, while non-superadmins can never override it.
-  const requestedOrgId = isSuper ? filters.find(f => f.op === 'eq' && f.column === 'org_id')?.value : undefined
-
-  if (config.orgScoped && !wantsAllOrgs) {
-    where.org_id = requestedOrgId !== undefined ? coerce(requestedOrgId) : (req.organizationId || req.tenantOrg?.id || req.profile.org_id)
-  }
-
-  if (ownedTables.includes(table)) {
-    // Narrow, deliberate exception: recruiters sharing one job requisition need
-    // to see each other's submissions to it (this is exactly the scenario the
-    // collision-detection feature exists to catch), and need to be able to open
-    // the shared Job Detail page / look a job up by its exact Job ID even when
-    // someone else created it — but only when the request is already scoped to
-    // one specific job_id/candidates job_id/job row id, never as a blanket
-    // org-wide dump. Requesting all_owners without one of those filters has no effect.
-    const jobIdFilter = filters.find(f => f.op === 'eq' && f.column === 'job_id')?.value
-    const jobRowIdFilter = filters.find(f => f.op === 'eq' && f.column === 'id')?.value
-    const wantsAllOwners = (req.query.all_owners === 'true' || req.query.all_owners === '1') && (
-      (table === 'candidates' && Boolean(jobIdFilter)) ||
-      (table === 'jobs' && Boolean(jobIdFilter || jobRowIdFilter))
-    )
-    if (!wantsAllOwners) {
-      const ownerIds = await visibleOwnerIds(req)
-      if (ownerIds) {
-        // Jobs are visible if you created them OR you're one of its assignees —
-        // a plain owner-only check would hide a recruiter's own assigned jobs,
-        // since only account_manager+ roles create jobs going forward.
-        if (table === 'jobs') {
-          where.OR = [{ user_id: { in: ownerIds } }, { assigned_to: { array_contains: req.user.id } }]
-        } else {
-          where.user_id = { in: ownerIds }
-        }
-      }
-    }
-  }
-
-  if (table === 'tasks') {
-    if (['ADMIN', 'SUPERADMIN', 'OWNER', 'admin', 'superadmin', 'owner'].includes(req.memberRole || req.profile.role)) {
-      // Admins see all tasks in org
-    } else if (isRMRole(req.profile)) {
-      const allowedIds = await getDescendantProfileIds(req.user.id, req.organizationId || req.profile.org_id)
-      where.OR = [
-        { assigned_to: { in: allowedIds } },
-        { assigned_by: { in: allowedIds } }
-      ]
-    } else if (isAMRole(req.profile)) {
-      const allowedIds = await getDirectTeamProfileIds(req.user.id, req.organizationId || req.profile.org_id, req.profile.team)
-      where.OR = [
-        { assigned_to: { in: allowedIds } },
-        { assigned_by: { in: allowedIds } }
-      ]
-    } else {
-      where.OR = [
-        { assigned_to: req.user.id },
-        { assigned_by: req.user.id }
-      ]
-    }
-  }
-
-  if (table === 'profiles') {
-    where.org_id = requestedOrgId !== undefined ? coerce(requestedOrgId) : (req.organizationId || req.profile.org_id)
-  }
-
-  return where
-}
-
-async function scopedRowWhere(req, table, config, id) {
-  const where = { id }
-
-  if (config.orgScoped && !isSuperAdminUser(req)) {
-    where.org_id = req.organizationId || req.profile.org_id
-  }
-
-  if (ownedTables.includes(table)) {
-    const ownerIds = await visibleOwnerIds(req)
-    if (ownerIds) {
-      if (table === 'jobs') {
-        where.OR = [{ user_id: { in: ownerIds } }, { assigned_to: { array_contains: req.user.id } }]
-      } else {
-        where.user_id = { in: ownerIds }
-      }
-    }
-  }
-
-  return where
-}
-
 function buildOrder(req) {
   if (!req.query.order) return undefined
   const order = JSON.parse(req.query.order)
   return { [order.column]: order.ascending ? 'asc' : 'desc' }
 }
 
-function withOwnership(req, table, body) {
+function withOwnership(req, table, body, current) {
   const data = { ...body }
   delete data.id
   delete data.created_at
@@ -245,14 +69,14 @@ function withOwnership(req, table, body) {
     // org_id, which can be stale after an org-switch (e.g. bransarv user still
     // holding TalentDesk's org_id in their React state).
     if (activeOrgId) {
-      data.org_id = activeOrgId
+      data.org_id = current?.org_id || activeOrgId
     }
   } else {
     delete data.org_id
   }
 
   if (ownedTables.includes(table)) {
-    data.user_id ||= req.user.id
+    if (!current) data.user_id ||= req.user.id
   }
 
   if (table === 'candidates') {
@@ -282,9 +106,56 @@ function withOwnership(req, table, body) {
     delete data.source
   }
 
-  if (table === 'profiles') delete data.passwordHash
+  if (table === 'profiles') {
+    const fields = ['full_name', 'email', 'phone', 'extension', 'department', 'team', 'manager_id']
+    return { ...Object.fromEntries(Object.entries(data).filter(([key]) => fields.includes(key))), ...(!current ? { org_id: activeOrgId } : {}) }
+  }
 
   return data
+}
+
+async function validateWrite(req, table, body, current) {
+  if (table === 'candidates' && body.resume_file_key && body.resume_file_key !== current?.resume_file_key) {
+    const prefix = `resumes/${current?.org_id || req.organizationId}/`
+    if (!body.resume_file_key.startsWith(prefix) || body.resume_file_key.includes('..')) throw forbidden('Resume files must belong to this company')
+  }
+  const activeMember = async id => {
+    if (!id) return
+    if (!await prisma.organizationMember.findFirst({ where: { user_id: id, organization_id: current?.org_id || req.organizationId, status: 'ACTIVE', user: { is_active: true } } })) throw forbidden('Assignments must reference an active member of this company')
+  }
+  const owners = await visibleOwnerIds(req)
+  for (const id of [body.user_id, ...(table === 'jobs' && Array.isArray(body.assigned_to) ? body.assigned_to : []), ...(table === 'tasks' ? [body.assigned_to] : []), ...(table === 'profiles' ? [body.manager_id] : [])].filter(Boolean)) {
+    await activeMember(id)
+    if (ownedTables.includes(table) && owners && !owners.includes(id)) throw forbidden('You cannot assign records outside your team')
+  }
+  if (table === 'tasks') {
+    if (body.assigned_by && body.assigned_by !== (current?.assigned_by || req.user.id)) throw forbidden('Task creator cannot be changed')
+    if (!current) body.assigned_by = req.user.id
+    if (body.assigned_to && owners && !owners.includes(body.assigned_to)) throw forbidden('You cannot assign tasks outside your team')
+  }
+  if (table === 'task_comments') {
+    const taskId = current?.task_id || body.task_id
+    if (current && body.task_id && body.task_id !== current.task_id) throw forbidden('A comment cannot be moved to another task')
+    if (!taskId || !await prisma.task.findFirst({ where: await scopedRowWhere(req, 'tasks', tables.tasks, taskId) })) throw forbidden('Task access required')
+    body.user_id = current?.user_id || req.user.id
+    body.user_name = current?.user_name || req.profile.full_name
+    if (current && current.user_id !== req.user.id && !isCompanyAdmin(req)) throw forbidden('Only the author can edit this comment')
+  }
+  if (table === 'notifications') {
+    if (!current) { await activeMember(body.user_id); assertModule(req, 'Tasks', 'edit') }
+    else if (body.user_id && body.user_id !== req.user.id) throw forbidden('Notification recipient cannot be changed')
+  }
+  if (table === 'profiles') {
+    if ('passwordHash' in body || 'token_version' in body) throw forbidden('Use the account security endpoints')
+    if (current) {
+      const membership = await prisma.organizationMember.findUnique({ where: { user_id_organization_id: { user_id: current.id, organization_id: req.organizationId } } })
+      assertRoleChange(req, current.role?.toUpperCase() === 'SUPERADMIN' ? 'SUPERADMIN' : membership?.role, body.role || membership?.role)
+    } else assertRoleChange(req, 'RECRUITER', body.role || 'RECRUITER')
+  }
+  if (table === 'organizations') {
+    if (!req.isPlatformAdmin && Object.keys(body).some(key => ['candidate_limit', 'ai_credit_limit', 'slug', 'subdomain', 'email_domain', 'is_active', 'plan'].includes(key))) throw forbidden('Platform administration required for these company fields')
+    if ('subscription_plan' in body && !['OWNER', 'SUPERADMIN'].includes(roleOf(req))) throw forbidden('Only an Owner can change the plan')
+  }
 }
 
 function summarizeRow(table, row) {
@@ -313,6 +184,16 @@ async function logActivity(req, action, table, row, details = {}) {
 }
 
 router.use(requireAuth)
+router.use((req, res, next) => {
+  try {
+    const table = req.path.split('/')[1]
+    const moduleName = TABLE_MODULES[table]
+    if (moduleName) assertModule(req, moduleName, req.method === 'GET' ? 'view' : 'edit')
+    if (table === 'organizations' && req.method !== 'GET' && !isCompanyAdmin(req)) throw forbidden()
+    if (table === 'organizations' && ['POST', 'DELETE'].includes(req.method) && !req.isPlatformAdmin) throw forbidden('Only a platform administrator can create or delete companies')
+    next()
+  } catch (error) { next(error) }
+})
 
 router.patch('/submission_collisions/:id/resolve', async (req, res, next) => {
   try {
@@ -381,6 +262,11 @@ router.get('/:table', async (req, res, next) => {
     }
 
     const rows = await model.findMany(queryOptions)
+    if (table === 'profiles') {
+      const members = await prisma.organizationMember.findMany({ where: { user_id: { in: rows.map(p => p.id) }, organization_id: req.organizationId } })
+      const byUser = new Map(members.map(m => [m.user_id, m]))
+      return res.json({ data: sanitize(table, rows.map(p => ({ ...p, org_id: req.organizationId, role: byUser.get(p.id)?.role?.toLowerCase() || 'viewer', is_active: p.is_active && byUser.get(p.id)?.status === 'ACTIVE' }))) })
+    }
     const sanitized = sanitize(table, rows)
 
     if (table === 'candidates' && Array.isArray(sanitized)) {
@@ -433,7 +319,12 @@ router.post('/:table', async (req, res, next) => {
     const collisions = []
 
     for (const row of rows) {
-      const created = await model.create({ data: withOwnership(req, table, row) })
+      await validateWrite(req, table, row)
+      const created = table === 'profiles' ? await prisma.$transaction(async tx => {
+        const profile = await tx.profile.create({ data: { ...withOwnership(req, table, row), role: req.isPlatformAdmin && String(row.role).toUpperCase() === 'SUPERADMIN' ? 'superadmin' : 'recruiter' } })
+        await tx.organizationMember.create({ data: { user_id: profile.id, organization_id: req.organizationId, role: assertRoleChange(req, 'RECRUITER', row.role || 'RECRUITER') } })
+        return { ...profile, role: row.role || 'recruiter' }
+      }) : await model.create({ data: withOwnership(req, table, row) })
       await logActivity(req, 'created', table, created)
       data.push(created)
       if (table === 'candidates') {
@@ -446,6 +337,24 @@ router.post('/:table', async (req, res, next) => {
   } catch (err) {
     next(err)
   }
+})
+
+router.post('/:table/:id/notes', async (req, res, next) => {
+  try {
+    const { table, id } = req.params
+    if (!['candidates', 'jobs'].includes(table)) return res.status(400).json({ error: 'Notes can be saved to candidates or jobs.' })
+    const { content, title } = req.body
+    if (typeof content !== 'string' || !content.trim() || content.length > 40000) {
+      return res.status(400).json({ error: 'Enter a note between 1 and 40,000 characters.' })
+    }
+    const config = configFor(table)
+    const where = await scopedRowWhere(req, table, config, id)
+    const label = typeof title === 'string' ? title.replace(/[\r\n]/g, ' ').slice(0, 160) : 'Recruiting note'
+    const entry = `[${label} · ${new Date().toISOString()} · ${req.profile?.full_name || 'Recruiter'}]\n${content.trim()}`
+    const data = await appendRecordNote(prisma[config.model], where, entry)
+    await logActivity(req, 'updated', table, data, { updates: { notes: '(reviewed AI draft appended)' } })
+    res.json({ data: [data] })
+  } catch (err) { next(err) }
 })
 
 router.put('/:table/:id', async (req, res, next) => {
@@ -465,10 +374,21 @@ router.put('/:table/:id', async (req, res, next) => {
     const model = prisma[config.model]
     const current = await model.findFirst({ where: await scopedRowWhere(req, table, config, req.params.id) })
     if (!current) return res.status(404).json({ error: 'Record not found' })
+    await validateWrite(req, table, req.body, current)
 
-    const data = await model.update({
+    const data = table === 'profiles' ? await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM organizations WHERE id = ${req.organizationId}::uuid FOR UPDATE`
+      if (req.body.role !== undefined) await updateMemberRole(req, current.id, req.body.role, tx)
+      if (req.body.is_active !== undefined) {
+        if (current.id === req.user.id && req.body.is_active === false) throw forbidden('You cannot suspend your own membership')
+        const member = await tx.organizationMember.findUnique({ where: { user_id_organization_id: { user_id: current.id, organization_id: req.organizationId } } })
+        if (member.role === 'OWNER' && req.body.is_active === false && await tx.organizationMember.count({ where: { organization_id: req.organizationId, role: 'OWNER', status: 'ACTIVE' } }) <= 1) throw forbidden('The company must retain an active Owner')
+        await tx.organizationMember.update({ where: { id: member.id }, data: { status: req.body.is_active ? 'ACTIVE' : 'SUSPENDED' } })
+      }
+      return tx.profile.update({ where: { id: current.id }, data: withOwnership(req, table, req.body, current) })
+    }) : await model.update({
       where: { id: req.params.id },
-      data: withOwnership(req, table, req.body),
+      data: withOwnership(req, table, req.body, current),
     })
     if (table === 'candidates' && current.resume_file_key && current.resume_file_key !== data.resume_file_key) {
       await storageService.deleteFile(current.resume_file_key)
@@ -499,7 +419,11 @@ router.delete('/:table/:id', async (req, res, next) => {
     const current = await model.findFirst({ where: await scopedRowWhere(req, table, config, req.params.id) })
     if (!current) return res.status(404).json({ error: 'Record not found' })
 
-    await model.delete({ where: { id: req.params.id } })
+    await validateWrite(req, table, {}, current)
+    if (table === 'profiles') {
+      const member = await prisma.organizationMember.findUnique({ where: { user_id_organization_id: { user_id: current.id, organization_id: req.organizationId } } })
+      await removeMember(req, member)
+    } else await model.delete({ where: { id: req.params.id } })
     if (table === 'candidates' && current.resume_file_key) {
       await storageService.deleteFile(current.resume_file_key)
     }

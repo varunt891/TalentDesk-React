@@ -2,8 +2,17 @@ import { Router } from 'express'
 import crypto from 'crypto'
 import { prisma } from '../prisma.js'
 import { requireAuth, requireAdmin } from '../auth.js'
+import { requirePlatformAdmin, assertRoleChange, roleOf, forbidden } from '../access.js'
+import { removeMember, updateMemberRole } from '../services/memberAccess.js'
+import { readAiPolicy, saveAiPolicy } from '../services/aiPolicyService.js'
 
 const router = Router()
+router.get('/ai-policy', requireAuth, async (req, res, next) => {
+  try { res.json({ data: await readAiPolicy(req.organizationId), organization_id: req.organizationId }) } catch (error) { next(error) }
+})
+router.put('/ai-policy', requireAuth, requireAdmin, async (req, res, next) => {
+  try { res.json({ data: await saveAiPolicy(req, req.body), organization_id: req.organizationId }) } catch (error) { next(error) }
+})
 
 const MARKET_DEFAULTS = {
   US: {
@@ -48,13 +57,13 @@ router.post('/switch', requireAuth, async (req, res, next) => {
       return res.status(404).json({ error: 'Target organization not found' })
     }
 
-    const isSuperAdmin = ['SUPERADMIN', 'superadmin'].includes(req.memberRole) || ['SUPERADMIN', 'superadmin'].includes(req.profile.role)
+    const isSuperAdmin = req.isPlatformAdmin
 
     let membership = await prisma.organizationMember.findFirst({
       where: { user_id: req.user.id, organization_id: targetOrg.id },
     })
 
-    if (!membership && !isSuperAdmin) {
+    if ((!membership || membership.status !== 'ACTIVE' || targetOrg.is_active === false) && !isSuperAdmin) {
       return res.status(403).json({ error: 'You are not a member of this organization' })
     }
 
@@ -93,7 +102,7 @@ router.post('/switch', requireAuth, async (req, res, next) => {
 })
 
 // GET /api/organization/all - List all platform organizations (Superadmin / Admin)
-router.get('/all', requireAuth, requireAdmin, async (req, res, next) => {
+router.get('/all', requireAuth, requirePlatformAdmin, async (req, res, next) => {
   try {
     const orgs = await prisma.organization.findMany({
       include: {
@@ -135,9 +144,9 @@ function getFrontendClientOrigin(req) {
 }
 
 // POST /api/organization/onboard - Superadmin Onboard New Organization
-router.post('/onboard', requireAuth, requireAdmin, async (req, res, next) => {
+router.post('/onboard', requireAuth, requirePlatformAdmin, async (req, res, next) => {
   try {
-    const { name, domain, website, industry, subscription_plan = 'Growth', candidate_limit = 15000, ai_credit_limit = 1000, owner_name, owner_email, slug: inputSlug, market = 'US', timezone, currency, date_format, language, business_hours_start, business_hours_end } = req.body
+    const { name, domain, website, industry, subscription_plan = 'Growth', candidate_limit = 15000, ai_credit_limit = 1000, owner_email, slug: inputSlug, market = 'US', timezone, currency, date_format, language, business_hours_start, business_hours_end } = req.body
 
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Organization name is required' })
@@ -145,8 +154,8 @@ router.post('/onboard', requireAuth, requireAdmin, async (req, res, next) => {
 
     const cleanName = name.trim()
     const cleanDomain = domain ? domain.trim().toLowerCase() : null
-    const customSlug = inputSlug && inputSlug.trim() ? inputSlug.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^\w\-]+/g, '') : null
-    const slug = customSlug || (cleanName.toLowerCase().replace(/\s+/g, '-').replace(/[^\w\-]+/g, '') + '-' + Math.floor(1000 + Math.random() * 9000))
+    const customSlug = inputSlug && inputSlug.trim() ? inputSlug.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, '') : null
+    const slug = customSlug || (cleanName.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, '') + '-' + Math.floor(1000 + Math.random() * 9000))
     const cleanMarket = normalizeMarket(market)
     const defaults = marketDefaults(cleanMarket)
 
@@ -204,7 +213,7 @@ router.post('/onboard', requireAuth, requireAdmin, async (req, res, next) => {
 })
 
 // DELETE /api/organization/platform/:id - Cascade delete organization (Superadmin)
-router.delete('/platform/:id', requireAuth, requireAdmin, async (req, res, next) => {
+router.delete('/platform/:id', requireAuth, requirePlatformAdmin, async (req, res, next) => {
   try {
     const { id } = req.params
     if (!id) return res.status(400).json({ error: 'Organization ID is required' })
@@ -238,7 +247,7 @@ router.delete('/platform/:id', requireAuth, requireAdmin, async (req, res, next)
 })
 
 // POST /api/organization/platform/purge-members - Purge all members of target org
-router.post('/platform/purge-members', requireAuth, requireAdmin, async (req, res, next) => {
+router.post('/platform/purge-members', requireAuth, requirePlatformAdmin, async (req, res, next) => {
   try {
     const { organization_id } = req.body
     if (!organization_id) return res.status(400).json({ error: 'organization_id is required' })
@@ -287,7 +296,7 @@ router.post('/platform/purge-members', requireAuth, requireAdmin, async (req, re
 })
 
 // POST /api/organization/platform/purge-candidates - Purge all candidates of target org
-router.post('/platform/purge-candidates', requireAuth, requireAdmin, async (req, res, next) => {
+router.post('/platform/purge-candidates', requireAuth, requirePlatformAdmin, async (req, res, next) => {
   try {
     const { organization_id } = req.body
     if (!organization_id) return res.status(400).json({ error: 'organization_id is required' })
@@ -344,6 +353,7 @@ router.get('/', requireAuth, async (req, res, next) => {
 router.put('/', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const { name, website, domain, logo_url, industry, company_size, primary_color, timezone, subscription_plan, market, currency, date_format, language, business_hours_start, business_hours_end } = req.body
+    if (subscription_plan !== undefined && !['OWNER', 'SUPERADMIN'].includes(roleOf(req))) throw forbidden('Only an Owner or platform administrator can change the plan')
 
     let planData = {}
     if (subscription_plan) {
@@ -390,13 +400,13 @@ router.get('/members', requireAuth, async (req, res, next) => {
 
     // Fetch all profiles belonging to this org
     const profiles = await prisma.profile.findMany({
-      where: { org_id: orgId },
+      where: { memberships: { some: { organization_id: orgId, status: { not: 'REVOKED' } } } },
       orderBy: { created_at: 'asc' },
     })
 
     // Fetch all membership records for this org so we can overlay role/status
     const memberships = await prisma.organizationMember.findMany({
-      where: { organization_id: orgId },
+      where: { organization_id: orgId, status: { not: 'REVOKED' } },
     })
     const membershipMap = new Map(memberships.map(m => [m.user_id, m]))
 
@@ -531,37 +541,9 @@ router.put('/members/:id/role', requireAuth, requireAdmin, async (req, res, next
 
     const orgId = req.organizationId
 
-    // Try to find by membership id first; fall back to treating the id as a user/profile id
-    let member = await prisma.organizationMember.findFirst({
-      where: { id: req.params.id, organization_id: orgId },
-    })
-
-    let userId = member?.user_id
-
-    if (!member) {
-      // The id might be a profile id (for seeded users with no membership record)
-      const profile = await prisma.profile.findFirst({ where: { id: req.params.id, org_id: orgId } })
-      if (!profile) return res.status(404).json({ error: 'Team member not found in this organization' })
-      userId = profile.id
-
-      // Upsert the membership record
-      member = await prisma.organizationMember.upsert({
-        where: { user_id_organization_id: { user_id: userId, organization_id: orgId } },
-        update: { role: normalizedRole },
-        create: { user_id: userId, organization_id: orgId, role: normalizedRole, status: 'ACTIVE' },
-      })
-    } else {
-      member = await prisma.organizationMember.update({
-        where: { id: member.id },
-        data: { role: normalizedRole },
-      })
-    }
-
-    // Sync profile role
-    await prisma.profile.update({
-      where: { id: userId },
-      data: { role: normalizedRole.toLowerCase() },
-    })
+    const current = await prisma.organizationMember.findFirst({ where: { organization_id: orgId, status: { not: 'REVOKED' }, OR: [{ id: req.params.id }, { user_id: req.params.id }] } })
+    if (!current) return res.status(404).json({ error: 'Member not found in this organization' })
+    const member = await prisma.$transaction(tx => updateMemberRole(req, current.user_id, normalizedRole, tx))
 
     res.json({ data: member })
   } catch (err) {
@@ -584,7 +566,7 @@ router.delete('/members/:id', requireAuth, requireAdmin, async (req, res, next) 
       return res.status(400).json({ error: 'You cannot remove yourself from the organization' })
     }
 
-    await prisma.organizationMember.delete({ where: { id: member.id } })
+    await removeMember(req, member)
 
     res.json({ data: null, message: 'Member removed successfully' })
   } catch (err) {
@@ -602,7 +584,7 @@ router.post('/invitations', requireAuth, requireAdmin, async (req, res, next) =>
 
     const normalizedEmail = email.trim().toLowerCase()
     const allowedRoles = ['SUPERADMIN', 'ADMIN', 'OWNER', 'RECRUITMENT_MANAGER', 'ACCOUNT_MANAGER', 'RECRUITER', 'HR_MANAGER', 'HR_TEAM', 'OPERATIONS_MANAGER', 'MANAGER', 'EMPLOYEE', 'VIEWER']
-    const targetRole = role.toUpperCase()
+    const targetRole = assertRoleChange(req, 'RECRUITER', role)
 
     if (!allowedRoles.includes(targetRole)) {
       return res.status(400).json({ error: `Invalid role for invitation. Allowed: ${allowedRoles.join(', ')}` })
@@ -652,7 +634,7 @@ router.post('/invitations', requireAuth, requireAdmin, async (req, res, next) =>
 })
 
 // GET /api/organization/invitations - List active pending invitations
-router.get('/invitations', requireAuth, async (req, res, next) => {
+router.get('/invitations', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const invitations = await prisma.organizationInvitation.findMany({
       where: {

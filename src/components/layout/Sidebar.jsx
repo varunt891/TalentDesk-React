@@ -6,6 +6,7 @@ import { Icon } from '../ui/icons'
 import Avatar from '../ui/Avatar'
 import Menu from '../ui/Menu'
 import { cn } from '../ui/utils'
+import { hasPermission } from '../../lib/admin/permissions'
 
 const navItems = [
   { id: 'dashboard', icon: 'dashboard', label: 'Dashboard', section: 'Main' },
@@ -37,7 +38,7 @@ function readJson(key, fallback) {
   }
 }
 
-export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggleCollapse, onClose, pendingTasksCount = 0, theme, onToggleTheme }) {
+export default function Sidebar({ currentPage, onNavigate, isCollapsed, isOverlay = false, isHoverNavigation = false, onToggleCollapse, onClose, pendingTasksCount = 0, theme, onToggleTheme }) {
   const { profile, user, organization, signOut } = useAuth()
   const navigate = useNavigate()
 
@@ -52,7 +53,7 @@ export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggle
           const count = data.filter(c => !c.internal_status || c.internal_status === 'Sourced').length
           setSourcedCount(count)
         }
-      } catch (err) { /* ignore */ }
+      } catch { /* ignore */ }
     }
     fetchSourced()
     const interval = setInterval(fetchSourced, 10000)
@@ -87,6 +88,8 @@ export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggle
 
   const visibleItems = navItems.filter(item => {
     if (item.adminOnly) return ['admin', 'superadmin', 'owner'].includes(role)
+    const modules = { ai_center: 'AI', candidates: 'Candidates', sourced_candidates: 'Candidates', pipeline: 'Pipeline', jobs: 'Jobs', tasks: 'Tasks', callbacks: 'Communication', followups: 'Communication', reports: 'Reports', resubmit: 'Candidates', collisions: 'Candidates', postings: 'Jobs' }
+    if (modules[item.id]) return hasPermission(role, modules[item.id])
     return true
   })
 
@@ -101,7 +104,7 @@ export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggle
         'app-sidebar h-full flex flex-col bg-[var(--sidebar-bg)] border-r border-border shrink-0 overflow-x-hidden',
         'transition-[width,min-width] duration-200 ease-[var(--ease-standard)] will-change-[width]',
         isCollapsed && 'collapsed',
-        isCollapsed ? 'w-16 min-w-[4rem]' : 'w-52 min-w-[13rem]'
+        'w-full min-w-0'
       )}
       data-collapsed={isCollapsed ? 'true' : 'false'}
     >
@@ -125,22 +128,22 @@ export default function Sidebar({ currentPage, onNavigate, isCollapsed, onToggle
               <div className="text-[10px] font-semibold text-text3 uppercase tracking-wider truncate">{orgName}</div>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              <button
+              {!isOverlay && <button
                 type="button"
                 onClick={onToggleCollapse}
                 aria-label="Collapse sidebar"
                 className="focus-ring hidden lg:flex w-7 h-7 rounded-[var(--radius-sm)] items-center justify-center text-text3 hover:bg-surface2 hover:text-text transition-colors duration-[var(--duration-fast)]"
               >
                 <Icon name="chevronLeft" size={13} />
-              </button>
-              <button
+              </button>}
+              {!isHoverNavigation && <button
                 type="button"
                 onClick={onClose}
                 aria-label="Close navigation"
-                className="focus-ring lg:hidden w-7 h-7 rounded-[var(--radius-sm)] flex items-center justify-center text-text3 hover:bg-surface2 hover:text-text"
+                className={cn('focus-ring w-7 h-7 rounded-[var(--radius-sm)] flex items-center justify-center text-text3 hover:bg-surface2 hover:text-text', !isOverlay && 'lg:hidden')}
               >
                 <Icon name="x" size={14} />
-              </button>
+              </button>}
             </div>
           </>
         )}
@@ -284,6 +287,7 @@ function NavItem({ item, active, onClick, isCollapsed, pendingTasksCount, source
         type="button"
         onClick={onClick}
         aria-label={item.label}
+        title={isCollapsed ? item.label : undefined}
         data-active={active ? 'true' : undefined}
         className={cn(
           'sidebar-nav-button focus-ring relative flex items-center gap-2.5 w-full h-[36px] rounded-[var(--radius-md)] text-[13px] font-semibold transition-all duration-[var(--duration-fast)]',

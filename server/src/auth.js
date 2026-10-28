@@ -14,7 +14,7 @@ const cookieBaseOptions = {
 
 export function signSession(user) {
   return jwt.sign(
-    { sub: user.id, email: user.email, tokenVersion: user.token_version ?? user.tokenVersion ?? 0 },
+    { sub: user.id, email: user.email, purpose: 'session', tokenVersion: user.token_version ?? user.tokenVersion ?? 0 },
     process.env.JWT_SECRET,
     { expiresIn: '7d' }
   )
@@ -79,13 +79,15 @@ export async function requireAuth(req, res, next) {
   try {
     const authHeader = req.headers.authorization || ''
     const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : ''
-    const token = req.cookies[cookieName] || bearerToken
+    const token = bearerToken || req.cookies?.[cookieName]
 
     if (!token) {
       return res.status(401).json({ error: 'Not authenticated' })
     }
 
-    const payload = jwt.verify(token, process.env.JWT_SECRET)
+    const payload = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] })
+    // Legacy session tokens have no purpose but always have a tokenVersion.
+    if ((payload.purpose && payload.purpose !== 'session') || !Number.isInteger(payload.tokenVersion)) return res.status(401).json({ error: 'Invalid session token' })
 
     const profile = await prisma.profile.findUnique({
       where: { id: payload.sub },
@@ -109,44 +111,27 @@ export async function requireAuth(req, res, next) {
 
     const tenantOrg = await findTenantOrganization(req)
 
-    // Determine active organization
+    const isPlatformAdmin = mapProfileRole(profile.role) === 'SUPERADMIN'
+    // Membership is the authority; profile.org_id only selects the workspace.
     let activeOrg = tenantOrg || profile.organization
     if (!activeOrg && profile.memberships?.length > 0) {
-      activeOrg = profile.memberships[0].organization
+      activeOrg = profile.memberships.find(m => m.status === 'ACTIVE' && m.organization?.is_active !== false)?.organization
     }
 
     if (!activeOrg) {
       return res.status(400).json({ error: 'User does not belong to any organization' })
     }
 
-    // Find active membership
-    let activeMembership = profile.memberships.find(m => m.organization_id === activeOrg.id)
-    if (!activeMembership && profile.org_id === activeOrg.id) {
-      // Auto-create membership if missing
-      activeMembership = await prisma.organizationMember.upsert({
-        where: {
-          user_id_organization_id: {
-            user_id: profile.id,
-            organization_id: activeOrg.id,
-          },
-        },
-        update: {},
-        create: {
-          user_id: profile.id,
-          organization_id: activeOrg.id,
-          role: mapProfileRole(profile.role),
-          status: 'ACTIVE',
-        },
-      })
-    }
-
-    const memberRole = activeMembership?.role || mapProfileRole(profile.role)
+    const activeMembership = profile.memberships.find(m => m.organization_id === activeOrg.id)
+    if (!isPlatformAdmin && (!activeMembership || activeMembership.status !== 'ACTIVE' || activeOrg.is_active === false)) return res.status(403).json({ error: 'Active membership in this organization is required' })
+    const memberRole = isPlatformAdmin ? 'SUPERADMIN' : activeMembership.role.toUpperCase()
 
     req.tenantOrg = tenantOrg
     req.organization = activeOrg
     req.organizationId = activeOrg.id
     req.membership = activeMembership
     req.memberRole = memberRole
+    req.isPlatformAdmin = isPlatformAdmin
 
     req.user = {
       id: profile.id,
@@ -155,7 +140,9 @@ export async function requireAuth(req, res, next) {
 
     req.profile = {
       ...profile,
+      org_id: activeOrg.id,
       role: memberRole,
+      is_platform_admin: isPlatformAdmin,
       organizations: activeOrg,
       passwordHash: undefined,
       organization: undefined,

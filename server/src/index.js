@@ -34,6 +34,8 @@ const configuredOrigins = [
 // Allow multiple origins for development and production deployments
 const allowedOrigins = [
   'http://localhost:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:5174',
   'http://localhost:3000',
   'http://127.0.0.1:5173',
   'http://127.0.0.1:3000',
@@ -45,10 +47,10 @@ const allowedOrigins = [
 const corsOptions = {
   origin: (origin, callback) => {
     // Allow requests with no origin (mobile apps, Postman, etc) or any Vercel domain
-    if (!origin || allowedOrigins.includes(origin) || /\.vercel\.app$/i.test(origin) || /\.onrender\.com$/i.test(origin)) {
+    if (!origin || allowedOrigins.includes(origin)) {
       return callback(null, true)
     }
-    return callback(null, true) // Permissive CORS to prevent cross-origin fetch failures
+    return callback(Object.assign(new Error('Origin is not allowed'), { status: 403 }))
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
@@ -99,12 +101,12 @@ async function autoMigrateManagerRoles() {
     if (legacyManagers.length > 0) {
       console.log(`Auto-migrated ${legacyManagers.length} legacy manager profiles to explicit roles.`)
     }
-  } catch (err) {
+  } catch {
     // Ignore error if DB connection pending
   }
 }
 
-app.listen(port, () => {
+app.listen(port, process.env.HOST, () => {
   console.log(`TalentDesk API running on http://localhost:${port}`)
   autoMigrateManagerRoles()
 })

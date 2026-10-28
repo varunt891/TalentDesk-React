@@ -22,7 +22,7 @@ export const PageContainer = forwardRef(function PageContainer(
     <div
       ref={ref}
       className={cn(
-        'w-full mx-auto',
+        'workspace-page w-full mx-auto',
         isFlush ? 'h-full min-h-0 flex flex-col overflow-hidden' : 'px-3.5 sm:px-6 lg:px-8 py-4 sm:py-6',
         className
       )}

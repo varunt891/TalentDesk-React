@@ -1,10 +1,11 @@
+import { hasPermission } from '../lib/admin/permissions'
 import { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react'
 import { useCandidates } from '../hooks/useCandidates'
 import { useOpenCollisionIds } from '../hooks/useOpenCollisionIds'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../lib/api'
 import {
-  Button, Badge, StatusPill, Card, CardHeader, KPICard, PageHeader, Modal, Input, Select, TimePicker,
+  Button, Badge, StatusPill, Card, CardHeader, PageHeader, Modal, Input, Select, TimePicker,
   Textarea, FormField, Icon, Avatar, Menu, MenuTrigger, EmptyState, Tooltip, cn, useToast,
 } from '../components/ui'
 import { WorkspaceSearch, FilterWorkspace, EntityDrawer } from '../components/workspace'
@@ -16,13 +17,13 @@ import { useAISetContext } from '../lib/ai/context'
 import { useAIGovernance } from '../lib/ai/governance'
 
 const STAGES = [
-  { id: 'Submitted', label: 'Submitted', color: '#acaeb5' },
-  { id: 'Shortlisted', label: 'Shortlisted', color: '#ff8c42' },
-  { id: 'Interview Scheduled', label: 'Interview Scheduled', color: '#4f7cff' },
-  { id: 'Interview Done', label: 'Interview Done', color: '#7c5cff' },
-  { id: 'Offer Extended', label: 'Offer Extended', color: '#f5c842' },
-  { id: 'Hired', label: 'Hired', color: '#2ecc8f' },
-  { id: 'Rejected', label: 'Rejected', color: '#ff4d6a' },
+  { id: 'Submitted', label: 'Submitted', color: 'var(--chart-3)' },
+  { id: 'Shortlisted', label: 'Shortlisted', color: 'var(--accent)' },
+  { id: 'Interview Scheduled', label: 'Interview Scheduled', color: 'var(--chart-2)' },
+  { id: 'Interview Done', label: 'Interview Done', color: 'var(--chart-5)' },
+  { id: 'Offer Extended', label: 'Offer Extended', color: 'var(--orange)' },
+  { id: 'Hired', label: 'Hired', color: 'var(--green)' },
+  { id: 'Rejected', label: 'Rejected', color: 'var(--red)' },
 ]
 
 const TERMINAL_STAGES = ['Hired', 'Rejected']
@@ -62,10 +63,6 @@ function readHideKpis() {
   try { return localStorage.getItem('td_pipeline_hide_kpis') === 'true' } catch { return false }
 }
 
-function readCompactHeader() {
-  try { return localStorage.getItem('td_pipeline_compact_header') === 'true' } catch { return false }
-}
-
 const initialFilters = {
   job: [], recruiter: [], client: [], priority: [], status: [], location: [], skills: [],
   submittedAfter: '', interviewToday: false, urgentOnly: false, overdueFollowup: false, stageFilter: '',
@@ -73,18 +70,24 @@ const initialFilters = {
 
 export default function Pipeline() {
   const { user, profile, organization } = useAuth()
+  const canEdit = hasPermission(profile?.role, 'Pipeline', 'edit')
   const orgId = organization?.id || profile?.org_id
   const userId = user?.id
   const { settings: aiSettings } = useAIGovernance(orgId)
-  const aiEnabled = aiSettings.workspaces.pipeline !== false
+  const aiEnabled = hasPermission(profile?.role, 'AI', 'edit') && aiSettings.workspaces.pipeline !== false
   const { candidates, loading, updateCandidate } = useCandidates()
   const openCollisionIds = useOpenCollisionIds()
   const [draggingId, setDraggingId] = useState(null)
   const [overStage, setOverStage] = useState(null)
   const [collapsed, setCollapsed] = useState(readCollapsed)
   const [hideKpis, setHideKpis] = useState(readHideKpis)
-  const [compactHeader, setCompactHeader] = useState(readCompactHeader)
+  // Enter through the overview every time; board focus lasts for this visit.
+  const [compactHeader, setCompactHeader] = useState(false)
+  const [overviewAnimating, setOverviewAnimating] = useState(false)
+  const previousCompactHeader = useRef(compactHeader)
   const stageRefs = useRef(new Map())
+  const requestedStageRef = useRef(null)
+  const [stageInView, setStageInView] = useState(STAGES[0].id)
   const lastToggledStageRef = useRef(null)
 
   const toggleKpis = () => {
@@ -96,14 +99,49 @@ export default function Pipeline() {
   }
 
   const toggleCompactHeader = () => {
-    setCompactHeader(prev => {
-      const next = !prev
-      try { localStorage.setItem('td_pipeline_compact_header', String(next)) } catch { /* quota */ }
-      return next
-    })
+    setCompactHeader(prev => !prev)
+  }
+
+  useLayoutEffect(() => {
+    if (previousCompactHeader.current === compactHeader) return
+    previousCompactHeader.current = compactHeader
+    setOverviewAnimating(true)
+    const timer = setTimeout(() => setOverviewAnimating(false), 500)
+    return () => clearTimeout(timer)
+  }, [compactHeader])
+
+  // Scrolling into the board gives the lanes the whole workspace. Upward
+  // scrolling reveals the overview only after the hovered lane reaches its top.
+  const touchStartRef = useRef(null)
+  const handleWorkspaceWheel = (event) => {
+    if (overviewAnimating) return
+    if (!event.currentTarget.contains(event.target) || event.ctrlKey || event.shiftKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return
+    if (event.target.closest('input, textarea, select, [role="listbox"]')) return
+    const list = event.target.closest('[data-pipeline-card-list]')
+    if (!compactHeader && event.deltaY > 8) setCompactHeader(true)
+    else if (compactHeader && event.deltaY < -8 && (!list || list.scrollTop <= 1)) setCompactHeader(false)
+  }
+
+  const handleWorkspaceTouchStart = (event) => {
+    touchStartRef.current = event.touches.length === 1 ? { x: event.touches[0].clientX, y: event.touches[0].clientY } : null
+  }
+
+  const handleWorkspaceTouchMove = (event) => {
+    const start = touchStartRef.current
+    if (!start || overviewAnimating || event.touches.length !== 1 || !event.currentTarget.contains(event.target)) return
+    const dx = event.touches[0].clientX - start.x
+    const dy = start.y - event.touches[0].clientY
+    if (Math.abs(dx) > Math.abs(dy)) requestedStageRef.current = null
+    if (Math.abs(dy) < 40 || Math.abs(dx) > Math.abs(dy) || event.target.closest('input, textarea, select, [role="listbox"]')) return
+    const list = event.target.closest('[data-pipeline-card-list]')
+    if (!compactHeader && dy > 0) setCompactHeader(true)
+    else if (compactHeader && dy < 0 && (!list || list.scrollTop <= 1)) setCompactHeader(false)
+    touchStartRef.current = null
   }
 
   const toggleCollapsed = (stageId) => {
+    requestedStageRef.current = stageId
+    setStageInView(stageId)
     lastToggledStageRef.current = stageId
     setCollapsed(prev => {
       const next = prev.includes(stageId) ? prev.filter(s => s !== stageId) : [...prev, stageId]
@@ -117,7 +155,11 @@ export default function Pipeline() {
     if (!stageId) return
     const stageEl = stageRefs.current.get(stageId)
     if (!stageEl) return
-    stageEl.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    const board = boardRef.current
+    if (board) {
+      const index = STAGES.findIndex(stage => stage.id === stageId)
+      board.scrollTo({ left: Math.max(0, board.scrollWidth - board.clientWidth) * index / (STAGES.length - 1), behavior: 'smooth' })
+    }
     lastToggledStageRef.current = null
   }, [collapsed])
 
@@ -175,6 +217,7 @@ export default function Pipeline() {
   }
 
   const [search, setSearch] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState(initialFilters)
   const [showDetail, setShowDetail] = useState(null)
   useAISetContext(showDetail ? {
@@ -207,12 +250,14 @@ export default function Pipeline() {
   }
 
   const handleDragStart = (event, candidateId) => {
+    if (!canEdit) return
     setDraggingId(candidateId)
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('text/plain', candidateId)
   }
 
   const handleDrop = async (event, stageId) => {
+    if (!canEdit) return
     event.preventDefault()
     const candidateId = event.dataTransfer.getData('text/plain') || draggingId
     setOverStage(null)
@@ -235,7 +280,33 @@ export default function Pipeline() {
     return () => cancelAnimationFrame(raf)
   }, [draggingId])
   const scrollBoardBy = (dir) => {
-    boardRef.current?.scrollBy({ left: dir * 380, behavior: 'smooth' })
+    const index = STAGES.findIndex(stage => stage.id === stageInView)
+    const next = Math.max(0, Math.min(STAGES.length - 1, index + dir))
+    revealStage(STAGES[next].id)
+  }
+
+  const revealStage = (stageId) => {
+    requestedStageRef.current = stageId
+    setStageInView(stageId)
+    if (collapsed.includes(stageId)) {
+      toggleCollapsed(stageId)
+      return
+    }
+    const board = boardRef.current
+    if (board) {
+      const index = STAGES.findIndex(stage => stage.id === stageId)
+      board.scrollTo({ left: Math.max(0, board.scrollWidth - board.clientWidth) * index / (STAGES.length - 1), behavior: 'smooth' })
+    }
+  }
+
+  const trackVisibleStage = () => {
+    const board = boardRef.current
+    // Share evenly spaced positions with buttons and stage shortcuts. Tracking
+    // the leftmost lane skips late stages when several fit in the viewport.
+    if (!board || requestedStageRef.current) return
+    const maxScroll = board.scrollWidth - board.clientWidth
+    const progress = maxScroll > 0 ? Math.max(0, Math.min(1, board.scrollLeft / maxScroll)) : 0
+    setStageInView(STAGES[Math.round(progress * (STAGES.length - 1))].id)
   }
 
   const handleBoardDragOver = (event) => {
@@ -248,14 +319,13 @@ export default function Pipeline() {
     else scrollDirRef.current = 0
   }
 
-  // Plain vertical wheel/trackpad scroll pans the board horizontally between
-  // stage columns — the natural desktop affordance for a wide kanban board,
-  // since a mouse wheel has no horizontal axis of its own. Scrolling while
-  // hovering a column's own card list is left alone so that list still
-  // scrolls vertically as expected. (Compact-header toggling has its own
-  // explicit button below, so it no longer needs to also live on the wheel.)
+  // Once focused, scrolling outside a lane can still pan across stages.
+  // Each lane keeps its own vertical scroll.
   const handleBoardWheel = (e) => {
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) requestedStageRef.current = null
+    if (!compactHeader || overviewAnimating) return
     if (e.target.closest?.('[data-pipeline-card-list]')) return
+    requestedStageRef.current = null
     const el = boardRef.current
     if (!el || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return
     el.scrollLeft += e.deltaY
@@ -508,12 +578,16 @@ export default function Pipeline() {
   }
 
   return (
-    <div className="w-full mx-auto flex flex-col" style={{ maxWidth: 'var(--container-max)' }}>
+    <div className="pipeline-studio w-full mx-auto flex flex-col" data-board-focus={compactHeader ? 'true' : 'false'} onWheelCapture={handleWorkspaceWheel} onTouchStart={handleWorkspaceTouchStart} onTouchMove={handleWorkspaceTouchMove} style={{ maxWidth: 'var(--container-max)' }}>
+      <div className="pipeline-overview-motion" data-transitioning={overviewAnimating ? 'true' : 'false'} aria-hidden={compactHeader} inert={compactHeader ? true : undefined} onTransitionEnd={event => {
+        if (event.target === event.currentTarget && event.propertyName === 'grid-template-rows') setOverviewAnimating(false)
+      }}>
+      <div className="pipeline-overview-content">
       <div className="pipeline-header-shell shrink-0 px-4 sm:px-6 lg:px-8 mb-2">
         <PageHeader
-          eyebrow={compactHeader ? undefined : "Recruiting Workspace"}
-          title="Pipeline"
-          subtitle={compactHeader ? undefined : "Drag candidates across stages to update their client-facing status. Internal status stays unchanged."}
+          eyebrow="YOUR NEXT GREAT HIRE"
+          title="Hiring pipeline"
+          subtitle="Every conversation, one step closer. Keep your next placement moving."
           className="pipeline-page-header"
           actions={
             <div className="flex items-center gap-2">
@@ -537,8 +611,11 @@ export default function Pipeline() {
           }
           search={<WorkspaceSearch value={search} onChange={setSearch} storageKey="td_pipeline" placeholder="Name, job, client, skill..." />}
           filters={
+            <div className="pipeline-filter-controls">
+            <Button variant="secondary" size="sm" leftIcon="filter" className="hidden md:inline-flex" aria-expanded={showFilters} onClick={() => setShowFilters(open => !open)}>{showFilters ? 'Hide filters' : hasFilters ? 'Filters applied' : 'Filters & views'}</Button>
+            {hasFilters && <Button variant="ghost" size="sm" className="pipeline-reset-filters" onClick={clearFilters}>Reset filters</Button>}
             <FilterWorkspace
-              className="pipeline-filter-workspace"
+              className={cn('pipeline-filter-workspace', !showFilters && 'pipeline-filters-resting')}
               filters={filterDefs}
               values={filters}
               onChange={(key, value) => setFilters(f => ({ ...f, [key]: value }))}
@@ -546,22 +623,25 @@ export default function Pipeline() {
               presets={filterPresets}
               storageKey="pipeline"
             />
+            </div>
           }
         />
 
-        {!compactHeader && !hideKpis && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-2 my-2">
-            <KPICard label="Pipeline Health" value={`${kpis.pipelineHealthPct}%`} helper="qualified of shown" tone={kpis.pipelineHealthPct >= 70 ? 'green' : kpis.pipelineHealthPct >= 40 ? 'yellow' : 'red'} icon="checkCircle" compact />
-            <KPICard label="Updated Today" value={kpis.updatedToday} helper="candidate records" tone="accent" icon="trendUp" compact />
-            <KPICard label="In Process" value={kpis.inProcess} helper="active, non-terminal" tone="ai" icon="pipeline" compact />
-            <KPICard label="Interviews Today" value={kpis.interviewsToday} helper="scheduled" tone="accent" icon="calendar" compact />
-            <KPICard label="Offers Pending" value={kpis.offersPending} helper="awaiting response" tone="yellow" icon="reports" compact />
-            <KPICard label="Placements" value={kpis.placements} helper="hired" tone="green" icon="checkCircle" compact />
-            <KPICard label="Avg. Days in Pipeline" value={kpis.avgDays} helper="active candidates" tone="orange" icon="clock" compact />
+        {!hideKpis && (
+          <div className="pipeline-pulse" aria-label="Pipeline metrics">
+            <div className="pipeline-pulse-health">
+              <span className="pipeline-health-ring" style={{ '--health': `${kpis.pipelineHealthPct}%` }}><b>{kpis.pipelineHealthPct}<small>%</small></b></span>
+              <span><strong>Pipeline health</strong><small>Qualified candidates</small></span>
+            </div>
+            {[
+              ['In motion', kpis.inProcess, 'pipeline'], ['Interviews today', kpis.interviewsToday, 'calendar'],
+              ['Offers out', kpis.offersPending, 'reports'], ['Placements', kpis.placements, 'checkCircle'],
+              ['Avg. days', kpis.avgDays, 'clock'], ['Updated today', kpis.updatedToday, 'trendUp'],
+            ].map(([label, value, icon]) => <div className="pipeline-pulse-stat" key={label}><span><Icon name={icon} size={13} />{label}</span><strong>{value}</strong></div>)}
           </div>
         )}
 
-        {!compactHeader && insights.length > 0 && (
+        {insights.length > 0 && (
           <div className="flex items-center gap-2 overflow-x-auto overflow-y-hidden pb-1 pt-1">
             {insights.map(insight => (
               <button
@@ -586,43 +666,46 @@ export default function Pipeline() {
         )}
       </div>
 
-      {/* Board container with floating left/right navigation controls */}
-      <div className="relative">
-        {!loading && filtered.length > 0 && (
-          <>
-            <button
-              type="button"
-              aria-label="Scroll stages left"
-              onClick={() => scrollBoardBy(-1)}
-              className="absolute left-1.5 sm:left-3 top-1/2 -translate-y-1/2 z-30 w-9 h-9 rounded-full bg-surface/90 backdrop-blur-md border border-border/80 shadow-md text-text2 hover:text-text hover:bg-surface2 hover:border-border-strong hover:scale-105 active:scale-95 flex items-center justify-center transition-all duration-200 cursor-pointer"
-            >
-              <Icon name="chevronLeft" size={16} />
-            </button>
-            <button
-              type="button"
-              aria-label="Scroll stages right"
-              onClick={() => scrollBoardBy(1)}
-              className="absolute right-1.5 sm:right-3 top-1/2 -translate-y-1/2 z-30 w-9 h-9 rounded-full bg-surface/90 backdrop-blur-md border border-border/80 shadow-md text-text2 hover:text-text hover:bg-surface2 hover:border-border-strong hover:scale-105 active:scale-95 flex items-center justify-center transition-all duration-200 cursor-pointer"
-            >
-              <Icon name="chevronRight" size={16} />
-            </button>
-          </>
-        )}
+      <nav className="pipeline-stage-map" aria-label="Hiring stages">
+        {STAGES.map((stage, index) => <button
+          key={stage.id} type="button" title={stage.label} aria-label={`View ${stage.label} stage`}
+          aria-current={stageInView === stage.id ? 'step' : undefined}
+          className={overStage === stage.id ? 'is-drop-target' : ''}
+          onClick={() => revealStage(stage.id)}
+          onDragOver={event => { event.preventDefault(); setOverStage(stage.id) }}
+          onDragLeave={() => setOverStage(null)} onDrop={event => handleDrop(event, stage.id)}
+        >
+          <span className="stage-map-label"><span className="stage-map-number">{String(index + 1).padStart(2, '0')}</span><span className="stage-map-title">{stage.label}</span><Icon name="arrowUpRight" size={12} /></span>
+          <span className="stage-map-value"><strong>{stageStats[stage.id].count}</strong><small>{stageStats[stage.id].conversionPct}% of pipeline</small></span>
+          <span className="stage-map-track"><i style={{ width: `${stageStats[stage.id].conversionPct}%` }} /></span>
+        </button>)}
+      </nav>
+      </div>
+      </div>
+
+      <div className="pipeline-board-toolbar">
+        <div><strong>Candidate board</strong><span>{STAGES.reduce((total, stage) => total + stageStats[stage.id].count, 0)} candidates · {STAGES.length} stages</span></div>
+        <div>{compactHeader && <Button variant="secondary" size="sm" leftIcon="chevronUp" className="pipeline-expand-overview" onClick={toggleCompactHeader}>Expand View</Button>}<span className="pipeline-drag-hint"><Icon name="move" size={12} /> Drag a card to move stages</span><button type="button" aria-label="Scroll stages left" disabled={stageInView === STAGES[0].id} onClick={() => scrollBoardBy(-1)}><Icon name="chevronLeft" size={15} /></button><button type="button" aria-label="Scroll stages right" disabled={stageInView === STAGES.at(-1).id} onClick={() => scrollBoardBy(1)}><Icon name="chevronRight" size={15} /></button></div>
+      </div>
+
+      <div className="pipeline-board-frame relative">
 
         <div
           ref={boardRef}
           onDragOver={handleBoardDragOver}
           onWheel={handleBoardWheel}
+          onScroll={trackVisibleStage}
+          onPointerDown={() => { requestedStageRef.current = null }}
           onKeyDown={handleBoardKeyDown}
           tabIndex={0}
-          className="pipeline-board-scroll overflow-x-auto snap-x snap-proximity scroll-smooth pl-8 pr-8 sm:pl-12 sm:pr-12 lg:pl-14 lg:pr-14 pb-2 outline-none transition-all duration-300"
+          className="pipeline-board-scroll overflow-x-auto scroll-smooth pl-8 pr-8 sm:pl-12 sm:pr-12 lg:pl-14 lg:pr-14 pb-2 outline-none transition-all duration-300"
         >
           {loading ? (
             <div className="flex items-center justify-center h-full text-text3 text-sm">Loading pipeline...</div>
           ) : filtered.length === 0 ? (
             <EmptyState icon="pipeline" title={hasFilters ? 'No candidates match your filters' : 'No candidates yet'} description={hasFilters ? 'Try widening your search or clearing filters.' : 'Candidates you submit will appear here.'} />
           ) : (
-            <div className="flex gap-5 min-w-max">
+            <div className="pipeline-lanes flex gap-4 min-w-max">
               {STAGES.map((stage, stageIdx) => {
                 const stats = stageStats[stage.id]
                 const isOver = overStage === stage.id
@@ -641,8 +724,8 @@ export default function Pipeline() {
                       onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setOverStage(stage.id) }}
                       onDragLeave={() => setOverStage(null)}
                       onDrop={event => handleDrop(event, stage.id)}
-                      className="relative w-14 shrink-0 snap-start h-[calc(100vh-80px)] flex flex-col items-center rounded-[var(--radius-lg)] border border-t-[3.5px] shadow-xs transition-colors duration-[var(--duration-fast)] overflow-hidden"
-                      style={{ background: isOver ? `${stage.color}14` : 'var(--surface)', borderColor: isOver ? stage.color : 'var(--border)', borderTopColor: stage.color }}
+                      className="pipeline-lane-collapsed relative w-14 shrink-0 snap-start flex flex-col items-center rounded-[var(--radius-lg)] border shadow-xs transition-colors duration-[var(--duration-fast)] overflow-hidden"
+                      style={{ background: isOver ? `color-mix(in srgb, ${stage.color} 8%, var(--surface))` : 'var(--surface)', borderColor: isOver ? stage.color : 'var(--border)', borderTopColor: stage.color }}
                     >
                       <div className="flex flex-col items-center gap-3 pt-4 shrink-0">
                         <Icon name="chevronRight" size={13} className="text-text3" />
@@ -668,19 +751,20 @@ export default function Pipeline() {
                     onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setOverStage(stage.id) }}
                     onDragLeave={() => setOverStage(null)}
                     onDrop={event => handleDrop(event, stage.id)}
-                    className="relative w-[88vw] sm:w-[45vw] lg:w-[358px] shrink-0 snap-start flex flex-col h-[calc(100vh-80px)] rounded-[var(--radius-lg)] border shadow-xs transition-[box-shadow,border-color,background-color] duration-[var(--duration-fast)]"
-                    style={{ background: isOver ? `${stage.color}10` : 'var(--surface)', borderColor: isOver ? stage.color : 'var(--border)' }}
+                    className="pipeline-lane relative shrink-0 snap-start flex flex-col rounded-[var(--radius-lg)] transition-[box-shadow,border-color,background-color] duration-[var(--duration-fast)]"
+                    data-stage={stage.id}
+                    style={{ background: isOver ? `color-mix(in srgb, ${stage.color} 6%, var(--surface))` : 'var(--surface)', borderColor: isOver ? stage.color : 'var(--border)' }}
                   >
                     {/* Column header — sticky so it stays visible when the page scrolls */}
                     <div
-                      className="sticky top-0 z-20 px-3.5 pt-3 pb-2.5 border-b border-t-[3.5px] shrink-0 rounded-t-[var(--radius-lg)]"
-                      style={{ background: `color-mix(in srgb, ${stage.color} 9%, var(--surface2))`, borderColor: `${stage.color}30`, borderTopColor: stage.color }}
+                      className="pipeline-lane-heading px-3.5 pt-3 pb-2.5 shrink-0 rounded-t-[var(--radius-lg)]"
+                      style={{ background: 'var(--surface2)', borderColor: 'var(--border)', borderTopColor: stage.color }}
                     >
                       <div className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: stage.color }} />
                         <span className="text-[13.5px] font-bold text-text tracking-tight flex-1 truncate">{stage.label}</span>
                         <Tooltip3 health={stats.health} />
-                        <span className="text-[11px] font-extrabold font-mono px-1.5 py-0.5 rounded-full" style={{ background: `${stage.color}1a`, color: stage.color, boxShadow: `inset 0 0 0 1px ${stage.color}38` }}>{stats.count}</span>
+                        <span className="text-[11px] font-medium px-2 py-1 rounded-full" style={{ background: `color-mix(in srgb, ${stage.color} 10%, var(--surface))`, color: stage.color }}>{stats.count}</span>
                         <button type="button" onClick={() => toggleCollapsed(stage.id)} aria-label={`Collapse ${stage.label}`} className="text-text3 hover:text-text p-0.5 shrink-0 transition-colors duration-[var(--duration-fast)]">
                           <Icon name="chevronLeft" size={13} />
                         </button>
@@ -695,7 +779,7 @@ export default function Pipeline() {
 
                     <div
                       data-pipeline-card-list
-                      className="flex-1 min-h-0 overflow-y-auto p-2 pb-6 flex flex-col gap-2 bg-surface-sunken rounded-b-[var(--radius-lg)]"
+                      className="pipeline-lane-list flex-1 min-h-0 overflow-y-auto p-2 pb-6 flex flex-col gap-3 rounded-b-[var(--radius-lg)]"
                     >
                       {stats.cards.length === 0 ? (
                         <div
@@ -704,7 +788,7 @@ export default function Pipeline() {
                         >
                           <span
                             className="w-8 h-8 rounded-full flex items-center justify-center"
-                            style={{ background: `${stage.color}14`, color: stage.color }}
+                            style={{ background: `color-mix(in srgb, ${stage.color} 8%, var(--surface))`, color: stage.color }}
                           >
                             <Icon name="pipeline" size={14} />
                           </span>
@@ -719,7 +803,8 @@ export default function Pipeline() {
                         return (
                           <div
                             key={c.id}
-                            draggable
+                            data-candidate-id={c.id}
+                            draggable={canEdit}
                             tabIndex={-1}
                             onDragStart={event => handleDragStart(event, c.id)}
                             onDragEnd={() => { setDraggingId(null); setOverStage(null) }}
@@ -727,54 +812,60 @@ export default function Pipeline() {
                             onContextMenu={(e) => openContextMenu(e, c)}
                             onKeyDown={(e) => { if (e.key === 'Enter') openDrawer(c) }}
                             className={cn(
-                              'group relative border rounded-[var(--radius-md)] shadow-xs p-2.5 sm:p-3 cursor-grab active:cursor-grabbing transition-all duration-[var(--duration-fast)] hover:-translate-y-0.5 hover:border-[var(--stage-color)] hover:shadow-[0_8px_20px_-10px_var(--stage-glow)] bg-surface',
+                              'pipeline-person-card group relative border rounded-[var(--radius-md)] p-4 cursor-grab active:cursor-grabbing transition-all duration-[var(--duration-fast)] bg-surface',
                               draggingId === c.id ? 'opacity-40 scale-[0.98]' : 'opacity-100',
                               isFocused && 'ring-2 ring-accent',
                               isSpotlit && 'ring-2 ring-yellow animate-pulse'
                             )}
                             style={{
-                              borderColor: `${stage.color}2a`,
+                              borderColor: 'var(--border)',
                               '--stage-color': stage.color,
-                              '--stage-glow': `${stage.color}55`,
+                              '--stage-glow': `color-mix(in srgb, ${stage.color} 20%, transparent)`,
                             }}
                           >
-                            <span aria-hidden="true" className="absolute left-1 top-2 bottom-2 w-[2.5px] rounded-full" style={{ background: stage.color, opacity: 0.85 }} />
-                            <div className="flex items-start gap-2">
-                              <Avatar name={`${c.first_name || ''} ${c.last_name || ''}`.trim() || '?'} size="sm" />
+                            <div className="pipeline-card-eyebrow"><span>{c.job_id || 'No requisition'}</span><span className={c.priority === 'High' ? 'is-priority' : ''}><i />{c.priority || 'Medium'} priority</span></div>
+                            <div className="flex items-start gap-2.5">
+                              <Avatar name={`${c.first_name || ''} ${c.last_name || ''}`.trim() || '?'} size="md" />
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center justify-between gap-1">
-                                  <strong className="text-[12.5px] font-bold text-text truncate">{c.first_name} {c.last_name}</strong>
+                                  <strong className="text-[14px] font-semibold text-text truncate">{c.first_name} {c.last_name}</strong>
                                   <Menu
                                     align="end"
                                     trigger={(p) => (
                                       <span onClick={(e) => e.stopPropagation()}>
-                                        <MenuTrigger {...p} className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 w-5 h-5" />
+                                        <MenuTrigger {...p} className="w-6 h-6" />
                                       </span>
                                     )}
                                     items={actionsFor(c)}
                                   />
                                 </div>
-                                <div className="text-[10.5px] text-text3 truncate leading-tight">{c.job_title || 'No job title'}</div>
+                                <div className="text-[11.5px] text-text2 truncate leading-relaxed">{c.job_title || 'No job title'}</div>
+                                {c.client && <div className="text-[10.5px] text-text3 truncate">{c.client}</div>}
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
-                              <Badge size="sm" tone={c.priority === 'High' ? 'red' : c.priority === 'Low' ? 'neutral' : 'yellow'}>{c.priority || 'Medium'}</Badge>
-                              <Badge size="sm" tone={sc.total >= 80 ? 'green' : sc.total >= 60 ? 'accent' : sc.total >= 40 ? 'yellow' : 'red'}>{sc.gradeLabel}</Badge>
-                              {c.recruiter_name && <span className="text-[9.5px] text-text3 truncate max-w-[100px]">{c.recruiter_name}</span>}
+                            <div className="pipeline-card-facts">
+                              <span><Icon name="pin" size={12} />{c.location || 'Location not added'}</span>
+                              <span>{c.experience ? `${c.experience.replace(/\s*years?$/i, '')} yrs exp.` : 'Experience not added'}</span>
                             </div>
 
                             {skills.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {skills.map(s => <span key={s} className="text-[9.5px] font-medium text-text2 bg-surface3 rounded-full px-1.5 py-0.25">{s}</span>)}
+                              <div className="pipeline-card-skills flex flex-wrap gap-1.5 mt-3">
+                                {skills.map(s => <span key={s}>{s}</span>)}
+                                {ensureArray(c.skills).length > skills.length && <span>+{ensureArray(c.skills).length - skills.length}</span>}
                               </div>
                             )}
 
-                            <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-border/60 text-[10px] text-text3">
+                            <div className={cn('pipeline-card-next', signals.overdueFollowup && 'is-overdue')}>
+                              <Icon name={signals.overdueFollowup ? 'alertCircle' : c.external_status === 'Hired' ? 'checkCircle' : c.external_status === 'Interview Scheduled' ? 'calendar' : 'clock'} size={12} />
+                              <span>{signals.overdueFollowup ? 'Follow-up overdue' : c.external_status === 'Hired' ? 'Successfully placed' : c.external_status === 'Rejected' ? 'Process closed' : c.external_status === 'Offer Extended' ? 'Awaiting offer decision' : c.external_status === 'Interview Scheduled' && c.interview_date ? `Interview · ${c.interview_date}` : c.followup_date ? `Follow up · ${c.followup_date}` : 'No follow-up scheduled'}</span>
+                            </div>
+
+                            <div className="pipeline-card-owner"><span><Avatar name={c.recruiter_name || 'Unassigned'} size="xs" />{c.recruiter_name || 'Unassigned'}</span><strong>{c.rate || 'Rate not added'}</strong></div>
+
+                            <div className="pipeline-card-footer flex items-center justify-between text-[10px] text-text3">
                               <div className="flex items-center gap-1.5 truncate">
-                                {c.rate && <span className="font-mono text-text2 truncate max-w-[75px]">{c.rate}</span>}
-                                {c.rate && c.location && <span className="text-border-strong">·</span>}
-                                {c.location && <span className="truncate max-w-[90px]">{c.location}</span>}
+                                <Tooltip label={`Candidate health: ${sc.total}/100. Based on profile details, skills, stage, and recency.`}><span className="pipeline-health-label"><i style={{ background: sc.total >= 60 ? 'var(--green)' : 'var(--yellow)' }} />{sc.gradeLabel} health</span></Tooltip>
                               </div>
                               <div className="flex items-center gap-1.5 shrink-0">
                                 {signals.hasCollision && <Icon name="alertCircle" size={10} className="text-red" aria-label="Possible duplicate submission" />}

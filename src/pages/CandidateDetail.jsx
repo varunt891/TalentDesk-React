@@ -1,3 +1,5 @@
+import { formatRecordDate } from '../lib/formatRecordDate'
+import { hasPermission } from '../lib/admin/permissions'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { db, apiRequest } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
@@ -5,7 +7,7 @@ import { useAIGovernance } from '../lib/ai/governance'
 import { PageContainer } from '../components/layout/PageContainer'
 import CandidateFormDrawer from '../components/candidates/CandidateFormDrawer'
 import {
-  Button, Badge, StatusPill, Card, CardHeader, KPICard, PageHeader,
+  Button, Badge, StatusPill, Card, CardHeader,
   EmptyState, Avatar, Icon, useToast, Skeleton, PageSpinner, Textarea, Select, Input, TimePicker,
 } from '../components/ui'
 import MarkdownView from '../components/MarkdownView'
@@ -31,26 +33,35 @@ function relativeTime(iso) {
 
 function daysSince(iso) {
   if (!iso) return null
-  return Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24))
+  const elapsed = Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24))
+  return Number.isFinite(elapsed) ? elapsed : null
+}
+
+function profileUrl(value) {
+  if (!value) return null
+  try {
+    const url = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`)
+    return ['https:', 'http:'].includes(url.protocol) ? url.href : null
+  } catch { return null }
 }
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
 function InfoRow({ label, value, mono = false }) {
   return (
-    <div className="flex justify-between items-start gap-3 py-2 border-b border-border last:border-0">
-      <span className="text-[11.5px] text-text3 font-medium shrink-0">{label}</span>
-      <span className={`text-[12.5px] text-text font-medium text-right break-all leading-snug ${mono ? 'font-mono text-accent' : ''}`}>
-        {value || <span className="text-text3">—</span>}
+    <div className="job-detail-field">
+      <span className="job-detail-field-label">{label}</span>
+      <span className={`job-detail-field-value${mono ? ' font-mono' : ''}`}>
+        {value !== null && value !== undefined && value !== '' ? value : <span className="text-text3">Not recorded</span>}
       </span>
     </div>
   )
 }
 
-function SectionCard({ title, children, action }) {
+function SectionCard({ title, subtitle, children, action, className = '' }) {
   return (
-    <Card>
-      <CardHeader title={title} action={action} />
+    <Card className={`job-detail-panel ${className}`}>
+      <CardHeader title={title} subtitle={subtitle} action={action} />
       {children}
     </Card>
   )
@@ -68,7 +79,10 @@ function ScoreWidget({ sc }) {
   ]
 
   return (
-    <Card className="bg-surface2">
+    <Card className="job-detail-panel candidate-detail-health">
+      <details>
+      <summary><span>Profile health</span><span>{sc.total}<small>/100</small><Icon name="chevronDown" size={13} /></span></summary>
+      <p className="job-detail-empty-copy candidate-detail-score-disclaimer">A record-health indicator based on profile details and recruiting activity.</p>
       {/* Header row */}
       <div className="flex items-center justify-between mb-3">
         <span className="text-[10.5px] font-bold text-accent uppercase tracking-wider flex items-center gap-1">
@@ -130,6 +144,7 @@ function ScoreWidget({ sc }) {
           ))}
         </div>
       )}
+      </details>
     </Card>
   )
 }
@@ -152,9 +167,9 @@ function PipelineStageBar({ status }) {
   const currentIdx = PIPELINE_STAGES.findIndex(s => s.key === status)
   const isTerminal = TERMINAL_STAGES[status]
   return (
-    <Card className="bg-surface2 py-3">
+    <Card className="job-detail-panel candidate-detail-pipeline">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-[10.5px] font-bold text-accent uppercase tracking-wider flex items-center gap-1">
+        <span className="candidate-detail-section-label">
           <Icon name="pipeline" size={11} />
           Pipeline Stage
         </span>
@@ -170,7 +185,7 @@ function PipelineStageBar({ status }) {
             <div key={stage.key} className="flex flex-col items-center flex-1 min-w-0 gap-1.5">
               <div
                 className={`w-full h-1.5 rounded-full transition-all duration-500 ${passed ? 'bg-accent' : 'bg-surface3'
-                  } ${active ? 'shadow-[0_0_6px_2px_color-mix(in_srgb,var(--accent)_35%,transparent)]' : ''}`}
+                  }`}
               />
               <span className={`text-[9px] font-semibold truncate w-full text-center transition-colors leading-none ${active ? 'text-accent' : passed ? 'text-text2' : 'text-text3'
                 }`}>{stage.short}</span>
@@ -194,7 +209,7 @@ function InterviewCard({ candidate }) {
   const iconName = INTERVIEW_ICON[candidate.interview_type] || 'calendar'
 
   return (
-    <Card className={`border ${isPast ? 'border-border bg-surface2' : 'border-accent/30 bg-accent/5'}`}>
+    <Card className="job-detail-panel candidate-detail-interview">
       <div className="flex items-start gap-3">
         <div
           className="w-10 h-10 rounded-[var(--radius-md)] flex items-center justify-center shrink-0"
@@ -263,7 +278,8 @@ function RateMarginCard({ candidate }) {
   const marginPct = Math.round(((lowMargin + highMargin) / 2 / billRate) * 100)
 
   return (
-    <Card className="bg-surface2">
+    <Card className="job-detail-panel candidate-detail-margin">
+      <details><summary>Estimated rate &amp; margin <Icon name="chevronDown" size={13} /></summary>
       <div className="flex items-center justify-between mb-3">
         <span className="text-[10.5px] font-bold text-accent uppercase tracking-wider flex items-center gap-1">
           <Icon name="dollar" size={11} />
@@ -291,6 +307,7 @@ function RateMarginCard({ candidate }) {
         <div className="h-full rounded-full bg-gradient-to-r from-accent to-green-500 transition-all duration-700" style={{ width: `${Math.min(marginPct * 2.5, 100)}%` }} />
       </div>
       <p className="text-[10px] text-text3 mt-1.5">Based on industry-standard 22–32% gross margin range. Actual pay rate may vary.</p>
+      </details>
     </Card>
   )
 }
@@ -299,7 +316,6 @@ function RateMarginCard({ candidate }) {
 
 function SubmissionHistory({ current, others, onNavigate }) {
   const all = [{ ...current, _isCurrent: true }, ...others]
-  if (all.length <= 1 && others.length === 0) return null
 
   const STATUS_COLOR = {
     Hired: 'green', 'Offer Extended': 'green', Shortlisted: 'accent',
@@ -309,7 +325,7 @@ function SubmissionHistory({ current, others, onNavigate }) {
   }
 
   return (
-    <Card>
+    <Card className="job-detail-panel candidate-detail-submissions">
       <CardHeader
         title={`Submission History (${all.length})`}
         subtitle="All jobs this candidate has been submitted to"
@@ -318,13 +334,11 @@ function SubmissionHistory({ current, others, onNavigate }) {
         {all.map(sub => (
           <div
             key={sub.id}
-            className={`flex items-center justify-between gap-3 py-2.5 ${sub._isCurrent ? '' : 'cursor-pointer hover:bg-surface2 rounded-[var(--radius-sm)] px-1 -mx-1 transition-colors'
-              }`}
-            onClick={() => !sub._isCurrent && onNavigate?.('candidate_detail', { candidateId: sub.id })}
+            className="candidate-detail-submission-row"
           >
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[12px] font-semibold font-mono text-accent">{sub.job_id}</span>
+                {sub.job_id && <button type="button" className="candidate-detail-job-link" onClick={() => onNavigate?.('job_detail', { jobId: sub.job_id })}>{sub.job_id}<Icon name="arrowUpRight" size={12} /></button>}
                 {sub.job_title && <span className="text-[12px] text-text truncate">{sub.job_title}</span>}
                 {sub._isCurrent && <Badge size="sm" tone="accent">Current</Badge>}
               </div>
@@ -336,7 +350,7 @@ function SubmissionHistory({ current, others, onNavigate }) {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <Badge size="sm" tone={STATUS_COLOR[sub.internal_status] || 'neutral'}>{sub.internal_status || 'Pending'}</Badge>
-              {!sub._isCurrent && <Icon name="chevronRight" size={12} className="text-text3" />}
+              {!sub._isCurrent && <Button size="sm" variant="ghost" rightIcon="chevronRight" onClick={() => onNavigate?.('candidate_detail', { candidateId: sub.id })}>View submission</Button>}
             </div>
           </div>
         ))}
@@ -391,9 +405,9 @@ function formatActivityDescription(entry) {
 }
 
 function ActivityLogSection({ log }) {
-  if (!log || log.length === 0) return null
+  if (!log || log.length === 0) return <SectionCard title="Activity Log" subtitle="Recorded changes to this candidate"><EmptyState icon="reports" title="No recorded changes" description="Updates to this candidate will appear here." /></SectionCard>
   return (
-    <Card>
+    <Card className="job-detail-panel candidate-detail-activity">
       <CardHeader title="Activity Log" subtitle="Who changed what and when" />
       <div className="flex flex-col divide-y divide-border">
         {log.map((entry, i) => {
@@ -432,7 +446,7 @@ function TimelineItem({ event }) {
   const iconName = event.type === 'Callback' ? 'callbacks' : 'followups'
   const statusColor = event.status === 'completed' ? 'green' : event.status === 'pending' ? 'yellow' : 'neutral'
   return (
-    <div className="flex items-start gap-3 rounded-[var(--radius-md)] border border-border bg-surface2 px-3.5 py-3 transition-colors hover:border-accent/30">
+    <div className="candidate-detail-timeline-item flex items-start gap-3 rounded-[var(--radius-md)] border border-border px-3.5 py-3">
       <div
         className="w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center shrink-0 mt-0.5"
         style={{ background: 'color-mix(in srgb, var(--accent) 12%, transparent)', color: 'var(--accent)' }}
@@ -440,7 +454,7 @@ function TimelineItem({ event }) {
         <Icon name={iconName} size={14} />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2 mb-0.5">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-0.5">
           <strong className="text-[12.5px] font-semibold text-text">{event.type}: {event.title}</strong>
           <span className="text-[11px] text-text3 shrink-0 tabular-nums">{event.date || '—'}</span>
         </div>
@@ -455,10 +469,13 @@ function TimelineItem({ event }) {
 
 export default function CandidateDetail({ candidateId, onNavigate }) {
   const { user, organization, profile } = useAuth()
+  const dateLabel = value => formatRecordDate(value, organization?.date_format)
   const orgId = organization?.id || profile?.org_id
+  const canEdit = hasPermission(profile?.role, 'Candidates', 'edit')
+  const canUseAI = hasPermission(profile?.role, 'AI', 'edit')
   const userId = user?.id
   const { settings: aiSettings } = useAIGovernance(orgId)
-  const aiEnabled = aiSettings.workspaces.candidates !== false
+  const aiEnabled = canUseAI && aiSettings.workspaces.candidates !== false
 
   const [candidate, setCandidate] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -482,6 +499,7 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
   // Notes editing
   const [notes, setNotes] = useState('')
   const [savingNotes, setSavingNotes] = useState(false)
+  const [notesEditing, setNotesEditing] = useState(false)
 
   // Resume download
   const [downloadingResume, setDownloadingResume] = useState(false)
@@ -495,6 +513,7 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
     if (!candidateId) return
     setLoading(true)
     setNotFound(false)
+    setOtherSubmissions([])
 
     const [candRes, cbRes, fuRes] = await Promise.all([
       db.from('candidates').select('*').eq('id', candidateId),
@@ -538,6 +557,10 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
   }, [candidateId])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    setActiveTab('overview')
+    setNotesEditing(false)
+  }, [candidateId])
 
   const candidateTimeline = useMemo(() => {
     if (!candidate) return []
@@ -649,8 +672,10 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
     if (!candidate) return
     setSavingNotes(true)
     try {
-      await db.from('candidates').update({ notes }).eq('id', candidate.id)
+      const { error } = await db.from('candidates').update({ notes }).eq('id', candidate.id)
+      if (error) throw error
       setCandidate(prev => ({ ...prev, notes }))
+      setNotesEditing(false)
       toast({ tone: 'success', title: 'Notes saved' })
     } catch (err) {
       toast({ tone: 'error', title: 'Failed to save notes', description: err.message })
@@ -692,8 +717,9 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
 
   const tabs = [
     { id: 'overview', label: 'Overview' },
-    { id: 'timeline', label: 'Timeline', count: candidateTimeline.length },
-    { id: 'resume', label: 'Resume', hidden: !candidate.resume_text && !candidate.resume_file_name },
+    { id: 'submissions', label: 'Submissions', count: otherSubmissions.length + 1 },
+    { id: 'activity', label: 'Activity', count: candidateTimeline.length + activityLog.length },
+    { id: 'resume', label: 'Resume' },
     { id: 'ai', label: 'AI', hidden: !aiEnabled },
   ].filter(t => !t.hidden)
 
@@ -713,262 +739,89 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
   ].filter(Boolean).join('\n')
 
   return (
-    <PageContainer>
-      {/* ── Page Header ─────────────────────────────────────────────────── */}
-      <PageHeader
-        eyebrow="Candidate Profile"
-        title={fullName}
-        subtitle={
-          <>
-            {candidate.job_title && <span>{candidate.job_title}</span>}
-            {candidate.job_id && <> · <span className="font-mono text-accent">{candidate.job_id}</span></>}
-            {candidate.client && <> · {candidate.client}</>}
-          </>
-        }
-        actions={
-          <>
-            <Button variant="ghost" leftIcon="chevronLeft" onClick={() => onNavigate?.('candidates')}>
-              Back
-            </Button>
-            {candidate.resume_file_name && (
-              <Button variant="secondary" leftIcon="download" loading={downloadingResume} onClick={handleDownloadResume}>
-                Resume
-              </Button>
-            )}
-            {aiEnabled && (
-              <Button variant="secondary" leftIcon="sparkles" onClick={() => setActiveTab('ai')}>
-                Deep AI Fit
-              </Button>
-            )}
-            <Button
-              variant="primary"
-              leftIcon="edit"
-              onClick={() => setEditOpen(true)}
-            >
-              Edit
-            </Button>
-          </>
-        }
-      />
-
-      {/* ── Status / badge pills ────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-2 mt-5 mb-1">
-        <StatusPill status={candidate.internal_status || 'Pending'} tone={STATUS_TONE[candidate.internal_status] || 'neutral'} size="sm" />
-        <StatusPill status={`Client: ${candidate.external_status || 'Pending'}`} tone={STATUS_TONE[candidate.external_status] || 'neutral'} size="sm" />
-        <Badge tone={PRIORITY_TONE[candidate.priority] || 'neutral'}>{candidate.priority || 'Medium'} Priority</Badge>
-        {candidate.work_auth && <Badge tone="neutral">{candidate.work_auth}</Badge>}
-        {candidate.feedback_status && candidate.feedback_status !== 'Awaiting' && (
-          <Badge tone={FEEDBACK_TONE[candidate.feedback_status] || 'neutral'}>
-            Feedback: {candidate.feedback_status}
-          </Badge>
-        )}
+    <PageContainer className="job-detail-page candidate-detail-page">
+      <div className="job-detail-breadcrumb">
+        <Button size="sm" variant="ghost" leftIcon="chevronLeft" onClick={() => onNavigate?.('candidates')}>Back to Candidates</Button>
+        <span aria-hidden="true">/</span><span className="job-detail-reference">Candidate profile</span>
+        {candidate.updated_at && <span className="job-detail-updated">Updated {relativeTime(candidate.updated_at)}</span>}
       </div>
-
-      {/* ── KPI Strip ───────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 mb-6">
-        <KPICard
-          label="Callbacks"
-          value={candidateTimeline.filter(e => e.type === 'Callback').length}
-          tone="accent"
-          icon="callbacks"
-        />
-        <KPICard
-          label="Follow-ups"
-          value={candidateTimeline.filter(e => e.type === 'Follow-up').length}
-          tone="ai"
-          icon="followups"
-        />
-        <KPICard
-          label="Days Since Submission"
-          value={daysSinceSubmission != null ? daysSinceSubmission : '—'}
-          tone={daysSinceSubmission != null && daysSinceSubmission > 30 ? 'red' : daysSinceSubmission != null && daysSinceSubmission > 14 ? 'yellow' : 'green'}
-          icon="calendar"
-        />
-        <KPICard
-          label="Profile Complete"
-          value={`${profileCompleteness}%`}
-          tone={profileCompleteness >= 80 ? 'green' : profileCompleteness >= 50 ? 'yellow' : 'red'}
-          icon="checkCircle"
-        />
-      </div>
-
-      {/* ── Two-column layout ───────────────────────────────────────────── */}
-      <div className="grid lg:grid-cols-3 gap-5">
-
-        {/* LEFT — tabbed main content */}
-        <div className="lg:col-span-2 flex flex-col gap-5">
-
-          {/* Tab bar */}
-          <div className="flex items-center gap-0.5 border-b border-border pb-0">
-            {tabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`relative px-4 py-2.5 text-[12.5px] font-semibold transition-colors duration-150 rounded-t-[var(--radius-sm)] focus:outline-none ${activeTab === tab.id
-                  ? 'text-accent border-b-2 border-accent -mb-px bg-accent/5'
-                  : 'text-text3 hover:text-text hover:bg-surface2'
-                  }`}
-              >
-                {tab.label}
-                {tab.count != null && tab.count > 0 && (
-                  <span className={`ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === tab.id ? 'bg-accent text-bg' : 'bg-surface3 text-text3'}`}>
-                    {tab.count}
-                  </span>
-                )}
-              </button>
-            ))}
+      <header className="job-detail-header">
+        <div className="candidate-detail-identity">
+          <Avatar name={fullName} size="lg" />
+          <div className="job-detail-identity">
+            <span className="job-detail-eyebrow">CANDIDATE WORKSPACE</span>
+            <div className="job-detail-title"><h1>{fullName}</h1><StatusPill status={candidate.internal_status || 'Pending'} tone={STATUS_TONE[candidate.internal_status] || 'neutral'} size="sm" /></div>
+            <div className="job-detail-meta">
+              {candidate.job_title && <span>{candidate.job_title}</span>}
+              {candidate.location && <span><Icon name="building" size={12} />{candidate.location}</span>}
+              <Badge tone={PRIORITY_TONE[candidate.priority] || 'neutral'}>{candidate.priority || 'Medium'} priority</Badge>
+            </div>
           </div>
+        </div>
+        <div className="candidate-detail-header-actions">
+          {candidate.resume_file_name && <Button variant="secondary" size="sm" leftIcon="download" loading={downloadingResume} onClick={handleDownloadResume}>Resume</Button>}
+          {aiEnabled && <Button variant="ghost" size="sm" leftIcon="sparkles" onClick={() => setActiveTab('ai')}>Deep AI Fit</Button>}
+          {canEdit && <Button variant="primary" size="sm" leftIcon="edit" onClick={() => setEditOpen(true)}>Edit Candidate</Button>}
+        </div>
+      </header>
 
-          {/* ── Overview Tab ─────────────────────────────────────────── */}
-          {activeTab === 'overview' && (
-            <div className="flex flex-col gap-5 pt-1">
-              {/* ── Pipeline Stage Bar ──────────────────────────────── */}
-              <PipelineStageBar status={candidate.internal_status} />
+      <section className="job-detail-summary" aria-label="Candidate snapshot">{[
+        ['Callbacks', candidateTimeline.filter(event => event.type === 'Callback').length, 'Logged candidate callbacks'],
+        ['Follow-ups', candidateTimeline.filter(event => event.type === 'Follow-up').length, 'Logged follow-up activity'],
+        ['Days since submission', daysSinceSubmission ?? '—', dateLabel(candidate.submission_date) || 'Submission date not recorded'],
+        ['Profile complete', `${profileCompleteness}%`, 'Recorded profile details'],
+      ].map(([label, value, helper]) => <div key={label}><span>{label}</span><strong>{value}</strong><small>{helper}</small></div>)}</section>
 
-              <div className="grid sm:grid-cols-2 gap-4">
-                {/* Personal Info */}
-                <SectionCard title="Personal Info">
-                  <InfoRow label="Full Name" value={fullName} />
-                  <InfoRow label="Email" value={candidate.email} />
-                  <InfoRow label="Phone" value={candidate.phone} />
-                  <InfoRow label="Location" value={candidate.location} />
-                  <InfoRow label="Work Auth" value={candidate.work_auth} />
-                  <InfoRow label="Experience" value={candidate.experience ? `${candidate.experience} yrs` : null} />
-                  <InfoRow label="LinkedIn" value={candidate.linkedin} />
-                  <InfoRow label="Relocation" value={candidate.relocation} />
-                </SectionCard>
+      <nav className="job-detail-views candidate-detail-views" aria-label="Candidate detail views">
+        {tabs.map(tab => <button type="button" key={tab.id} aria-current={activeTab === tab.id ? 'page' : undefined} aria-controls="candidate-detail-content" onClick={() => setActiveTab(tab.id)}>{tab.label}{tab.count !== undefined && <span>{tab.count}</span>}</button>)}
+      </nav>
 
-                {/* Submission Info */}
-                <SectionCard title="Current Submission">
-                  <InfoRow label="Date" value={candidate.submission_date} />
-                  <InfoRow label="Job ID" value={candidate.job_id} mono />
-                  <InfoRow label="Job Title" value={candidate.job_title} />
-                  <InfoRow label="Client" value={candidate.client} />
-                  <InfoRow label="Rate" value={candidate.rate} />
-                  <InfoRow label="Follow-up Date" value={candidate.followup_date} />
-                </SectionCard>
+      <div className="job-detail-columns">
+        <div id="candidate-detail-content" className="job-detail-content">
+          {activeTab === 'overview' && <>
+            <SectionCard title="Personal Info" subtitle="Contact details and work preferences" className="candidate-detail-personal">
+              <div className="job-detail-fields">
+                <InfoRow label="Email" value={candidate.email ? <a href={`mailto:${candidate.email}`}>{candidate.email}</a> : null} />
+                <InfoRow label="Phone" value={candidate.phone ? <a href={`tel:${candidate.phone}`}>{candidate.phone}</a> : null} />
+                <InfoRow label="Location" value={candidate.location} />
+                <InfoRow label="Work authorization" value={candidate.work_auth} />
+                <InfoRow label="Experience" value={candidate.experience !== null && candidate.experience !== undefined && candidate.experience !== '' ? `${candidate.experience} years` : null} />
+                <InfoRow label="Relocation" value={candidate.relocation} />
               </div>
+              <div className="candidate-detail-contact-links">{profileUrl(candidate.linkedin) ? <a href={profileUrl(candidate.linkedin)} target="_blank" rel="noopener noreferrer"><Icon name="arrowUpRight" size={13} />LinkedIn profile</a> : <span className="job-detail-empty-copy">LinkedIn: {candidate.linkedin || 'Not recorded'}</span>}</div>
+            </SectionCard>
+            <PipelineStageBar status={candidate.internal_status || 'Pending'} />
+            <SectionCard title="Current Submission" subtitle="The requisition linked to this candidate record" action={candidate.job_id && <Button size="sm" variant="ghost" rightIcon="arrowUpRight" onClick={() => onNavigate?.('job_detail', { jobId: candidate.job_id })}>View job</Button>}>
+              <div className="job-detail-fields">
+                <InfoRow label="Job ID" value={candidate.job_id} mono /><InfoRow label="Role" value={candidate.job_title} /><InfoRow label="Client" value={candidate.client} />
+                <InfoRow label="Submitted" value={dateLabel(candidate.submission_date)} /><InfoRow label="Rate" value={candidate.rate} /><InfoRow label="Follow-up date" value={dateLabel(candidate.followup_date)} />
+                <InfoRow label="Client status" value={<StatusPill status={candidate.external_status || 'Pending'} tone={STATUS_TONE[candidate.external_status] || 'neutral'} size="sm" />} />
+                <InfoRow label="Feedback" value={<StatusPill status={candidate.feedback_status || 'Awaiting'} tone={FEEDBACK_TONE[candidate.feedback_status] || 'neutral'} size="sm" />} />
+              </div>
+            </SectionCard>
+            {candidate.interview_date && <InterviewCard candidate={candidate} />}
+            <SectionCard title={`Skills${skills.length ? ` (${skills.length})` : ''}`} subtitle="Skills recorded on this candidate's profile">
+              <div className="job-detail-skill-list candidate-detail-skills">{skills.length ? skills.map((skill, index) => <Badge key={`${skill}-${index}`} tone="neutral">{skill}</Badge>) : <p className="job-detail-empty-copy">No skills listed for this candidate.</p>}</div>
+            </SectionCard>
+            <RateMarginCard candidate={candidate} />
+          </>}
 
-              {/* ── Interview Card ──────────────────────────────────── */}
-              {candidate.interview_date && (
-                <InterviewCard candidate={candidate} />
-              )}
-
-              {/* ── Rate & Margin ────────────────────────────────────── */}
-              <RateMarginCard candidate={candidate} />
-
-              {/* ── Skills ──────────────────────────────────────────── */}
-              <SectionCard title={`Skills${skills.length ? ` (${skills.length})` : ''}`}>
-                {skills.length > 0 ? (
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {skills.map(s => (
-                      <Badge key={s} tone="accent" className="text-[12px]">{s}</Badge>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-text3">No skills listed for this candidate.</p>
-                )}
-              </SectionCard>
-
-              {/* ── Multi-Job Submission History ─────────────────────── */}
-              <SubmissionHistory current={candidate} others={otherSubmissions} onNavigate={onNavigate} />
-
-              {/* ── Activity Log ─────────────────────────────────────── */}
-              <ActivityLogSection log={activityLog} />
-
-              {/* ── Notes Preview ────────────────────────────────────── */}
-              {candidate.notes && (
-                <SectionCard
-                  title="Recruiter Notes"
-                  action={
-                    (candidate.recruiter_name || candidate.fe_name) ? (
-                      <div className="flex items-center gap-1.5 text-xs text-text3 font-medium">
-                        <Icon name="user" size={12} className="text-accent" />
-                        <span>Added by <strong className="text-text">{candidate.recruiter_name || candidate.fe_name}</strong></span>
-                      </div>
-                    ) : null
-                  }
-                >
-                  <p className="text-[13px] text-text2 leading-relaxed whitespace-pre-wrap">{candidate.notes}</p>
-                </SectionCard>
-              )}
-            </div>
-          )}
-
-          {/* ── Timeline Tab ─────────────────────────────────────────── */}
-          {activeTab === 'timeline' && (
-            <div className="flex flex-col gap-3 pt-2">
-              {candidateTimeline.length === 0 ? (
-                <EmptyState
-                  icon="calendar"
-                  title="No timeline activity"
-                  description="Callbacks and follow-ups logged for this candidate will appear here."
-                />
-              ) : (
-                <>
-                  <p className="text-xs text-text3 mb-1">
-                    {candidateTimeline.length} event{candidateTimeline.length !== 1 ? 's' : ''} — sorted by most recent
-                  </p>
-                  {candidateTimeline.map(ev => <TimelineItem key={ev.id} event={ev} />)}
-                </>
-              )}
-            </div>
-          )}
-
-          {/* ── Resume Tab ───────────────────────────────────────────── */}
-          {activeTab === 'resume' && (
-            <div className="flex flex-col gap-4 pt-2">
-              {candidate.resume_file_name && (
-                <Card className="bg-surface2 border-accent/20">
-                  <div className="flex items-center justify-between flex-wrap gap-3">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-10 h-10 rounded-[var(--radius-md)] flex items-center justify-center"
-                        style={{ background: 'color-mix(in srgb, var(--accent) 12%, transparent)' }}
-                      >
-                        <Icon name="postings" size={18} className="text-accent" />
-                      </div>
-                      <div>
-                        <div className="text-[13px] font-semibold text-text">{candidate.resume_file_name}</div>
-                        {candidate.resume_file_size && (
-                          <div className="text-xs text-text3">{Math.round(candidate.resume_file_size / 1024)} KB</div>
-                        )}
-                      </div>
-                    </div>
-                    <Button variant="primary" leftIcon="download" loading={downloadingResume} onClick={handleDownloadResume}>
-                      Download Resume
-                    </Button>
-                  </div>
-                </Card>
-              )}
-
-              {candidate.resume_text ? (
-                <Card>
-                  <CardHeader
-                    title="Resume Text"
-                    subtitle="Full parsed text from the uploaded resume"
-                  />
-                  <div className="text-[13px] text-text2 leading-relaxed prose prose-sm max-w-none">
-                    <MarkdownView content={candidate.resume_text} />
-                  </div>
-                </Card>
-              ) : (
-                !candidate.resume_file_name && (
-                  <EmptyState
-                    icon="postings"
-                    title="No resume on file"
-                    description="Upload a resume in the candidate editor to see it here."
-                    actionLabel="Edit Candidate"
-                    onAction={() => onNavigate?.('candidates', { editCandidateId: candidate.id })}
-                  />
-                )
-              )}
-            </div>
-          )}
-
-          {/* ── AI Tab ───────────────────────────────────────────────── */}
+          {activeTab === 'submissions' && <SubmissionHistory current={candidate} others={otherSubmissions} onNavigate={onNavigate} />}
+          {activeTab === 'activity' && <>
+            <SectionCard title="Callbacks & Follow-ups" subtitle="Candidate conversations and follow-up history">
+              {candidateTimeline.length ? <div className="candidate-detail-timeline">{candidateTimeline.map(event => <TimelineItem key={event.id} event={event} />)}</div> : <EmptyState icon="calendar" title="No timeline activity" description="Callbacks and follow-ups logged for this candidate will appear here." />}
+            </SectionCard>
+            <ActivityLogSection log={activityLog} />
+          </>}
+          {activeTab === 'resume' && <>
+            {candidate.resume_file_name && <Card className="job-detail-panel candidate-detail-resume-file">
+              <div><span className="candidate-detail-file-icon"><Icon name="postings" size={18} /></span><span><strong>{candidate.resume_file_name}</strong>{candidate.resume_file_size && <small>{Math.round(candidate.resume_file_size / 1024)} KB</small>}</span></div>
+              <Button size="sm" variant="secondary" leftIcon="download" loading={downloadingResume} onClick={handleDownloadResume}>Download Resume</Button>
+            </Card>}
+            {candidate.resume_text ? <SectionCard title="Resume Text" subtitle="Parsed text from the uploaded resume"><div className="candidate-detail-resume-text"><MarkdownView content={candidate.resume_text} /></div></SectionCard> : !candidate.resume_file_name ? <SectionCard title="Resume"><EmptyState icon="postings" title="No resume on file" description="Upload a resume in the candidate editor to see it here." actionLabel="Edit Candidate" onAction={() => setEditOpen(true)} /></SectionCard> : <SectionCard title="Resume Text"><p className="job-detail-empty-copy">No parsed text is stored. Download the original resume to review it.</p></SectionCard>}
+          </>}
           {activeTab === 'ai' && aiEnabled && (
-            <div className="flex flex-col gap-3 pt-2">
+            <div className="candidate-detail-ai">
               <AIInsightCard
                 orgId={orgId} userId={userId} source="candidates"
                 title="Candidate Snapshot" icon="sparkles" actionId="analyze"
@@ -998,61 +851,22 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
               />
             </div>
           )}
+
         </div>
-
-        {/* RIGHT SIDEBAR */}
-        <div className="flex flex-col gap-5">
-
-          {/* Compact Health Score widget — top of sidebar */}
-          <ScoreWidget sc={sc} />
-
-          {/* Front End / Ownership */}
-          <SectionCard title="Front End & Ownership">
-            {(candidate.fe_name || candidate.recruiter_name || candidate.account_manager) ? (
-              <div className="flex flex-col gap-3">
-                {candidate.fe_name && (
-                  <div className="flex items-center gap-3">
-                    <Avatar name={candidate.fe_name} size="sm" />
-                    <div className="min-w-0">
-                      <div className="text-[13px] font-semibold text-text truncate">{candidate.fe_name}</div>
-                      <div className="text-[11px] text-text3 truncate">
-                        Front End{candidate.fe_extension ? ` · ext. ${candidate.fe_extension}` : ''}
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {candidate.recruiter_name && candidate.recruiter_name !== candidate.fe_name && (
-                  <div className="flex items-center gap-3 pt-3 border-t border-border">
-                    <Avatar name={candidate.recruiter_name} size="sm" />
-                    <div className="min-w-0">
-                      <div className="text-[13px] font-semibold text-text truncate">{candidate.recruiter_name}</div>
-                      <div className="text-[11px] text-text3">Recruiter</div>
-                    </div>
-                  </div>
-                )}
-                {candidate.account_manager && (
-                  <div className="flex items-center gap-3 pt-3 border-t border-border">
-                    <Avatar name={candidate.account_manager} size="sm" />
-                    <div className="min-w-0">
-                      <div className="text-[13px] font-semibold text-text truncate">{candidate.account_manager}</div>
-                      <div className="text-[11px] text-text3">Account Manager</div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-[12px] text-text3">No ownership assigned.</p>
-            )}
+        <aside className="job-detail-sidebar" aria-label="Candidate team and notes">
+          <SectionCard title="Team & Ownership" subtitle="Your recruiting team for this candidate" className="candidate-detail-team">
+            {candidate.fe_name || candidate.recruiter_name || candidate.account_manager ? <div className="candidate-detail-owner-list">
+              {[
+                [candidate.fe_name, `${candidate.recruiter_name === candidate.fe_name ? 'Recruiter · Front End' : 'Front End'}${candidate.fe_extension ? ` · ext. ${candidate.fe_extension}` : ''}`],
+                [candidate.recruiter_name !== candidate.fe_name ? candidate.recruiter_name : null, 'Recruiter'],
+                [candidate.account_manager, 'Account Manager'],
+              ].filter(([name]) => name).map(([name, role]) => <div className="job-detail-person" key={role}><Avatar name={name} size="sm" /><span><strong>{name}</strong><small>{role}</small></span></div>)}
+            </div> : <p className="job-detail-empty-copy">No ownership assigned.</p>}
           </SectionCard>
-
-          {/* Quick Status */}
-          <Card>
-            <CardHeader
-              title="Quick Status"
-              subtitle="Update pipeline status inline"
-            />
-            <div className="flex flex-col gap-3">
-              <div>
+          <Card className="job-detail-panel candidate-detail-status"><fieldset disabled={!canEdit} className="min-w-0">
+            <details><summary><span><strong>Update status</strong><small>Pipeline, feedback &amp; interview scheduling</small></span><Icon name="chevronDown" size={14} /></summary>
+            <div className="candidate-detail-status-fields">
+              <div role="group" aria-label="Internal">
                 <label className="text-[10.5px] font-bold uppercase tracking-wide text-text3 block mb-1.5">Internal</label>
                 <Select
                   value={statusDraft.internal_status}
@@ -1060,7 +874,7 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
                   options={STATUSES.map(s => ({ value: s, label: s }))}
                 />
               </div>
-              <div>
+              <div role="group" aria-label="Client / External">
                 <label className="text-[10.5px] font-bold uppercase tracking-wide text-text3 block mb-1.5">Client / External</label>
                 <Select
                   value={statusDraft.external_status}
@@ -1068,7 +882,7 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
                   options={STATUSES.map(s => ({ value: s, label: s }))}
                 />
               </div>
-              <div>
+              <div role="group" aria-label="Feedback">
                 <label className="text-[10.5px] font-bold uppercase tracking-wide text-text3 block mb-1.5">Feedback</label>
                 <Select
                   value={statusDraft.feedback_status}
@@ -1076,7 +890,7 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
                   options={['Awaiting', 'Positive', 'Negative', 'No Response'].map(o => ({ value: o, label: o }))}
                 />
               </div>
-              <div>
+              <div role="group" aria-label="Priority">
                 <label className="text-[10.5px] font-bold uppercase tracking-wide text-text3 block mb-1.5">Priority</label>
                 <Select
                   value={statusDraft.priority}
@@ -1095,7 +909,7 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
                       <div className="text-[11px] text-text3 leading-snug">Saving this status creates or updates one pending callback for this candidate.</div>
                     </div>
                   </div>
-                  <div>
+                  <div role="group" aria-label="Interview Date">
                     <label className="text-[10.5px] font-bold uppercase tracking-wide text-text3 block mb-1.5">Interview Date</label>
                     <Input
                       type="date"
@@ -1103,7 +917,7 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
                       onChange={e => setStatusDraft(d => ({ ...d, interview_date: e.target.value }))}
                     />
                   </div>
-                  <div>
+                  <div role="group" aria-label="Interview Time">
                     <label className="text-[10.5px] font-bold uppercase tracking-wide text-text3 block mb-1.5">Interview Time</label>
                     <TimePicker
                       value={statusDraft.interview_time || ''}
@@ -1111,7 +925,7 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
                       placeholder="Select time..."
                     />
                   </div>
-                  <div>
+                  <div role="group" aria-label="Interview Type">
                     <label className="text-[10.5px] font-bold uppercase tracking-wide text-text3 block mb-1.5">Interview Type</label>
                     <Select
                       value={statusDraft.interview_type || ''}
@@ -1140,50 +954,21 @@ export default function CandidateDetail({ candidateId, onNavigate }) {
                 Save Status
               </Button>
             </div>
-          </Card>
 
-          {/* Notes */}
-          <Card>
-            <CardHeader title="Internal Notes" subtitle="Visible to your whole org" />
-            <Textarea
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              rows={5}
-              placeholder="Add internal notes about this candidate..."
-              className="mt-1"
-            />
-            <div className="flex justify-end mt-2">
-              <Button
-                size="sm"
-                variant="primary"
-                loading={savingNotes}
-                disabled={notes === (candidate.notes || '')}
-                onClick={handleSaveNotes}
-              >
-                Save Notes
-              </Button>
-            </div>
+            </details></fieldset>
           </Card>
-
-          {/* Submission Details snapshot */}
-          <SectionCard title="Submission Details">
-            <InfoRow label="Submitted" value={candidate.submission_date} />
-            <InfoRow label="Job ID" value={candidate.job_id} mono />
-            <InfoRow label="Client" value={candidate.client} />
-            <InfoRow label="Rate" value={candidate.rate} />
-            <InfoRow label="Relocation" value={candidate.relocation} />
-          </SectionCard>
-        </div>
+          <Card className="job-detail-panel job-detail-remarks candidate-detail-notes">
+            <CardHeader title="Internal Notes" subtitle="Shared with your recruiting team" action={canEdit && !notesEditing && <Button size="sm" variant="ghost" leftIcon={candidate.notes ? 'edit' : 'plus'} onClick={() => setNotesEditing(true)}>{candidate.notes ? 'Edit notes' : 'Add notes'}</Button>} />
+            {notesEditing ? <>
+              <label htmlFor="candidate-detail-notes-input" className="job-detail-sr-label">Candidate notes</label>
+              <Textarea id="candidate-detail-notes-input" value={notes} onChange={event => setNotes(event.target.value)} rows={7} placeholder="Add candidate context, interview feedback, or next steps…" />
+              <div className="job-detail-note-actions"><Button size="sm" variant="ghost" disabled={savingNotes} onClick={() => { setNotes(candidate.notes || ''); setNotesEditing(false) }}>Cancel</Button><Button size="sm" variant="primary" loading={savingNotes} disabled={notes === (candidate.notes || '')} onClick={handleSaveNotes}>Save Notes</Button></div>
+            </> : <div className="job-detail-remarks-body">{candidate.notes ? <MarkdownView content={candidate.notes} /> : <p className="job-detail-empty-copy">No notes yet. Add context or save a reviewed AI draft to this candidate.</p>}</div>}
+          </Card>
+          <ScoreWidget sc={sc} />
+        </aside>
       </div>
-
-      {/* ── Edit Drawer ─────────────────────────────────────────────────── */}
-      <CandidateFormDrawer
-        open={editOpen}
-        onClose={() => setEditOpen(false)}
-        candidateData={candidate}
-        candidates={candidate ? [candidate] : []}
-        onSaved={() => load()}
-      />
+      <CandidateFormDrawer open={editOpen} onClose={() => setEditOpen(false)} candidateData={candidate} candidates={candidate ? [candidate] : []} onSaved={() => load()} />
     </PageContainer>
   )
 }

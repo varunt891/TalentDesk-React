@@ -59,7 +59,7 @@ export default function Badge({ tone = 'neutral', size = 'sm', dot = false, clas
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 font-semibold rounded-full border whitespace-nowrap leading-none transition-colors select-none max-w-full shrink-0',
+        'td-badge inline-flex items-center gap-1.5 font-medium rounded-full border whitespace-nowrap leading-none transition-colors select-none max-w-full shrink-0',
         sizeClasses,
         className
       )}

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Button, Input } from '../ui'
 import AIResultCard from './AIResultCard'
 import { streamAiGenerate } from '../../lib/ai/aiClient'
@@ -15,7 +15,7 @@ import { normalizeAiPlainText } from '../../lib/aiTextFormat'
  * ranges per experience band plus a job market demand outlook, streamed in
  * token-by-token rather than appearing all at once when it's fully done.
  */
-export default function SalaryAnalysisPanel({ orgId, userId, source = 'ai_center', streamingEnabled = true }) {
+export default function SalaryAnalysisPanel({ orgId, userId, source = 'ai_center', streamingEnabled = true, disabled = false, onResult }) {
   const [role, setRole] = useState('')
   const [location, setLocation] = useState('')
   const [experience, setExperience] = useState('')
@@ -26,11 +26,12 @@ export default function SalaryAnalysisPanel({ orgId, userId, source = 'ai_center
   const [error, setError] = useState(null)
   const [copied, setCopied] = useState(false)
   const abortRef = useRef(null)
+  useEffect(() => () => abortRef.current?.abort(), [])
 
   const canRun = role.trim() && location.trim()
 
   const run = async () => {
-    if (!canRun) return
+    if (!canRun || disabled || streaming) return
     setStreaming(true)
     setStreamingText('')
     setError(null)
@@ -62,6 +63,7 @@ export default function SalaryAnalysisPanel({ orgId, userId, source = 'ai_center
       setStreaming(false)
       setStreamingText('')
       abortRef.current = null
+      onResult?.()
     }
   }
   const stopStreaming = () => abortRef.current?.abort()
@@ -90,7 +92,7 @@ export default function SalaryAnalysisPanel({ orgId, userId, source = 'ai_center
         {streaming ? (
           <Button variant="danger" leftIcon="square" onClick={stopStreaming}>Stop</Button>
         ) : (
-          <Button variant="primary" leftIcon="trendUp" disabled={!canRun} onClick={run}>
+          <Button variant="primary" leftIcon="trendUp" disabled={!canRun || disabled} onClick={run}>
             Run Salary & Demand Analysis
           </Button>
         )}

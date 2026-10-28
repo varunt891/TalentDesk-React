@@ -30,6 +30,9 @@ import { db } from './lib/api'
 import { ToastProvider } from './components/ui'
 
 import GlobalCallbackAlert from './components/GlobalCallbackAlert'
+import { hasPermission } from './lib/admin/permissions'
+
+const PAGE_MODULES = { dashboard: 'Dashboard', ai_center: 'AI', candidates: 'Candidates', sourced_candidates: 'Candidates', candidate_detail: 'Candidates', jobs: 'Jobs', job_detail: 'Jobs', pipeline: 'Pipeline', tasks: 'Tasks', callbacks: 'Communication', followups: 'Communication', resubmit: 'Candidates', collisions: 'Candidates', reports: 'Reports', postings: 'Jobs' }
 
 function ProtectedRoute({ children }) {
   const location = useLocation()
@@ -60,9 +63,9 @@ function MainApp() {
     setNavParams(params)
     setCurrentPage(page)
   }
-  const [callbackAlert, setCallbackAlert] = useState(null)
+  const [, setCallbackAlert] = useState(null)
   const [notifiedCallbacks, setNotifiedCallbacks] = useState(new Set())
-  const { profile, user } = useAuth()
+  const { profile, user, organization } = useAuth()
   const role = profile?.role || 'recruiter'
 
 
@@ -110,10 +113,11 @@ function MainApp() {
   }, [user, notifiedCallbacks])
 
   const renderPage = () => {
+    if (PAGE_MODULES[currentPage] && !hasPermission(role, PAGE_MODULES[currentPage])) return <div className="p-8 text-text2">Your role does not have access to this workspace.</div>
     switch (currentPage) {
       case 'dashboard': return <Dashboard onNavigate={navigateTo} />
       case 'tasks': return <TasksPage user={profile || user} onNavigate={navigateTo} />
-      case 'ai_center': return <AICenter />
+      case 'ai_center': return <AICenter onNavigate={navigateTo} />
       case 'candidates': return <Candidates onNavigate={navigateTo} openEditCandidateId={navParams.editCandidateId} showAll={Boolean(navParams.showAll)} />
       case 'sourced_candidates': return <SourcedCandidates onNavigate={navigateTo} />
       case 'jobs': return <Jobs onNavigate={navigateTo} openEditJobId={navParams.editJobId} />
@@ -142,11 +146,11 @@ function MainApp() {
 
   return (
     <AIContextProvider currentPage={currentPage}>
-      <AppLayout currentPage={currentPage} onNavigate={navigateTo}>
+      <AppLayout key={`${user?.id}:${organization?.id}:${role}`} currentPage={currentPage} onNavigate={navigateTo}>
         {renderPage()}
       </AppLayout>
 
-      <Copilot />
+      {hasPermission(role, 'AI', 'edit') && <Copilot key={`${user?.id}:${organization?.id}`} />}
       <GlobalCallbackAlert />
     </AIContextProvider>
   )

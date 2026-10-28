@@ -8634,7 +8634,6 @@ html[data-theme="dark"] .pipeline-flow-chip.compact .chip-metrics .count {
 
 html[data-theme="dark"] p,
 html[data-theme="dark"] small,
-html[data-theme="dark"] span,
 html[data-theme="dark"] label {
   color: var(--text2) !important;
 }

@@ -17,11 +17,12 @@ function persistSavedPrompts(orgId, userId, list) {
   try { localStorage.setItem(libraryKey(orgId, userId), JSON.stringify(list)) } catch { /* quota exceeded */ }
 }
 
-export function savePrompt(orgId, userId, { title, actionId, content, context }) {
+export function savePrompt(orgId, userId, { title, actionId, content, context, workflowId, contentB, comparisonMode }) {
   const entry = {
     id: `sp_${new Date().getTime()}`,
     title: (title || content || '').slice(0, 48) || 'Saved prompt',
-    actionId, content, context: context || '',
+    actionId, content, context: context || '', workflowId: workflowId || null,
+    contentB: contentB || '', comparisonMode: comparisonMode || null,
     pinned: false,
     createdAt: new Date().toISOString(),
   }

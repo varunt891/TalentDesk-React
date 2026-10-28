@@ -33,7 +33,9 @@ export default function Table({
   loading = false,
   emptyState,
   bulkActions,
+  toolbar,
   rowActions,
+  stickyRowActions = false,
   contextMenuItems,
   onCellEdit,
   resizable = false,
@@ -189,15 +191,16 @@ export default function Table({
   }
 
   if (!loading && data.length === 0) {
-    return emptyState || <EmptyState title="Nothing here yet" />
+    return <>{toolbar && <div className="mb-2">{toolbar}</div>}{emptyState || <EmptyState title="Nothing here yet" />}</>
   }
 
   return (
     <div className={cn('w-full', className)}>
-      {(columnVisibility || (selectable && selectedIds.length > 0 && bulkActions)) && (
-        <div className="flex items-center gap-3 mb-3">
+      {(toolbar || columnVisibility || (selectable && selectedIds.length > 0 && bulkActions)) && (
+        <div className="td-table-toolbar flex items-center flex-wrap gap-2 mb-2">
+          {toolbar && <div className="flex-1 min-w-0">{toolbar}</div>}
           {selectable && selectedIds.length > 0 && bulkActions && (
-            <div className="flex items-center gap-3 bg-accent/8 border border-accent/25 shadow-xs rounded-[var(--radius-md)] px-3.5 py-2.5 flex-1">
+            <div className={cn('flex items-center gap-3 bg-accent/8 border border-accent/25 shadow-xs rounded-[var(--radius-md)] px-3.5 py-2.5 flex-1', toolbar && 'basis-full order-last')}>
               <span className="text-xs font-bold text-accent">{selectedIds.length} selected</span>
               <div className="flex items-center gap-2 ml-auto">{bulkActions}</div>
             </div>
@@ -221,7 +224,7 @@ export default function Table({
       )}
 
       {/* Desktop / tablet: real table, sticky header, no horizontal scroll trap */}
-      <div className="hidden md:block border border-border rounded-[var(--radius-lg)] shadow-xs overflow-hidden mb-6" style={{ borderRadius: 'var(--radius-md)' }}>
+      <div className="td-data-table hidden md:block border border-border rounded-[var(--radius-lg)] shadow-xs overflow-hidden mb-6" data-compact={compact ? 'true' : 'false'} style={{ borderRadius: 'var(--radius-md)' }}>
         <div
           className="overflow-x-auto"
           tabIndex={keyboardNav ? 0 : undefined}
@@ -266,7 +269,7 @@ export default function Table({
                     )}
                   </th>
                 ))}
-                {rowActions && <th className={cn('w-10 px-3', compact ? 'py-1' : 'py-2')} />}
+                {rowActions && <th className={cn('w-10 px-3', stickyRowActions && 'sticky right-0 bg-surface2', compact ? 'py-1' : 'py-2')} />}
               </tr>
             </thead>
             <tbody>
@@ -344,7 +347,7 @@ export default function Table({
                           )
                         })}
                         {rowActions && (
-                          <td className={cn('px-3 text-right opacity-0 group-hover:opacity-100 transition-opacity', compact ? 'py-1' : 'py-2')} onClick={(e) => e.stopPropagation()}>
+                          <td className={cn('px-3 text-right', stickyRowActions ? 'sticky right-0 bg-surface' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity', compact ? 'py-1' : 'py-2')} onClick={(e) => e.stopPropagation()}>
                             {rowActions(row)}
                           </td>
                         )}

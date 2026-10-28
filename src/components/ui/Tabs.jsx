@@ -68,7 +68,7 @@ export default function Tabs({ items, value, onChange, className = '' }) {
   }
 
   return (
-    <div className={cn('relative border-b border-border group/tabs', className)}>
+    <div className={cn('td-tabs relative group/tabs', className)}>
       {/* Left Fade Gradient & Arrow Button */}
       {canScrollLeft && (
         <>
@@ -118,7 +118,7 @@ export default function Tabs({ items, value, onChange, className = '' }) {
               onClick={() => onChange(item.id)}
               className={cn(
                 'focus-ring relative flex items-center gap-1.5 px-3.5 h-10 text-[13px] font-semibold whitespace-nowrap rounded-t-[var(--radius-sm)] transition-colors duration-[var(--duration-fast)] shrink-0',
-                active ? 'text-text' : 'text-text3 hover:text-text2 hover:bg-surface2/60'
+                active ? 'bg-[var(--action)] text-[var(--action-text)]' : 'text-text2 hover:text-text hover:bg-surface2/60'
               )}
             >
               {item.label}
@@ -127,7 +127,6 @@ export default function Tabs({ items, value, onChange, className = '' }) {
                   {item.count}
                 </span>
               )}
-              {active && <span className="absolute left-2.5 right-2.5 -bottom-px h-0.5 bg-accent rounded-full shadow-[0_0_8px_color-mix(in_srgb,var(--accent)_70%,transparent)]" />}
             </button>
           )
         })}

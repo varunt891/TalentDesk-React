@@ -630,7 +630,7 @@ export default function SettingsCenter({ initialTab = 'general', onNavigate }) {
               <Input type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} required placeholder="teammate@company.com" />
             </FormField>
             <FormField label="Organization Role" required>
-              <Select value={inviteRole} onChange={setInviteRole} options={ALL_ROLES} />
+              <Select value={inviteRole} onChange={setInviteRole} options={ALL_ROLES.filter(r => (r.value !== 'SUPERADMIN' || isSuperAdmin) && (r.value !== 'OWNER' || role.toUpperCase() !== 'ADMIN'))} />
             </FormField>
             <div className="flex gap-2 justify-end">
               <Button type="button" variant="secondary" onClick={() => setShowInviteModal(false)}>Cancel</Button>
@@ -1271,7 +1271,7 @@ function SecurityTab() {
   const [forceLogoutAllLoading, setForceLogoutAllLoading] = useState(false)
 
   const roleUpper = (profile?.role || '').toUpperCase()
-  const isOwnerOrSuper = ['OWNER', 'SUPERADMIN', 'admin'].includes(profile?.role) || ['OWNER', 'SUPERADMIN'].includes(roleUpper)
+  const isOwnerOrSuper = ['OWNER', 'SUPERADMIN'].includes(roleUpper)
 
   const handleChangePassword = async (e) => {
     e.preventDefault()
@@ -1316,11 +1316,11 @@ function SecurityTab() {
   }
 
   const handleForceLogoutAllUsers = async () => {
-    if (!window.confirm('CRITICAL SECURITY ACTION: This will forcibly log out ALL users across ALL devices platform-wide. Proceed?')) return
+    if (!window.confirm(roleUpper === 'SUPERADMIN' ? 'Revoke all sessions across the platform?' : 'Revoke sessions for this company? Multi-company accounts require a platform administrator.')) return
     setForceLogoutAllLoading(true)
     try {
       const res = await authApi.forceLogoutAllUsers()
-      toast({ tone: 'success', title: 'Global Force Logout', description: res.message || 'All sessions revoked platform-wide.' })
+      toast({ tone: 'success', title: 'Sessions revoked', description: res.message })
       window.location.href = '/login'
     } catch (err) {
       toast({ tone: 'error', title: 'Action Failed', description: err.message })
@@ -1426,14 +1426,14 @@ function SecurityTab() {
       {isOwnerOrSuper && (
         <Card className="border-red/40 bg-red/[0.02]">
           <CardHeader
-            title="Global Emergency Force Logout"
-            subtitle="Admin Privilege: Revoke active sessions for EVERY user platform-wide."
+            title="Emergency Force Logout"
+            subtitle={roleUpper === 'SUPERADMIN' ? 'Revoke active sessions across the platform.' : 'Revoke active sessions for eligible company accounts.'}
           />
           <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-t border-border">
             <div>
-              <div className="text-sm font-semibold text-red">Revoke All Sessions Platform-Wide</div>
+              <div className="text-sm font-semibold text-red">Revoke Active Sessions</div>
               <div className="text-xs text-text3 mt-0.5 max-w-md leading-relaxed">
-                Emergency security control. Forcibly logs out every single user (Admins, Superadmins, Recruiters) on all devices globally by incrementing system session counters.
+                {roleUpper === 'SUPERADMIN' ? 'Logs out all platform accounts on every device.' : 'Logs out accounts belonging only to this company. Multi-company accounts require platform administration because their sessions span companies.'}
               </div>
             </div>
             <Button
@@ -1467,6 +1467,9 @@ function SecurityTab() {
 
 function UsersTab({ members, invitations, can, isReadOnly, onRoleChange, onToggleActive, onRemove, onOpenInvite, onRevoke }) {
   const { toast } = useToast()
+  const { profile: actingProfile } = useAuth()
+  const actingRole = String(actingProfile?.role || '').toUpperCase()
+  const assignableRoles = ALL_ROLES.filter(r => (r.value !== 'SUPERADMIN' || actingRole === 'SUPERADMIN') && (r.value !== 'OWNER' || actingRole !== 'ADMIN'))
   const [search, setSearch] = useState('')
   const [resetTarget, setResetTarget] = useState(null)
   const [adminNewPassword, setAdminNewPassword] = useState('')
@@ -1561,7 +1564,7 @@ function UsersTab({ members, invitations, can, isReadOnly, onRoleChange, onToggl
                 {/* Controls row: role select + toggle + reset password + force logout + remove */}
                 <div className="flex items-center gap-2 flex-wrap pl-0 sm:pl-11">
                   {can.changeRole ? (
-                    <div className="flex-1 min-w-[140px] max-w-[200px]"><Select size="sm" value={m.role} onChange={v => onRoleChange(m.id, v)} options={ALL_ROLES} /></div>
+                    <div className="flex-1 min-w-[140px] max-w-[200px]"><Select size="sm" value={m.role} onChange={v => onRoleChange(m.id, v)} options={assignableRoles} /></div>
                   ) : (
                     <Badge tone="accent" size="sm">{m.role}</Badge>
                   )}
@@ -1652,7 +1655,7 @@ function RolesTab({ isReadOnly }) {
         </InfoBanner>
       )}
       <InfoBanner tone="info">
-        This matrix is the single source of truth for what each role can do across TalentDesk (src/lib/admin/permissions.js). It currently governs UI presentation only — there is no Role/Permission table in the database yet, so nothing here is enforced server-side. It exists as reusable configuration so real backend authorization can be layered in later without a UI rewrite.
+        These role permissions are shared with the API. Company membership, team scope, and record ownership are checked on the server for every protected operation.
       </InfoBanner>
       <Card>
         <CardHeader title="Role × Module Access" subtitle={`${ROLES.length} roles across ${MODULES.length} modules`} />
@@ -1732,7 +1735,7 @@ function WorkspaceTab({ preferences, updatePreferences }) {
   return (
     <div className="flex flex-col gap-6">
       <Card>
-        <CardHeader title="Workspace Defaults" subtitle="Personalize how tables and lists render across TalentDesk." />
+        <CardHeader title="Workspace Defaults" subtitle="Personal display preferences saved in this browser; company security policy is managed separately." />
         <div className="grid sm:grid-cols-2 gap-x-8 sm:gap-x-12 gap-y-0">
           <SettingsCard
             title="Table Density"

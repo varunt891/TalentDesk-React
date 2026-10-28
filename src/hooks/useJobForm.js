@@ -4,6 +4,7 @@ import { runAiAction } from '../lib/ai/aiClient'
 import { logUsageEvent } from '../lib/ai/usage'
 import { fallbackExtractSkills } from '../lib/skillExtraction'
 import { canManageJobAssignment } from '../lib/roles'
+import { ensureArray } from '../lib/candidateHealth'
 
 export const emptyJobForm = {
   job_id: '', title: '', client: '', location: '', type: 'Contract',
@@ -41,7 +42,7 @@ export function useJobForm({ jobs = [], fetchJobs, profile, user, orgId, userId,
   const openAdd = () => { setForm(emptyJobForm); setEditingId(null); setSkillInput(''); setShowModal(true) }
   const openEdit = (j) => {
     setForm({
-      job_id: j.job_id || '', title: j.title || '', client: j.client || '', location: j.location || '', type: j.type || 'Contract', status: j.status || 'Open', rate: j.rate || '', open_date: j.open_date || new Date().toISOString().slice(0, 10), priority: j.priority || 'Medium', fe: j.fe || '', skills: j.skills || [], description: j.description || '',
+      job_id: j.job_id || '', title: j.title || '', client: j.client || '', location: j.location || '', type: j.type || 'Contract', status: j.status || 'Open', rate: j.rate || '', open_date: j.open_date || new Date().toISOString().slice(0, 10), priority: j.priority || 'Medium', fe: j.fe || '', skills: ensureArray(j.skills), description: j.description || '',
       contact_name: j.contact_name || '', optional_ref: j.optional_ref || '', bill_rate: j.bill_rate || '', pay_rate: j.pay_rate || '',
       end_date: j.end_date || '', submittal_due: j.submittal_due || '', workers_comp_code: j.workers_comp_code || '',
       openings: j.openings ?? '', max_submittals: j.max_submittals ?? '', experience_level: j.experience_level || '', work_mode: j.work_mode || 'Onsite',

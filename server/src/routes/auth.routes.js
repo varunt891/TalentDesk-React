@@ -4,6 +4,9 @@ import jwt from 'jsonwebtoken'
 import { prisma } from '../prisma.js'
 import { clearSessionCookie, findTenantOrganization, requireAuth, setSessionCookie, signSession, mapProfileRole } from '../auth.js'
 
+import { managedAccount } from '../services/memberAccess.js'
+import { verifyPasswordResetToken } from '../services/passwordReset.js'
+
 const router = Router()
 
 function slugify(text) {
@@ -12,8 +15,8 @@ function slugify(text) {
     .toLowerCase()
     .trim()
     .replace(/\s+/g, '-')
-    .replace(/[^\w\-]+/g, '')
-    .replace(/\-\-+/g, '-')
+    .replace(/[^\w-]+/g, '')
+    .replace(/--+/g, '-')
     .replace(/^-+/, '')
     .replace(/-+$/, '') || 'company'
 }
@@ -47,6 +50,7 @@ router.post('/signup', async (req, res, next) => {
 
     let org
     let userRole = 'OWNER'
+    let invitationId = null
 
     // Case 1: Accepting Invitation Token
     if (invite_token) {
@@ -59,13 +63,12 @@ router.post('/signup', async (req, res, next) => {
         return res.status(400).json({ error: 'Invalid or expired invitation token' })
       }
 
+      if (invite.email.toLowerCase() !== normalizedEmail || invite.organization.is_active === false) return res.status(403).json({ error: 'This invitation cannot be used for this account' })
       org = invite.organization
       userRole = invite.role
+      invitationId = invite.id
 
-      await prisma.organizationInvitation.update({
-        where: { id: invite.id },
-        data: { status: 'ACCEPTED' },
-      })
+
     }
     // Case 2: Creating New Company Organization (Company Onboarding Flow)
     else if (company && company.name) {
@@ -101,8 +104,7 @@ router.post('/signup', async (req, res, next) => {
     else {
       const tenantOrg = await findTenantOrganization(req)
       if (tenantOrg) {
-        org = tenantOrg
-        userRole = 'RECRUITER'
+        return res.status(403).json({ error: 'An invitation is required to join this company' })
       } else {
         const domain = emailDomain(normalizedEmail)
         const compName = domain && !['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com'].includes(domain)
@@ -123,7 +125,12 @@ router.post('/signup', async (req, res, next) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 12)
-    const profile = await prisma.profile.create({
+    const { profile, member } = await prisma.$transaction(async tx => {
+      if (invitationId) {
+        const claimed = await tx.organizationInvitation.updateMany({ where: { id: invitationId, status: 'PENDING', expires_at: { gt: new Date() }, email: normalizedEmail }, data: { status: 'ACCEPTED' } })
+        if (claimed.count !== 1) throw Object.assign(new Error('Invitation is invalid or already used'), { status: 400 })
+      }
+    const profile = await tx.profile.create({
       data: {
         org_id: org.id,
         email: normalizedEmail,
@@ -134,13 +141,15 @@ router.post('/signup', async (req, res, next) => {
     })
 
     // Create OrganizationMember relationship
-    const member = await prisma.organizationMember.create({
+    const member = await tx.organizationMember.create({
       data: {
         user_id: profile.id,
         organization_id: org.id,
         role: userRole,
         status: 'ACTIVE',
       },
+    })
+      return { profile, member }
     })
 
     const user = { id: profile.id, email: profile.email, token_version: profile.token_version }
@@ -183,14 +192,17 @@ router.post('/login', async (req, res, next) => {
 
     if (profile.is_active === false) return res.status(403).json({ error: 'Account is inactive' })
 
-    const activeMembership = profile.memberships?.[0]
-    const activeOrg = activeMembership?.organization || profile.organization
+    const tenant = await findTenantOrganization(req)
+    const memberships = profile.memberships.filter(m => m.status === 'ACTIVE' && m.organization?.is_active !== false)
+    const activeMembership = tenant ? memberships.find(m => m.organization_id === tenant.id) : memberships.find(m => m.organization_id === profile.org_id) || memberships[0]
+    const activeOrg = activeMembership?.organization
 
     if (!activeOrg) {
       return res.status(403).json({ error: 'Your organization is no longer available. Please contact support.' })
     }
 
-    const activeRole = activeMembership?.role || mapProfileRole(profile.role)
+    const activeRole = mapProfileRole(profile.role) === 'SUPERADMIN' ? 'SUPERADMIN' : activeMembership.role
+    if (profile.org_id !== activeOrg.id) await prisma.profile.update({ where: { id: profile.id }, data: { org_id: activeOrg.id } })
 
     const user = { id: profile.id, email: profile.email, token_version: profile.token_version }
     const token = signSession(user)
@@ -201,6 +213,7 @@ router.post('/login', async (req, res, next) => {
       token,
       profile: {
         ...profile,
+        org_id: activeOrg.id,
         role: activeRole,
         organization: activeOrg,
         passwordHash: undefined,
@@ -244,18 +257,7 @@ router.post('/force-logout-user', requireAuth, async (req, res, next) => {
       return res.status(403).json({ error: 'Permission denied. Only Admins and Owners can force log out users.' })
     }
 
-    const targetProfile = await prisma.profile.findFirst({
-      where: {
-        OR: [
-          { id: memberId },
-          { memberships: { some: { id: memberId } } }
-        ]
-      }
-    })
-
-    if (!targetProfile) {
-      return res.status(404).json({ error: 'User member not found' })
-    }
+    const targetProfile = await managedAccount(req, memberId)
 
     await prisma.profile.update({
       where: { id: targetProfile.id },
@@ -277,11 +279,12 @@ router.post('/force-logout-all-users', requireAuth, async (req, res, next) => {
     }
 
     await prisma.profile.updateMany({
+      where: req.isPlatformAdmin ? {} : { memberships: { some: { organization_id: req.organizationId, status: 'ACTIVE' }, every: { OR: [{ organization_id: req.organizationId }, { status: { not: 'ACTIVE' } }] } } },
       data: { token_version: { increment: 1 } },
     })
 
     clearSessionCookie(res)
-    res.json({ ok: true, message: 'All active sessions for ALL users across all devices have been revoked successfully.' })
+    res.json({ ok: true, message: 'Sessions for eligible company accounts have been revoked. Multi-company accounts require platform administration.' })
   } catch (err) {
     next(err)
   }
@@ -314,7 +317,7 @@ router.put('/change-password', requireAuth, async (req, res, next) => {
     const newPasswordHash = await bcrypt.hash(newPassword, 12)
     await prisma.profile.update({
       where: { id: req.user.id },
-      data: { passwordHash: newPasswordHash }
+      data: { passwordHash: newPasswordHash, token_version: { increment: 1 } }
     })
 
     res.json({ ok: true, message: 'Password updated successfully' })
@@ -324,42 +327,11 @@ router.put('/change-password', requireAuth, async (req, res, next) => {
 })
 
 // ── Request Forgot Password Reset Token (Public) ──────────────────────────
-router.post('/forgot-password', async (req, res, next) => {
-  try {
-    const { email } = req.body
-    if (!email) {
-      return res.status(400).json({ error: 'Email is required' })
-    }
-
-    const normalizedEmail = email.trim().toLowerCase()
-    const profile = await prisma.profile.findUnique({
-      where: { email: normalizedEmail }
-    })
-
-    if (!profile) {
-      // To prevent user enumeration security issues, we return a success response even if email is not found
-      return res.json({
-        ok: true,
-        message: 'If an account exists for this email, password reset instructions have been generated.',
-      })
-    }
-
-    const secret = process.env.JWT_SECRET || 'secret'
-    const token = jwt.sign(
-      { sub: profile.id, email: profile.email, purpose: 'reset-password' },
-      secret,
-      { expiresIn: '1h' }
-    )
-
-    res.json({
-      ok: true,
-      message: 'Password reset token generated successfully',
-      token,
-      email: profile.email,
-    })
-  } catch (err) {
-    next(err)
-  }
+router.post('/forgot-password', async (req, res) => {
+  if (typeof req.body.email !== 'string' || !req.body.email.trim()) return res.status(400).json({ error: 'Email is required' })
+  // A mail delivery service is not configured in this application. Never
+  // substitute a public reset secret for a verified recovery channel.
+  return res.json({ ok: true, message: 'Contact your company administrator to recover your account.' })
 })
 
 // ── Reset Password with Token (Public) ────────────────────────────────────
@@ -373,23 +345,13 @@ router.post('/reset-password', async (req, res, next) => {
       return res.status(400).json({ error: 'Password must be at least 6 characters long' })
     }
 
-    const secret = process.env.JWT_SECRET || 'secret'
-    let payload
-    try {
-      payload = jwt.verify(token, secret)
-    } catch {
-      return res.status(400).json({ error: 'Invalid or expired reset token' })
-    }
-
-    if (payload.purpose !== 'reset-password') {
-      return res.status(400).json({ error: 'Invalid reset token' })
-    }
-
+    const subject = jwt.decode(token)?.sub
+    const account = typeof subject === 'string' ? await prisma.profile.findUnique({ where: { id: subject } }) : null
+    if (!account || account.is_active === false) return res.status(400).json({ error: 'Invalid or expired reset token' })
+    try { verifyPasswordResetToken(token, account) } catch { return res.status(400).json({ error: 'Invalid or expired reset token' }) }
     const newPasswordHash = await bcrypt.hash(newPassword, 12)
-    await prisma.profile.update({
-      where: { id: payload.sub },
-      data: { passwordHash: newPasswordHash }
-    })
+    const changed = await prisma.profile.updateMany({ where: { id: account.id, passwordHash: account.passwordHash, token_version: account.token_version }, data: { passwordHash: newPasswordHash, token_version: { increment: 1 } } })
+    if (changed.count !== 1) return res.status(400).json({ error: 'Reset token has already been used' })
 
     res.json({ ok: true, message: 'Password has been reset successfully. You can now log in.' })
   } catch (err) {
@@ -414,23 +376,12 @@ router.post('/admin-reset-password', requireAuth, async (req, res, next) => {
       return res.status(403).json({ error: 'Permission denied. Only Admins and Owners can reset user passwords.' })
     }
 
-    const targetProfile = await prisma.profile.findFirst({
-      where: {
-        OR: [
-          { id: memberId },
-          { memberships: { some: { id: memberId } } }
-        ]
-      }
-    })
-
-    if (!targetProfile) {
-      return res.status(404).json({ error: 'User member not found' })
-    }
-
+    const targetProfile = await managedAccount(req, memberId)
     const newPasswordHash = await bcrypt.hash(newPassword, 12)
+
     await prisma.profile.update({
       where: { id: targetProfile.id },
-      data: { passwordHash: newPasswordHash }
+      data: { passwordHash: newPasswordHash, token_version: { increment: 1 } }
     })
 
     res.json({ ok: true, message: `Password for ${targetProfile.email} has been updated.` })

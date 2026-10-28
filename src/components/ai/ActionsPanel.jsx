@@ -43,7 +43,7 @@ function snippet(text, maxLen = 50) {
  * `streamingEnabled={false}` (AI Governance setting) to reveal the answer
  * in one shot once complete instead — same as the Copilot chat's toggle.
  */
-export default function ActionsPanel({ orgId, userId, initialActionId = 'summarize', initialContent = '', initialContext = '', placeholder, dualInputModes, restrictActionsTo, streamingEnabled = true, onResult, onSavePrompt, source = 'actions_panel' }) {
+export default function ActionsPanel({ orgId, userId, initialActionId = 'summarize', initialContent = '', initialContext = '', placeholder, dualInputModes, restrictActionsTo, streamingEnabled = true, onResult, onSavePrompt, source = 'actions_panel', disabled = false }) {
   const [actionId, setActionId] = useState(initialActionId)
   const [content, setContent] = useState(initialContent)
   const [contentB, setContentB] = useState('')
@@ -74,7 +74,7 @@ export default function ActionsPanel({ orgId, userId, initialActionId = 'summari
   const hasContent = dualMode ? content.trim() && contentB.trim() : !!content.trim()
 
   const run = async (isRetry = false) => {
-    if (!hasContent) return
+    if (!hasContent || disabled || streaming) return
     setStreaming(true)
     setStreamingText('')
     setError(null)
@@ -181,7 +181,7 @@ export default function ActionsPanel({ orgId, userId, initialActionId = 'summari
         {streaming ? (
           <Button variant="danger" leftIcon="square" onClick={stopStreaming}>Stop</Button>
         ) : (
-          <Button variant="primary" leftIcon={current.icon} disabled={!hasContent} onClick={() => run(false)}>
+          <Button variant="primary" leftIcon={current.icon} disabled={!hasContent || disabled} onClick={() => run(false)}>
             Run {current.label}
           </Button>
         )}
