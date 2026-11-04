@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import '../extension/sidepanel/profile-utils.js';
+import { roleHistory, roleHistoryText, roleSuggestions } from './fixtures/extension-role-history.mjs';
 
 const { cleanSkills, mergeSkills, normalize } = globalThis.TalentDeskProfile;
 const noise = ['LIVE', '-', '~', '11,061 · 91 comments', '6,671 · 83 comments', '1,747 · 13 comments', '1,205 · 18 comments', '3,982 · 71 comments', '500+ connections', '2 endorsements', 'Show all 15 skills', 'Endorsed by 3 colleagues', '2 experiences at Example Corp'];
@@ -40,6 +41,22 @@ test('AI-inferred skills require quoted work responsibilities and remain separat
   assert.deepEqual(supportedInferredSkills(suggestions, experience, 'Chief Technology Officer at Unoah'), []);
   assert.deepEqual(supportedInferredSkills(suggestions, experience, evidence, ['Contract Negotiation']).map(s => s.skill), ['Partnership Marketing']);
   assert.deepEqual(normalize({ inferred_skills: accepted }).inferred_skills, accepted);
+});
+
+test('reported seven-role capture supports labeled role suggestions without fabricated technology skills', () => {
+  const { supportedInferredSkills } = globalThis.TalentDeskProfile;
+  const suggestions = [
+    ...roleSuggestions,
+    { skill: 'AWS', basis: 'role', evidence: 'Chief Technology Officer' },
+    { skill: 'Python', basis: 'role', evidence: 'Chief Technology Officer' },
+    { skill: 'IT Management', basis: 'role', evidence: 'Information Technology Manager' },
+    { skill: 'Recruitment', basis: 'role', evidence: 'Recruitment Manager' },
+    { skill: 'Program Management', basis: 'role', evidence: 'Tech Mahindra' },
+  ];
+  assert.deepEqual(supportedInferredSkills(suggestions, roleHistory, roleHistoryText), roleSuggestions);
+  assert.deepEqual(supportedInferredSkills(roleSuggestions, [], roleHistoryText), []);
+  assert.deepEqual(supportedInferredSkills(roleSuggestions, roleHistory, 'Unrelated profile'), []);
+  assert.equal(supportedInferredSkills(roleSuggestions, roleHistory, roleHistoryText, ['Project Management']).length, 7);
 });
 
 test('LinkedIn capture distinguishes Skills from nested work, education and activity cards', async t => {

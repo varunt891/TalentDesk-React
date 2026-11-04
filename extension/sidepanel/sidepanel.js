@@ -8,12 +8,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   const resumeFile = document.getElementById('resumeFile');
   const parseTextBtn = document.getElementById('parseTextBtn');
   const skillsInput = document.getElementById('skillsInput');
+  const skillsHint = document.getElementById('skillsInferenceHint');
   let capturing = false;
   let saving = false;
   let imported = false;
   let captureRevision = 0;
   let operationRevision = 0;
   let capturedTabId = null;
+  function showSkillsMessage(message) {
+    if (operationRevision !== captureRevision) return;
+    skillsHint.textContent = message;
+    skillsHint.classList.toggle('hidden', !message);
+  }
   const apiUrlInput = document.getElementById('apiUrl');
   const orgIdInput = document.getElementById('orgId');
   const appUrlInput = document.getElementById('appUrl');
@@ -391,9 +397,10 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
           renderProfileCard(domProf);
           if (operationRevision === captureRevision && domProf.source === 'LinkedIn' && !normalize(domProf).skills.length &&
-            domProf.experience?.some(entry => typeof entry.description === 'string' && entry.description.trim().length >= 20)) {
+            domProf.experience?.some(entry => typeof entry.role === 'string' && entry.role.trim().length >= 2)) {
             // Reuse the captured profile: one AI pass, without scrolling again.
             // Keep the DOM preview available if AI is unavailable or restricted.
+            showSkillsMessage('AI is checking the captured work history for skill suggestions…');
             await extractWithGeminiAI(domProf);
           }
         } else {
@@ -607,7 +614,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (listedSkills.length) fullResume += `SKILLS:\n${listedSkills.join(', ')}\n`;
                 if (aiProf.inferred_skills.length) {
                   fullResume += '\nAI-INFERRED SKILLS (suggestions from experience; review required):\n';
-                  aiProf.inferred_skills.forEach(item => { fullResume += `- ${item.skill} — Evidence: ${item.evidence}\n`; });
+                  aiProf.inferred_skills.forEach(item => { fullResume += `- ${item.skill} — ${item.basis === 'role' ? 'Role-based suggestion; confirm with candidate. ' : ''}Evidence: ${item.evidence}\n`; });
                 }
               }
 
@@ -616,18 +623,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
               showToast('Profile extracted. Review the detected fields before saving.', 'success');
               renderProfileCard(aiProf);
+              if (!aiProf.skills.length) showSkillsMessage('AI found no supported skills in the captured text. Add more work details or enter skills manually.');
             } else {
               hideScanning();
               showToast(aiJson.error || 'AI parsing returned unexpected format', 'error');
+              showSkillsMessage('AI returned no usable profile. Your captured details are retained; try AI Smart Parse again.');
             }
           } else {
             const errJson = await aiRes.json().catch(() => ({}));
             hideScanning();
             showToast(errJson.error || 'AI endpoint error — try again', 'error');
+            showSkillsMessage(`Skills could not be generated: ${errJson.error || `AI request failed (${aiRes.status})`}`);
           }
         } catch (fetchErr) {
           hideScanning();
           showToast('AI request failed: ' + fetchErr.message, 'error');
+          showSkillsMessage(`Skills could not be generated: ${fetchErr.message}`);
         }
 
         aiParseBtn.disabled = false;
@@ -636,6 +647,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (err) {
       hideScanning();
       showToast('AI Parsing failed: ' + err.message, 'error');
+      showSkillsMessage(`Skills could not be generated: ${err.message}`);
       aiParseBtn.disabled = false;
       aiParseBtn.innerHTML = '🤖 AI Smart Parse';
     }
@@ -1012,13 +1024,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const skills = profile.skills;
     skillsInput.value = skills.join(', ');
     const inferredSkills = new Map(profile.inferred_skills.map(item => [item.skill.toLowerCase(), item]));
-    document.getElementById('skillsInferenceHint').classList.toggle('hidden', inferredSkills.size === 0);
+    const roleBased = profile.inferred_skills.some(item => item.basis === 'role');
+    showSkillsMessage(inferredSkills.size ? (roleBased ? 'Includes role-based AI suggestions, not verified skills. Confirm with the candidate before using.' : 'AI-inferred skills are suggestions from work experience. Review or edit before importing.') : skills.length ? '' : 'No skills captured. AI needs work history to suggest skills, or you can enter them manually.');
     skills.forEach(skill => {
       const tag = document.createElement('span');
       tag.className = 'tag';
       const inferred = inferredSkills.get(skill.toLowerCase());
-      tag.textContent = inferred ? `${skill} · AI inferred` : skill;
-      if (inferred) tag.title = `Suggested from experience: ${inferred.evidence}`;
+      tag.textContent = inferred ? `${skill} · ${inferred.basis === 'role' ? 'AI role-based' : 'AI inferred'}` : skill;
+      if (inferred) tag.title = `Suggested from ${inferred.basis === 'role' ? 'job title (unverified)' : 'experience'}: ${inferred.evidence}`;
       candSkills.appendChild(tag);
     });
 

@@ -30,17 +30,30 @@ globalThis.TalentDeskProfile = (() => {
     const compact = value => text(value).replace(/\s+/g, ' ').trim().toLowerCase();
     const evidence = compact(evidenceText);
     const descriptions = (Array.isArray(experience) ? experience : []).map(e => compact(e?.description)).filter(Boolean);
+    const roles = (Array.isArray(experience) ? experience : []).map(e => compact(e?.role)).filter(Boolean);
+    const roleWords = value => compact(value)
+      .replace(/\bcto\b/g, 'chief technology officer')
+      .replace(/\bpmo\b/g, 'project program management office')
+      .replace(/\bit\b/g, 'information technology')
+      .replace(/\b(manager|managing|officer)\b/g, 'management')
+      .replace(/\bchief\b/g, 'leadership')
+      .replace(/\bstrategic\b/g, 'strategy')
+      .split(/[^\p{L}\p{N}]+/u).filter(word => word && !['and', 'of', 'the', 'in', 'for'].includes(word));
     const seen = new Set(cleanSkills(explicitSkills).map(skill => skill.toLowerCase()));
     const supported = [];
     for (const item of Array.isArray(items) ? items : []) {
       const skill = cleanSkills([item?.skill])[0];
       const quote = compact(item?.evidence);
-      // A title or employer alone is not enough. Require an actual quoted
-      // responsibility from this candidate's captured work descriptions.
-      if (!skill || seen.has(skill.toLowerCase()) || quote.length < 20 || quote.length > 600 ||
-        !evidence.includes(quote) || !descriptions.some(description => description.includes(quote))) continue;
+      const basis = item?.basis === 'role' ? 'role' : 'responsibilities';
+      if (!skill || seen.has(skill.toLowerCase()) || quote.length > 600 || !quote || !evidence.includes(quote)) continue;
+      if (basis === 'role') {
+        // Role-based suggestions are restricted to the role's actual domain.
+        // A CTO title must not justify an unrelated tool such as Python or AWS.
+        const words = roleWords(skill);
+        if (!roles.includes(quote) || !words.length || !words.every(word => roleWords(quote).includes(word))) continue;
+      } else if (quote.length < 20 || !descriptions.some(description => description.includes(quote))) continue;
       seen.add(skill.toLowerCase());
-      supported.push({ skill, evidence: text(item.evidence).replace(/\s+/g, ' ') });
+      supported.push({ skill, evidence: text(item.evidence).replace(/\s+/g, ' '), basis });
       if (supported.length === 10) break;
     }
     return supported;
@@ -63,7 +76,7 @@ globalThis.TalentDeskProfile = (() => {
       summary: text(p.summary), resume_text: text(p.resume_text), rawPageText: text(p.rawPageText),
       sourceUrl: safeUrl(p.sourceUrl || p.linkedin), avatarUrl: safeUrl(p.avatarUrl),
       skills: cleanSkills(p.skills),
-      inferred_skills: list(p.inferred_skills).map(item => ({ skill: text(item.skill), evidence: text(item.evidence) })),
+      inferred_skills: list(p.inferred_skills).map(item => ({ skill: text(item.skill), evidence: text(item.evidence), basis: item.basis === 'role' ? 'role' : 'responsibilities' })),
       experience: list(Array.isArray(p.experience) ? p.experience : p.experience_history).map(e => ({ role: text(e.role) || text(e.title), company: text(e.company), dates: text(e.dates), location: text(e.location), description: text(e.description) })),
       education: list(p.education).map(e => ({ school: text(e.school), degree: text(e.degree), dates: text(e.dates) })),
     };

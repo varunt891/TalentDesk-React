@@ -85,6 +85,8 @@ test('recruiting writes preserve notes and enforce existing tenant/owner scope; 
     assert.equal(toolId, 'web_profile_parser')
     assert.match(prompt, /inferred_skills: Up to 10/)
     assert.match(prompt, /exact 20–600 character quote/)
+    assert.match(prompt, /basis="role"/)
+    assert.match(prompt, /descriptions are absent or sparse/)
     assert.match(prompt, /Negotiate supplier agreements and monitor vendor performance/)
     return { text: JSON.stringify({ name: 'Alex', skills: [], inferred_skills: [{ skill: 'Contract Negotiation', evidence: responsibility }], experience: [{ role: 'Growth Manager', company: 'Example', description: responsibility }] }), provider: 'test', model: 'test' }
   })

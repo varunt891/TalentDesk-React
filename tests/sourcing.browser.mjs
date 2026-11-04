@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
+import { roleHistory, roleHistoryText, roleSuggestions } from './fixtures/extension-role-history.mjs';
 
 const base = process.env.SOURCING_TEST_URL || 'http://127.0.0.1:5174';
 const browser = await chromium.launch({ headless: true });
@@ -294,8 +295,30 @@ try {
   assert.equal(await page.locator('#candName').inputValue(), 'Pallavi Vinothkumar');
   assert.equal(await page.locator('#previewCard').isVisible(), true);
   assert.equal(await page.locator('#importBtn').isDisabled(), false, 'Failed AI must preserve the captured profile');
-  assert.equal(await page.locator('#skillsInferenceHint').isVisible(), false);
+  assert.equal(await page.locator('#skillsInferenceHint').isVisible(), true);
+  assert.match(await page.locator('#skillsInferenceHint').textContent(), /AI temporarily unavailable/);
   aiUnavailable = false;
+
+  const roleOnlyProfile = { name: 'Role-only Candidate', source: 'LinkedIn', sourceUrl: 'https://www.linkedin.com/in/role-fixture/', title: 'Chief Technology Officer', company: 'Unoah', skills: [], experience: roleHistory, rawPageText: `Role-only Candidate\nWORK EXPERIENCE\n${roleHistoryText}` };
+  aiResponseProfile = { ...roleOnlyProfile, inferred_skills: [...roleSuggestions, { skill: 'AWS', basis: 'role', evidence: 'Chief Technology Officer' }] };
+  await page.evaluate(profile => { window.fixtureProfile = profile; window.deepFixtureProfile = profile; window.captureRequests = []; }, roleOnlyProfile);
+  const beforeRoleInference = aiRequests;
+  await page.locator('#scrapeBtn').click();
+  await page.waitForFunction(() => document.querySelector('#skillsInput').value.includes('IT Management') && !document.querySelector('#aiParseBtn').disabled);
+  assert.equal(aiRequests, beforeRoleInference + 1, 'Roles without responsibility descriptions must still trigger inference');
+  assert.deepEqual(await page.evaluate(() => window.captureRequests.map(r => r.deepScan)), [false, true]);
+  assert.deepEqual(await page.locator('#candSkills .tag').allTextContents(), roleSuggestions.map(s => `${s.skill} · AI role-based`));
+  assert.match(await page.locator('#skillsInferenceHint').textContent(), /role-based AI suggestions, not verified skills/);
+  assert.equal(await page.locator('#candExperience > div').count(), 7);
+  await page.locator('#importBtn').click();
+  await page.waitForFunction(() => document.querySelector('#importBtn').textContent === 'Imported');
+  assert.deepEqual(saved.at(-1).skills, roleSuggestions.map(s => s.skill));
+  assert.match(saved.at(-1).resume_text, /Role-based suggestion; confirm with candidate\. Evidence: Chief Technology Officer/);
+  assert.doesNotMatch(saved.at(-1).resume_text, /\bAWS\b/);
+  aiResponseProfile = { ...roleOnlyProfile, inferred_skills: [] };
+  await page.locator('#scrapeBtn').click();
+  await page.waitForFunction(() => document.querySelector('#skillsInferenceHint').textContent.includes('AI found no supported skills'));
+  assert.equal(await page.locator('#skillsInput').inputValue(), '');
   assert.deepEqual(errors, []);
   await grouped.close();
   console.log('PASS: sourcing flows, responsive widths, LinkedIn profile-section parsing, duration dates, AI/DOM priority, and footer/activity exclusion.');
