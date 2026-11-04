@@ -9,6 +9,8 @@ page.on('pageerror', error => errors.push(error.message));
 const saved = [];
 const profile = { name: 'Avery Patel', title: 'Software Engineer', email: 'avery@example.org', skills: [], rawPageText: 'Avery Patel\nSoftware Engineer\nWORK EXPERIENCE\nBuilt reliable services for Example Company.', resume_text: 'Avery Patel\nFull employment history and education retained.', sourceUrl: 'https://example.org/avery', experience: [{ role: '<img src=x onerror=alert(1)>', company: 'Example', description: 'Complete experience description' }] };
 let aiResponseProfile = profile;
+let aiRequests = 0;
+let aiUnavailable = false;
 await page.addInitScript(profile => {
   window.fixtureProfile = profile;
   window.captureRequests = [];
@@ -31,7 +33,11 @@ await page.route('**/api/**', async route => {
   if (url.includes('/data/candidates') && route.request().method() === 'POST') {
     const body = route.request().postDataJSON(); saved.push(body); data = { data: { id: 'saved', ...body } };
   }
-  if (url.includes('/parse-web-profile')) data = { success: true, profile: aiResponseProfile };
+  if (url.includes('/parse-web-profile')) {
+    aiRequests++;
+    if (aiUnavailable) return route.fulfill({ status: 503, json: { error: 'AI temporarily unavailable' } });
+    data = { success: true, profile: aiResponseProfile };
+  }
   if (url.includes('/upload/resume')) data = { success: true, profile: { first_name: 'Jordan', last_name: 'Lee', skills: ['SQL'] }, extractedText: 'Jordan Lee complete document text', resume_file_key: 'resumes/example', resume_file_name: 'resume.docx', resume_file_size: 123 };
   await route.fulfill({ json: data });
 });
@@ -249,6 +255,47 @@ try {
   assert.match(saved.at(-1).resume_text, /Key Account Manager at Abacus Middle East/);
   assert.doesNotMatch(saved.at(-1).resume_text, /Key Account Manager at Ignyte|Manage vendor partnerships\. Abacus Middle East/);
   assert.deepEqual(saved.at(-1).skills, ['Vendor Management', 'Strategic Partnerships']);
+
+  // Empty LinkedIn skills now trigger one automatic AI pass from experience,
+  // preserving the source records and marking inferred suggestions on import.
+  const responsibility = 'Negotiate supplier agreements and monitor vendor performance.';
+  aiResponseProfile = {
+    ...mixedProfile, skills: [], inferred_skills: [
+      { skill: 'Contract Negotiation', evidence: responsibility },
+      { skill: 'AWS', evidence: 'Deployed applications on AWS infrastructure.' },
+    ],
+  };
+  await page.evaluate(({ profile, responsibility }) => {
+    const inferredFixture = { ...profile, skills: [], rawPageText: `${profile.rawPageText}\n${responsibility}`, experience: profile.experience.map((e, i) => i === 0 ? { ...e, description: responsibility } : e) };
+    window.fixtureProfile = inferredFixture;
+    window.deepFixtureProfile = inferredFixture;
+    window.captureRequests = [];
+  }, { profile: mixedProfile, responsibility });
+  const beforeAuto = aiRequests;
+  await page.locator('#scrapeBtn').click();
+  await page.waitForFunction(() => document.querySelector('#skillsInput').value === 'Contract Negotiation' && !document.querySelector('#aiParseBtn').disabled);
+  assert.equal(aiRequests, beforeAuto + 1);
+  assert.deepEqual(await page.evaluate(() => window.captureRequests.map(r => r.deepScan)), [false, true], 'Inference reuses the completed deep scan');
+  assert.deepEqual(await page.locator('#candSkills .tag').allTextContents(), ['Contract Negotiation · AI inferred']);
+  assert.match(await page.locator('#candSkills .tag').getAttribute('title'), /Negotiate supplier agreements/);
+  assert.equal(await page.locator('#skillsInferenceHint').isVisible(), true);
+  await page.locator('#importBtn').click();
+  await page.waitForFunction(() => document.querySelector('#importBtn').textContent === 'Imported');
+  assert.deepEqual(saved.at(-1).skills, ['Contract Negotiation']);
+  assert.match(saved.at(-1).resume_text, /AI-INFERRED SKILLS \(suggestions from experience; review required\)/);
+  assert.match(saved.at(-1).resume_text, /Evidence: Negotiate supplier agreements/);
+  assert.doesNotMatch(saved.at(-1).resume_text, /\bAWS\b/);
+
+  aiUnavailable = true;
+  const beforeFailure = aiRequests;
+  await page.locator('#scrapeBtn').click();
+  await page.waitForFunction(() => !document.querySelector('#aiParseBtn').disabled && document.querySelector('#skillsInput').value === '');
+  assert.equal(aiRequests, beforeFailure + 1);
+  assert.equal(await page.locator('#candName').inputValue(), 'Pallavi Vinothkumar');
+  assert.equal(await page.locator('#previewCard').isVisible(), true);
+  assert.equal(await page.locator('#importBtn').isDisabled(), false, 'Failed AI must preserve the captured profile');
+  assert.equal(await page.locator('#skillsInferenceHint').isVisible(), false);
+  aiUnavailable = false;
   assert.deepEqual(errors, []);
   await grouped.close();
   console.log('PASS: sourcing flows, responsive widths, LinkedIn profile-section parsing, duration dates, AI/DOM priority, and footer/activity exclusion.');

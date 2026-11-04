@@ -1,7 +1,7 @@
 // TalentDesk Side Panel Controller Script (Hybrid DOM + Gemini AI Parser)
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const { normalize, safeUrl, escapeHtml, mergeSkills } = globalThis.TalentDeskProfile;
+  const { normalize, safeUrl, escapeHtml, mergeSkills, supportedInferredSkills } = globalThis.TalentDeskProfile;
   const panelWindow = await chrome.windows.getCurrent();
   const activeTab = async () => (await chrome.tabs.query({ active: true, windowId: panelWindow.id }))[0];
   const captureStatus = document.getElementById('captureStatus');
@@ -390,6 +390,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             return extractActiveTabProfile(true);
           }
           renderProfileCard(domProf);
+          if (operationRevision === captureRevision && domProf.source === 'LinkedIn' && !normalize(domProf).skills.length &&
+            domProf.experience?.some(entry => typeof entry.description === 'string' && entry.description.trim().length >= 20)) {
+            // Reuse the captured profile: one AI pass, without scrolling again.
+            // Keep the DOM preview available if AI is unavailable or restricted.
+            await extractWithGeminiAI(domProf);
+          }
         } else {
           // DOM failed or returned empty — fall back to AI for all extraction modes
           await extractWithGeminiAI();
@@ -418,7 +424,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  async function extractWithGeminiAI() {
+  async function extractWithGeminiAI(capturedProfile = null) {
     aiParseBtn.disabled = true;
     aiParseBtn.innerHTML = '🤖 AI Extracting...';
     showScanning(
@@ -441,7 +447,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       // Send deepScan to content script to scroll & extract DOM data
-      const response = await readTab(tab, true).catch(() => null);
+      const response = capturedProfile ? { success: true, profile: capturedProfile } : await readTab(tab, true).catch(() => null);
       {
         // Handle chrome.runtime.lastError quietly (e.g. tab refreshed, content script reloaded)
         if (chrome.runtime.lastError) {
@@ -560,6 +566,8 @@ document.addEventListener('DOMContentLoaded', async () => {
               // Trust real skill labels, not social counters captured by old selectors.
               // AI fallback must be supported by the candidate's cleaned profile text.
               aiProf.skills = mergeSkills(aiProf.skills, domProf.skills, { isLinkedIn: isLinkedInProfile, evidenceText: aiInputText });
+              aiProf.inferred_skills = supportedInferredSkills(aiProf.inferred_skills, aiProf.experience, aiInputText, aiProf.skills);
+              aiProf.skills = [...aiProf.skills, ...aiProf.inferred_skills.map(item => item.skill)];
 
               // Build full multi-line resume text for ABOUT / SUMMARY textarea
               let fullResume = `==================================================\n`;
@@ -594,7 +602,13 @@ document.addEventListener('DOMContentLoaded', async () => {
               }
 
               if (aiProf.skills && aiProf.skills.length > 0) {
-                fullResume += `SKILLS:\n${aiProf.skills.join(', ')}\n`;
+                const inferredNames = new Set(aiProf.inferred_skills.map(item => item.skill.toLowerCase()));
+                const listedSkills = aiProf.skills.filter(skill => !inferredNames.has(skill.toLowerCase()));
+                if (listedSkills.length) fullResume += `SKILLS:\n${listedSkills.join(', ')}\n`;
+                if (aiProf.inferred_skills.length) {
+                  fullResume += '\nAI-INFERRED SKILLS (suggestions from experience; review required):\n';
+                  aiProf.inferred_skills.forEach(item => { fullResume += `- ${item.skill} — Evidence: ${item.evidence}\n`; });
+                }
               }
 
               aiProf.summary = fullResume;
@@ -997,10 +1011,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     candSkills.innerHTML = '';
     const skills = profile.skills;
     skillsInput.value = skills.join(', ');
+    const inferredSkills = new Map(profile.inferred_skills.map(item => [item.skill.toLowerCase(), item]));
+    document.getElementById('skillsInferenceHint').classList.toggle('hidden', inferredSkills.size === 0);
     skills.forEach(skill => {
       const tag = document.createElement('span');
       tag.className = 'tag';
-      tag.textContent = skill;
+      const inferred = inferredSkills.get(skill.toLowerCase());
+      tag.textContent = inferred ? `${skill} · AI inferred` : skill;
+      if (inferred) tag.title = `Suggested from experience: ${inferred.evidence}`;
       candSkills.appendChild(tag);
     });
 

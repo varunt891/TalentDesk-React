@@ -80,5 +80,19 @@ test('recruiting writes preserve notes and enforce existing tenant/owner scope; 
   const output = await streamed.text()
   assert.match(output, /Reviewed recruiting evidence/)
   assert.match(output, /"done":true/)
+  const responsibility = 'Negotiate supplier agreements and monitor vendor performance.'
+  const parseMock = t.mock.method(aiService, 'generate', async ({ prompt, toolId }) => {
+    assert.equal(toolId, 'web_profile_parser')
+    assert.match(prompt, /inferred_skills: Up to 10/)
+    assert.match(prompt, /exact 20–600 character quote/)
+    assert.match(prompt, /Negotiate supplier agreements and monitor vendor performance/)
+    return { text: JSON.stringify({ name: 'Alex', skills: [], inferred_skills: [{ skill: 'Contract Negotiation', evidence: responsibility }], experience: [{ role: 'Growth Manager', company: 'Example', description: responsibility }] }), provider: 'test', model: 'test' }
+  })
+  const parsedResponse = await fetch(`${origin}/api/ai/parse-web-profile`, { method: 'POST', headers, body: JSON.stringify({ pageText: `Alex\nExperience\nGrowth Manager at Example\n${responsibility}` }) })
+  assert.equal(parsedResponse.status, 200)
+  const parsedProfile = (await parsedResponse.json()).profile
+  assert.deepEqual(parsedProfile.skills, [])
+  assert.deepEqual(parsedProfile.inferred_skills, [{ skill: 'Contract Negotiation', evidence: responsibility }])
+  assert.equal(parseMock.mock.calls.length, 1)
   await new Promise(resolve => setTimeout(resolve, 100))
 })

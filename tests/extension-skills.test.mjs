@@ -20,6 +20,28 @@ test('AI fallback discards dirty DOM values and requires candidate evidence on L
   assert.deepEqual(mergeSkills(['Made-up skill'], ['SQL', 'sql', ...noise], { isLinkedIn: true, evidenceText: '' }), ['sql']);
 });
 
+test('AI-inferred skills require quoted work responsibilities and remain separate from explicit skills', () => {
+  const { supportedInferredSkills } = globalThis.TalentDeskProfile;
+  const description = 'Negotiate supplier agreements and monitor vendor performance. Lead joint campaigns with strategic partners.';
+  const experience = [{ role: 'Growth Manager', company: 'Example', description }];
+  const evidence = `Experience\nGrowth Manager\n${description}`;
+  const suggestions = [
+    { skill: 'Contract Negotiation', evidence: 'Negotiate supplier agreements and monitor vendor performance.' },
+    { skill: 'Partnership Marketing', evidence: 'Lead joint campaigns with strategic partners.' },
+    { skill: 'contract negotiation', evidence: 'Negotiate supplier agreements and monitor vendor performance.' },
+    { skill: 'AWS', evidence: 'Deployed applications on AWS infrastructure.' },
+    { skill: 'Leadership', evidence: 'Growth Manager' },
+    { skill: 'LIVE', evidence: 'Negotiate supplier agreements and monitor vendor performance.' },
+  ];
+  const accepted = supportedInferredSkills(suggestions, experience, evidence);
+  assert.deepEqual(accepted.map(s => s.skill), ['Contract Negotiation', 'Partnership Marketing']);
+  assert.equal(accepted[0].evidence, suggestions[0].evidence);
+  assert.deepEqual(supportedInferredSkills(suggestions, [], evidence), []);
+  assert.deepEqual(supportedInferredSkills(suggestions, experience, 'Chief Technology Officer at Unoah'), []);
+  assert.deepEqual(supportedInferredSkills(suggestions, experience, evidence, ['Contract Negotiation']).map(s => s.skill), ['Partnership Marketing']);
+  assert.deepEqual(normalize({ inferred_skills: accepted }).inferred_skills, accepted);
+});
+
 test('LinkedIn capture distinguishes Skills from nested work, education and activity cards', async t => {
   const browser = await chromium.launch({ headless: true }); t.after(() => browser.close());
   const page = await browser.newPage();
