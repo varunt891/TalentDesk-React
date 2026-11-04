@@ -1,7 +1,7 @@
 // TalentDesk Side Panel Controller Script (Hybrid DOM + Gemini AI Parser)
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const { normalize, safeUrl, escapeHtml } = globalThis.TalentDeskProfile;
+  const { normalize, safeUrl, escapeHtml, mergeSkills } = globalThis.TalentDeskProfile;
   const panelWindow = await chrome.windows.getCurrent();
   const activeTab = async () => (await chrome.tabs.query({ active: true, windowId: panelWindow.id }))[0];
   const captureStatus = document.getElementById('captureStatus');
@@ -111,7 +111,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     capturedTabId = tab.id;
     try { return await chrome.tabs.sendMessage(tab.id, { type: 'PARSE_PROFILE', deepScan }); }
     catch {
-      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['sidepanel/profile-utils.js', 'content.js'] });
       return chrome.tabs.sendMessage(tab.id, { type: 'PARSE_PROFILE', deepScan });
     }
   }
@@ -556,11 +556,9 @@ document.addEventListener('DOMContentLoaded', async () => {
               const domEdu = Array.isArray(domProf.education) ? domProf.education : [];
               aiProf.education = isLinkedInProfile && domEdu.length > 0 ? domEdu : (aiEdu.length > 0 ? aiEdu : domEdu);
 
-              // Skills: merge AI + DOM skills for maximum coverage
-              const aiSkills = Array.isArray(aiProf.skills) ? aiProf.skills : [];
-              const domSkills = Array.isArray(domProf.skills) ? domProf.skills : [];
-              const mergedSkills = [...new Set([...aiSkills, ...domSkills])];
-              aiProf.skills = isLinkedInProfile && domSkills.length > 0 ? [...new Set(domSkills)] : mergedSkills;
+              // Trust real skill labels, not social counters captured by old selectors.
+              // AI fallback must be supported by the candidate's cleaned profile text.
+              aiProf.skills = mergeSkills(aiProf.skills, domProf.skills, { isLinkedIn: isLinkedInProfile, evidenceText: aiInputText });
 
               // Build full multi-line resume text for ABOUT / SUMMARY textarea
               let fullResume = `==================================================\n`;

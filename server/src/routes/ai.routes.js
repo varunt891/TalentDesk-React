@@ -176,7 +176,7 @@ Rules:
 - company: Current or latest company name (e.g. "Donovan Corporation", "Microsoft")
 - location: Candidate City, State, Country location (e.g. "Chicago, IL")
 - summary: Detailed candidate bio summary or overview
-- skills: Array of top technical or domain skills
+- skills: Array of technical or professional skill names explicitly supported by the candidate's Skills section or resume/work descriptions. Never infer skills from a job title alone. Exclude LIVE labels, activity/post text, reaction/comment/view/follower counts, endorsement counts, employers and navigation. Return [] when no supported skills are present.
 - experience: Array of official past work roles [{ role, company, dates, location, description }]. CRITICAL: Extract ONLY official work experience roles listed in the candidate's Experience/Employment History section. Do NOT extract post comments, social feed updates, congratulatory messages, "People also viewed" sidebar profiles, connection badges (like "• 2nd"), or call-to-action buttons (like "Book an appointment")!
 - education: Array of degrees/schools [{ school, degree, dates }]
 

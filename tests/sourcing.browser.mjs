@@ -90,6 +90,31 @@ try {
   await page.waitForFunction(() => document.querySelector('#importBtn').textContent === 'Imported');
   assert.equal(saved[1].resume_file_key, 'resumes/example');
   assert.equal(saved[1].linkedin, null);
+
+  // Reproduce the reported LinkedIn activity counters, including an older
+  // content-script result feeding bad DOM skills into AI Smart Parse.
+  aiResponseProfile = { name: 'Sri Krishna Das', skills: ['Brand Marketing', 'Invented Skill', 'LIVE', '11,061 · 91 comments'] };
+  await page.evaluate(() => {
+    window.fixtureProfile = {
+      name: 'Sri Krishna Das', title: 'Brand Ambassador', company: 'ONPASSIVE', source: 'LinkedIn',
+      sourceUrl: 'https://www.linkedin.com/in/skills-fixture/',
+      rawPageText: 'Sri Krishna Das\nBrand Ambassador\nExperience\nONPASSIVE\nSkills\nBrand Marketing',
+      skills: ['LIVE', '-', '11,061 · 91 comments', '6,671 · 83 comments', '1,747 · 13 comments', '1,205 · 18 comments', '3,982 · 71 comments'],
+      experience: [], education: []
+    };
+  });
+  await page.locator('#aiParseBtn').click();
+  await page.waitForFunction(() => document.querySelector('#skillsInput').value === 'Brand Marketing');
+  assert.deepEqual(await page.locator('#candSkills .tag').allTextContents(), ['Brand Marketing']);
+  assert.doesNotMatch(await page.locator('#candSummary').inputValue(), /LIVE|comments|Invented Skill/);
+  await page.locator('#importBtn').click();
+  await page.waitForFunction(() => document.querySelector('#importBtn').textContent === 'Imported');
+  assert.deepEqual(saved[2].skills, ['Brand Marketing']);
+  aiResponseProfile = { name: 'Sri Krishna Das', skills: ['Digital Marketing'] };
+  await page.evaluate(() => { window.fixtureProfile.rawPageText = 'Sri Krishna Das\nBrand Ambassador\nExperience\nONPASSIVE'; });
+  await page.locator('#aiParseBtn').click();
+  await page.waitForFunction(() => document.querySelector('#skillsInput').value === '' && !document.querySelector('#aiParseBtn').disabled);
+  assert.equal(await page.locator('#candSkills .tag').count(), 0, 'No skills evidence means an empty list, not guessed skills');
   for (const width of [320, 380, 768, 1280]) {
     await page.setViewportSize({ width, height: 850 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `Overflow at ${width}`);
@@ -108,6 +133,7 @@ try {
     window.captureListeners = new Set();
     window.chrome = { runtime: { onMessage: { addListener: fn => window.captureListeners.add(fn), removeListener: fn => window.captureListeners.delete(fn) } } };
   });
+  await source.addScriptTag({ path: 'extension/sidepanel/profile-utils.js' });
   await source.addScriptTag({ path: 'extension/content.js' });
   await source.addScriptTag({ path: 'extension/content.js' });
   const extracted = await source.evaluate(() => ({ profile: extractProfileData(), listeners: window.captureListeners.size, roles: cleanExperienceArray([{ role: 'C# Developer', company: 'Baltimore Software' }]) }));
@@ -141,6 +167,7 @@ try {
       </main></body></html>`
   }));
   await linkedin.goto('https://www.linkedin.com/in/alok-juneja/');
+  await linkedin.addScriptTag({ path: 'extension/sidepanel/profile-utils.js' });
   await linkedin.addScriptTag({ path: 'extension/content.js' });
   const linkedinProfile = await linkedin.evaluate(() => extractProfileData());
   assert.equal(linkedinProfile.name, 'Dr. Alok Juneja');
@@ -177,6 +204,7 @@ try {
       </main></body></html>`
   }));
   await grouped.goto('https://www.linkedin.com/in/adriana-rivera/');
+  await grouped.addScriptTag({ path: 'extension/sidepanel/profile-utils.js' });
   await grouped.addScriptTag({ path: 'extension/content.js' });
   const groupedProfile = await grouped.evaluate(() => extractProfileData());
   assert.deepEqual(groupedProfile.experience.map(({ role, company }) => [role, company]), [

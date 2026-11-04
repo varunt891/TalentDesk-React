@@ -147,11 +147,20 @@ function captureLinkedInProfileText(mainContent) {
   const cleanClone = element => {
     const clone = element.cloneNode(true);
     clone.querySelectorAll(noiseSelector).forEach(node => node.remove());
+    clone.querySelectorAll('h2, h3').forEach(heading => {
+      const label = nodeText(heading.querySelector('[aria-hidden="true"]') || heading).toLowerCase();
+      if (/^(activity|featured|posts|recommendations|interests|people also viewed)$/.test(label)) {
+        const card = heading.closest('section, div.artdeco-card, div.pv-profile-card');
+        if (card && card !== clone) card.remove();
+      }
+    });
     return clone;
   };
 
   const append = element => {
     if (!element || seen.has(element)) return;
+    const heading = element.querySelector('h2');
+    if (heading && /^(activity|featured|posts|recommendations|interests)$/i.test(nodeText(heading.querySelector('[aria-hidden="true"]') || heading))) return;
     seen.add(element);
     const clone = cleanClone(element);
     const text = nodeText(clone);
@@ -169,52 +178,59 @@ function captureLinkedInProfileText(mainContent) {
 }
 
 function getSectionByHeader(keywords) {
-  // 1. Exact ID anchor search (<div id="experience">, <div id="education">, etc.)
+  const root = document.querySelector('main.scaffold-layout__main, main, .profile-detail') || document.body;
+  const cardSelector = 'section, div.artdeco-card, div.pv-profile-card';
+  const aliases = { experience: ['experience', 'work experience'], education: ['education', 'academic education'] };
+  const labels = keywords.flatMap(keyword => aliases[keyword] || [keyword]);
+  const matches = heading => {
+    const label = nodeText(heading.querySelector('[aria-hidden="true"]') || heading).toLowerCase().replace(/\s+/g, ' ').trim();
+    return labels.some(expected => label === expected || label === `${expected} ${expected}` || label === `${expected}${expected}`);
+  };
+  const isNoise = card => !!card.closest('[id*="activity" i], [class*="activity" i], [id*="featured" i], [class*="featured" i], [class*="feed-shared" i], [class*="recommendation" i], aside');
+
+  // Exact section anchors are strongest, but must belong to this profile.
   for (const kw of keywords) {
     const anchor = document.getElementById(kw) || document.querySelector(`[id="${kw}"]`) || document.querySelector(`a[name="${kw}"]`);
-    if (anchor) {
-      let cur = anchor;
-      while (cur && cur !== document.body) {
-        if (cur.tagName === 'SECTION' || (cur.classList && (cur.classList.contains('artdeco-card') || cur.classList.contains('pv-profile-card')))) {
-          return cur;
-        }
-        cur = cur.parentElement;
-      }
-      if (anchor.parentElement) return anchor.parentElement;
-    }
+    if (!anchor || !root.contains(anchor)) continue;
+    const card = anchor.closest(cardSelector);
+    if (card && root.contains(card) && !isNoise(card)) return card;
   }
 
-  // 2. Card container search using firstWord matching to handle duplicated screen-reader headers
-  const cards = document.querySelectorAll('section, div.artdeco-card, div.pv-profile-card');
+  // Only a card's own heading identifies it. A nested Experience heading must
+  // never make the entire profile wrapper count as the Skills section.
+  const cards = root.querySelectorAll(cardSelector);
   for (const card of cards) {
-    const cardId = (card.id || '').toLowerCase();
-    const cardClass = (card.className || '').toLowerCase();
-
-    // Skip non-work section cards
-    if (cardId.includes('featured') || cardId.includes('activity') || cardId.includes('recommendation') || cardId.includes('post') || cardId.includes('skill') || cardId.includes('interest') ||
-        cardClass.includes('featured') || cardClass.includes('activity') || cardClass.includes('recommendation') || cardClass.includes('post') || cardClass.includes('skill') || cardClass.includes('interest')) {
-      continue;
-    }
-
-    const headers = card.querySelectorAll('h2, h3, h4, .pvs-header__title, [class*="pvs-header"]');
+    if (isNoise(card)) continue;
+    const headers = card.querySelectorAll('h2, h3, h4, .pvs-header__title');
     for (const h of headers) {
-      const rawTxt = nodeText(h).toLowerCase();
-      const words = rawTxt.split(/\s+/);
-      const firstWord = words[0] || '';
-
-      const isMatch = keywords.some(k => 
-        firstWord === k || 
-        rawTxt === k || 
-        rawTxt === 'work experience' ||
-        rawTxt === 'academic education'
-      );
-
-      if (isMatch && !rawTxt.includes('featured') && !rawTxt.includes('activity') && !rawTxt.includes('recommendation') && !rawTxt.includes('volunteering') && !rawTxt.includes('project')) {
-        return card;
-      }
+      if (h.closest(cardSelector) === card && matches(h)) return card;
     }
   }
   return null;
+}
+
+function extractLinkedInSkills(section) {
+  if (!section) return [];
+  const labels = [];
+  const noise = '[class*="social-details" i], [class*="feed-shared" i], [class*="activity" i], button, h2, .pvs-header__title';
+  const rows = [...section.querySelectorAll('li')].filter(row => {
+    const parentRow = row.parentElement?.closest('li');
+    return !parentRow || !section.contains(parentRow);
+  });
+  for (const row of rows) {
+    if (row.closest(noise)) continue;
+    const title = row.querySelector('[data-field="skill_card_skill_topic"] span[aria-hidden="true"], .t-bold span[aria-hidden="true"], .t-bold[aria-hidden="true"]') || row.querySelector('[data-field="skill_card_skill_topic"], .t-bold');
+    const firstLabel = title || [...row.querySelectorAll('span[aria-hidden="true"]')].find(span => !span.closest(noise));
+    if (firstLabel && !firstLabel.closest(noise)) labels.push(nodeText(firstLabel));
+  }
+  // Some layouts render skill title links without list rows. Do not fall back
+  // to collecting every short span: those include employers and counters.
+  if (!rows.length) {
+    section.querySelectorAll('[data-field="skill_card_skill_topic"], .t-bold span[aria-hidden="true"], .t-bold[aria-hidden="true"]').forEach(label => {
+      if (!label.closest(noise)) labels.push(nodeText(label.querySelector('[aria-hidden="true"]') || label));
+    });
+  }
+  return globalThis.TalentDeskProfile.cleanSkills(labels);
 }
 
 function parseLinkedInProfile(p) {
@@ -415,21 +431,7 @@ function parseLinkedInProfile(p) {
 
   // 9. Skills Section
   const skillsSection = getSectionByHeader(['skills']);
-  const skillSet = new Set(p.skills || []);
-  if (skillsSection) {
-    const skillSpans = skillsSection.querySelectorAll('span[aria-hidden="true"]');
-    skillSpans.forEach(s => {
-      const txt = nodeText(s);
-      if (txt && txt.length < 50 && 
-          !txt.includes('endorsement') && 
-          !txt.includes('Skill') && 
-          !txt.includes('Show all') &&
-          !txt.includes('passed')) {
-        skillSet.add(txt);
-      }
-    });
-  }
-  p.skills = Array.from(skillSet);
+  p.skills = extractLinkedInSkills(skillsSection);
 
   // Compile Comprehensive Resume Text for ATS & ABOUT box
   let resumeBlock = `==================================================\n`;
