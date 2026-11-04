@@ -8,6 +8,7 @@ import adminRoutes from './routes/admin.routes.js'
 import aiRoutes from './routes/ai.routes.js'
 import organizationRoutes from './routes/organization.routes.js'
 import uploadRoutes from './routes/upload.routes.js'
+import { isAllowedOrigin } from './corsOrigin.js'
 
 if (!process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET is required')
@@ -46,8 +47,8 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, Postman, etc) or any Vercel domain
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Support installed extensions as well as explicitly configured websites.
+    if (isAllowedOrigin(origin, allowedOrigins)) {
       return callback(null, true)
     }
     return callback(Object.assign(new Error('Origin is not allowed'), { status: 403 }))
