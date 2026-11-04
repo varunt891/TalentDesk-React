@@ -2,9 +2,9 @@
 
 Run `node --test tests/sourcing.test.mjs tests/ocr-fallback.test.mjs` for profile normalization, document extraction and cross-provider OCR checks. Provider calls are mocked; the Groq PDF-to-image rendering test uses a real generated two-page PDF.
 
-Run `node --test tests/extension-skills.test.mjs` for LinkedIn skill-section matching, activity/comment counter rejection, supported AI fallback, duplicate accessible-label handling and preservation of valid skills such as C++, C#, .NET, R, Live Streaming and non-English skill names. The side-panel browser checks also reproduce dirty DOM skills overriding AI results, verify the imported skills, and leave missing skills empty instead of inventing them.
+Run `node --test tests/extension-skills.test.mjs` for LinkedIn skill-section matching, activity/comment counter rejection, supported AI fallback, duplicate accessible-label handling and preservation of valid skills such as C++, C#, .NET, R, Live Streaming and non-English skill names. Coverage includes semantic list rows, plain paragraph and heading titles, skill search links, exclusion of nested employer labels, and skills loaded below the initial page height. The side-panel browser checks also reproduce dirty DOM skills overriding AI results, verify the imported skills, and leave missing skills empty instead of inventing them.
 
-Run `node --test tests/extension-experience.test.mjs` for first-role preservation in text-only Experience sections, current-role badges before job titles, and grouped company roles. The screenshot regression verifies the latest Unoah role remains first, with its company and full dates, in the extracted profile and resume.
+Run `node --test tests/extension-experience.test.mjs` for first-role preservation in text-only Experience sections, current-role badges before job titles, and grouped company roles. Screenshot regressions verify the latest Unoah role remains first and the two nested Abacus roles retain their employer, dates, and descriptions between standalone Ignyte and WMS entries. Both structured DOM lists and text fallback are covered, including multiple groups and duration-only company tenure. Browser checks carry these records and skills through Quick Extract's one-time deep retry, AI review, and the mocked import payload.
 
 Start Vite on port 5174, then run:
 
@@ -32,4 +32,4 @@ The installable extension archive is `public/downloads/talentdesk-extension.zip`
 Compress-Archive -Path extension/* -DestinationPath public/downloads/talentdesk-extension.zip -Force
 ```
 
-Extension 1.1.6 preserves the first experience entry and ignores standalone Present badges when parsing employment dates; it retains the shared skill validation added in 1.1.5. After updating the unpacked extension, reload it on `chrome://extensions`, refresh the LinkedIn tab and capture again. Existing candidate records are not automatically rewritten.
+Extension 1.1.7 separates company groups throughout the experience timeline, supports more skill-card layouts, and retries a deep scan once when Quick Extract finds no skills. It retains the first-role and skill-noise fixes from 1.1.5–1.1.6. After updating the unpacked extension, reload it on `chrome://extensions`, refresh the LinkedIn tab and capture again. Existing candidate records are not automatically rewritten.

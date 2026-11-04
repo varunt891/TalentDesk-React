@@ -28,18 +28,23 @@ chrome.runtime.onMessage.addListener(globalThis.talentDeskCaptureListener);
 
 async function performDeepScroll() {
   const originalPosition = { top: window.scrollY, left: window.scrollX };
-  const maxScroll = Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0);
   const step = Math.max(window.innerHeight * 0.75, 400);
-  for (let top = 0; top <= maxScroll; top += step) {
-    window.scrollTo({ top, behavior: 'instant' });
-    window.dispatchEvent(new Event('scroll'));
-    document.dispatchEvent(new Event('scroll'));
-    await new Promise(resolve => setTimeout(resolve, 180));
+  const pageHeight = () => Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0);
+  try {
+    // Lazy-loaded experience can increase the page height before Skills appears.
+    // Recheck the bottom each step, with a limit for pages that grow indefinitely.
+    for (let top = 0, steps = 0; steps < 80; top += step, steps++) {
+      const bottom = Math.max(0, pageHeight() - window.innerHeight);
+      window.scrollTo({ top: Math.min(top, bottom), behavior: 'instant' });
+      window.dispatchEvent(new Event('scroll'));
+      document.dispatchEvent(new Event('scroll'));
+      await new Promise(resolve => setTimeout(resolve, top >= bottom ? 350 : 180));
+      if (top >= bottom && pageHeight() - window.innerHeight <= bottom) break;
+    }
+  } finally {
+    window.scrollTo({ ...originalPosition, behavior: 'instant' });
+    await new Promise(resolve => setTimeout(resolve, 350));
   }
-  window.scrollTo({ top: maxScroll, behavior: 'instant' });
-  await new Promise(resolve => setTimeout(resolve, 250));
-  window.scrollTo({ ...originalPosition, behavior: 'instant' });
-  await new Promise(resolve => setTimeout(resolve, 350));
 }
 
 function extractProfileData() {
@@ -213,21 +218,26 @@ function extractLinkedInSkills(section) {
   if (!section) return [];
   const labels = [];
   const noise = '[class*="social-details" i], [class*="feed-shared" i], [class*="activity" i], button, h2, .pvs-header__title';
-  const rows = [...section.querySelectorAll('li')].filter(row => {
-    const parentRow = row.parentElement?.closest('li');
+  const rowSelector = 'li, [role="listitem"], [data-view-name="profile-component-entity"]';
+  const titleSelector = '[data-field="skill_card_skill_topic"], .t-bold, h3, h4, [role="heading"], a[href*="/search/results/"][href*="keywords="]';
+  const labelText = element => nodeText(element.querySelector('[aria-hidden="true"]') || element);
+  const rows = [...section.querySelectorAll(rowSelector)].filter(row => {
+    const parentRow = row.parentElement?.closest(rowSelector);
     return !parentRow || !section.contains(parentRow);
   });
   for (const row of rows) {
     if (row.closest(noise)) continue;
-    const title = row.querySelector('[data-field="skill_card_skill_topic"] span[aria-hidden="true"], .t-bold span[aria-hidden="true"], .t-bold[aria-hidden="true"]') || row.querySelector('[data-field="skill_card_skill_topic"], .t-bold');
-    const firstLabel = title || [...row.querySelectorAll('span[aria-hidden="true"]')].find(span => !span.closest(noise));
-    if (firstLabel && !firstLabel.closest(noise)) labels.push(nodeText(firstLabel));
+    const ownLabel = element => element.closest(rowSelector) === row && !element.closest(noise);
+    // Take the first label in the row, rather than a bold employer name in its
+    // endorsement details when the actual skill uses a plain paragraph.
+    const firstLabel = [...row.querySelectorAll(`${titleSelector}, span[aria-hidden="true"], p`)].find(ownLabel);
+    if (firstLabel) labels.push(labelText(firstLabel));
   }
   // Some layouts render skill title links without list rows. Do not fall back
   // to collecting every short span: those include employers and counters.
   if (!rows.length) {
-    section.querySelectorAll('[data-field="skill_card_skill_topic"], .t-bold span[aria-hidden="true"], .t-bold[aria-hidden="true"]').forEach(label => {
-      if (!label.closest(noise)) labels.push(nodeText(label.querySelector('[aria-hidden="true"]') || label));
+    section.querySelectorAll(titleSelector).forEach(label => {
+      if (!label.closest(noise)) labels.push(labelText(label));
     });
   }
   return globalThis.TalentDeskProfile.cleanSkills(labels);
@@ -778,17 +788,11 @@ function parseExperienceFromSectionText(text) {
   const skipLine = line => /^(helped me get this job|skills?:|financial accounting|taxation|problem solving|show all|linkedin)$/i.test(line) || looksLikeCredential(line);
 
   let defaultCompany = '';
-  let startIndex = 0;
-  // A company group has a standalone employment-type/tenure line. A line like
-  // "Unoah · Full-time" belongs to the first job, so keep its preceding title.
-  const groupEmploymentLine = line => /^(Full-time|Part-time|Contract|Freelance|Self-employed|Internship|Apprenticeship|Seasonal)(?:\s*[·•]\s*\d+\s*(?:yrs?|years?|mos?|months?)\b.*)?$/i.test(line);
-  if (lines.length >= 3 && !dateLine(lines[0]) && groupEmploymentLine(lines[1])) {
-    defaultCompany = lines[0].split('·')[0].trim();
-    startIndex = 2;
-    while (startIndex < lines.length && (employmentLine(lines[startIndex]) || locationLine(lines[startIndex])) && !dateLine(lines[startIndex])) {
-      startIndex++;
-    }
-  }
+  const employmentType = line => /^(Full-time|Part-time|Contract|Freelance|Self-employed|Internship|Apprenticeship|Seasonal)$/i.test(line);
+  const tenureLine = line => /^(?:(?:Full-time|Part-time|Contract|Freelance|Self-employed|Internship|Apprenticeship|Seasonal)\s*[·•]\s*)?\d+\s*(?:yrs?|years?|mos?|months?)(?:\s+\d+\s*(?:yrs?|years?|mos?|months?))?$/i.test(line);
+  const roleLine = line => looksLikeExperienceRole(line) && !dateLine(line) && !employmentType(line) && !tenureLine(line);
+  const groupedRoleAt = index => roleLine(lines[index]) &&
+    (dateLine(lines[index + 1] || '') || (employmentType(lines[index + 1]) && dateLine(lines[index + 2] || '')));
 
   let cur = null;
   const push = () => {
@@ -797,26 +801,44 @@ function parseExperienceFromSectionText(text) {
     cur = null;
   };
 
-  for (let i = startIndex; i < lines.length; i++) {
+  for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (skipLine(line)) continue;
 
     const next = lines[i + 1] || '';
     const after = lines[i + 2] || '';
-    const looksLikeRole = !dateLine(line) && line.length <= 90 && (dateLine(next) || (employmentLine(next) && dateLine(after)));
+
+    // Start a new company group anywhere in the timeline, before its metadata
+    // can be appended to the preceding job's description. Groups may omit type.
+    if (roleLine(line) && (tenureLine(next) || employmentType(next))) {
+      const firstRole = groupedRoleAt(i + 2) ? i + 2 : groupedRoleAt(i + 3) && !dateLine(after) ? i + 3 : -1;
+      if (firstRole !== -1) {
+        push();
+        defaultCompany = line;
+        i = firstRole - 1;
+        continue;
+      }
+    }
+
+    const explicitCompany = employmentLine(next) && !employmentType(next) && !tenureLine(next) &&
+      !dateLine(next) && next.length <= 120 && dateLine(after);
+    const looksLikeRole = roleLine(line) && (dateLine(next) || ((employmentType(next) || explicitCompany) && dateLine(after)));
 
     if (looksLikeRole) {
       push();
       let company = defaultCompany;
-      if (employmentLine(next) && !dateLine(next)) {
-        company = next.split('·')[0].trim() || company;
+      if (explicitCompany) {
+        company = next.split('·')[0].trim();
+        defaultCompany = '';
+        i++;
+      } else if (employmentType(next)) {
         i++;
       }
       cur = { role: line, company, dates: '', location: '', description: '' };
       continue;
     }
 
-    if (!cur) continue;
+    if (!cur || employmentType(line)) continue;
     if (dateLine(line) && !cur.dates) {
       cur.dates = line;
     } else if (locationLine(line) && !cur.location && line.length <= 120) {

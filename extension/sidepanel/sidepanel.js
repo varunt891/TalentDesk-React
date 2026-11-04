@@ -383,9 +383,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // If DOM returned useful data, render it directly
         if (domProf && response?.success && domProf.rawPageText && (domProf.rawPageText.length >= 30 || domProf.name)) {
-          // On LinkedIn, if Quick Extract ran (deepScan=false) and experience is empty because section was lazy-unloaded, auto-trigger Deep Scan
-          if (!deepScan && tab.url && tab.url.includes('linkedin.com') && (!domProf.experience || domProf.experience.length === 0)) {
-            console.log('[Extract] LinkedIn experience empty on Quick Extract, auto-triggering Deep Scan...');
+          // Retry once for unloaded skills as well as experience. A profile with
+          // visible jobs can still have its Skills section below the loaded area.
+          if (!deepScan && domProf.source === 'LinkedIn' &&
+            (!domProf.experience?.length || !normalize(domProf).skills.length)) {
             return extractActiveTabProfile(true);
           }
           renderProfileCard(domProf);

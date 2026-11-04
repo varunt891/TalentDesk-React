@@ -11,13 +11,14 @@ const profile = { name: 'Avery Patel', title: 'Software Engineer', email: 'avery
 let aiResponseProfile = profile;
 await page.addInitScript(profile => {
   window.fixtureProfile = profile;
+  window.captureRequests = [];
   window.chrome = {
     windows: { getCurrent: async () => ({ id: 7 }) },
     storage: { local: { get: async () => ({ apiUrl: 'http://127.0.0.1:5174' }), set: async () => {} } },
     cookies: { get: async () => null }, runtime: {},
     tabs: {
       query: async query => { if (query.windowId !== 7) throw new Error('Wrong window'); return [{ id: 1, url: 'https://example.org/avery' }]; },
-      sendMessage: async () => { if (window.captureDelay) await new Promise(r => setTimeout(r, window.captureDelay)); return { success: true, profile: window.fixtureProfile }; },
+      sendMessage: async (_id, request) => { window.captureRequests.push(request); if (window.captureDelay) await new Promise(r => setTimeout(r, window.captureDelay)); return { success: true, profile: request.deepScan && window.deepFixtureProfile ? window.deepFixtureProfile : window.fixtureProfile }; },
       onActivated: { addListener: fn => { window.changeTab = fn; } },
       onUpdated: { addListener: () => {} },
     },
@@ -213,6 +214,42 @@ try {
     ['Patient Coordinator', 'Weill Cornell Medicine']
   ]);
   assert.deepEqual(groupedProfile.education.map(({ school }) => school), ['Capella University', 'Herbert H Lehman High School']);
+
+  // Exercise the screenshot's text-only layout through Quick Extract, AI review
+  // and the final import payload, including skills loaded by the one-time retry.
+  const mixedProfile = await grouped.evaluate(() => {
+    document.querySelector('main').innerHTML = `<section class="pv-top-card"><h1>Pallavi Vinothkumar</h1></section>
+      <section id="experience"><h2>Experience</h2>
+        <div>Growth Manager - Vendor partnerships</div><div>Ignyte · Full-time</div><div>Sep 2024 - Jan 2026 · 1 yr 5 mos</div><div>United Arab Emirates · On-site</div><div>Manage vendor partnerships.</div>
+        <div>Abacus Middle East</div><div>Full-time · 3 yrs</div><div>United Arab Emirates</div>
+        <div>Senior Key Accounts Manager @ Abacus Cambridge Partners Middle East Ltd</div><div>Apr 2021 - Mar 2024 · 3 yrs</div><div>Hybrid</div>
+        <div>Key Account Manager</div><div>Apr 2021 - Feb 2024 · 2 yrs 11 mos</div><div>Expanding relationships with existing customers.</div>
+        <div>Business Development Manager</div><div>WMS - SAP Gold Partner · Full-time</div><div>Jun 2018 - Mar 2021 · 2 yrs 10 mos</div>
+      </section><section id="skills"><h2>Skills</h2><div role="listitem"><h3>Vendor Management</h3><p>2 endorsements</p></div><div role="listitem"><p>Strategic Partnerships</p></div></section>`;
+    return extractProfileData();
+  });
+  await page.evaluate(profile => {
+    window.captureDelay = 0;
+    window.captureRequests = [];
+    window.fixtureProfile = { ...profile, skills: [] };
+    window.deepFixtureProfile = profile;
+  }, mixedProfile);
+  await page.locator('#scrapeBtn').click();
+  await page.waitForFunction(() => document.querySelector('#skillsInput').value === 'Vendor Management, Strategic Partnerships');
+  assert.deepEqual(await page.evaluate(() => window.captureRequests.map(r => r.deepScan)), [false, true], 'Missing skills retry only once even when experience already exists');
+  assert.equal(await page.locator('#candExperience > div').count(), 4);
+  aiResponseProfile = { ...mixedProfile, experience: [{ role: 'Key Account Manager', company: 'Ignyte' }], skills: ['Wrong Skill'] };
+  await page.locator('#aiParseBtn').click();
+  await page.waitForFunction(() => !document.querySelector('#aiParseBtn').disabled);
+  assert.equal(await page.locator('#candExperience > div').count(), 4);
+  assert.deepEqual(await page.locator('#candSkills .tag').allTextContents(), ['Vendor Management', 'Strategic Partnerships']);
+  await page.locator('#importBtn').click();
+  await page.waitForFunction(() => document.querySelector('#importBtn').textContent === 'Imported');
+  assert.match(saved.at(-1).resume_text, /Senior Key Accounts Manager @ Abacus Cambridge Partners Middle East Ltd at Abacus Middle East/);
+  assert.match(saved.at(-1).resume_text, /Key Account Manager at Abacus Middle East/);
+  assert.doesNotMatch(saved.at(-1).resume_text, /Key Account Manager at Ignyte|Manage vendor partnerships\. Abacus Middle East/);
+  assert.deepEqual(saved.at(-1).skills, ['Vendor Management', 'Strategic Partnerships']);
+  assert.deepEqual(errors, []);
   await grouped.close();
   console.log('PASS: sourcing flows, responsive widths, LinkedIn profile-section parsing, duration dates, AI/DOM priority, and footer/activity exclusion.');
 } finally { await browser.close(); }

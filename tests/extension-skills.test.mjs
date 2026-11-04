@@ -51,3 +51,48 @@ test('LinkedIn capture distinguishes Skills from nested work, education and acti
   const missing = await page.evaluate(() => { document.getElementById('skill-card').remove(); return extractProfileData(); });
   assert.deepEqual(missing.skills, [], 'Missing skills must stay empty instead of taking activity or work labels');
 });
+
+test('skills support semantic rows and heading/link titles without legacy classes', async t => {
+  const browser = await chromium.launch({ headless: true }); t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.setContent(`<main><section id="skills"><h2>Skills</h2><div id="skill-rows"></div></section></main>`);
+  await page.evaluate(() => { window.chrome = { runtime: { onMessage: { addListener() {}, removeListener() {} } } }; });
+  await page.addScriptTag({ path: 'extension/sidepanel/profile-utils.js' });
+  await page.addScriptTag({ path: 'extension/content.js' });
+  for (const html of [
+    '<div role="list"><div role="listitem"><h3>Vendor Management</h3><div role="list"><div role="listitem"><b class="t-bold">Ignyte</b></div></div><p>2 endorsements</p></div><div role="listitem"><p>Strategic Partnerships</p><p>3 experiences at Example Corp</p></div></div>',
+    '<div data-view-name="profile-component-entity"><p>Vendor Management</p><div><p class="t-bold">Ignyte</p><p>2 endorsements</p></div></div><div data-view-name="profile-component-entity"><h3>Strategic Partnerships</h3><p>3 endorsements</p></div>',
+    '<div><a href="/search/results/all/?keywords=Vendor%20Management">Vendor Management</a><p>2 endorsements</p></div><div><h3>Strategic Partnerships</h3><p>Endorsed by 3 colleagues</p></div>',
+  ]) {
+    const skills = await page.evaluate(html => {
+      document.getElementById('skill-rows').innerHTML = html;
+      return extractLinkedInSkills(getSectionByHeader(['skills']));
+    }, html);
+    assert.deepEqual(skills, ['Vendor Management', 'Strategic Partnerships']);
+  }
+});
+
+test('Deep Scan reaches skills added below the initial page height and restores scroll', async t => {
+  const browser = await chromium.launch({ headless: true }); t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1000, height: 600 } });
+  await page.setContent('<main><div style="height:1000px">Profile</div><div id="lazy"></div></main>');
+  await page.evaluate(() => {
+    window.chrome = { runtime: { onMessage: { addListener() {}, removeListener() {} } } };
+    let expanded = false;
+    window.addEventListener('scroll', () => {
+      if (!expanded && window.scrollY > 200) {
+        expanded = true;
+        document.getElementById('lazy').innerHTML = '<div style="height:1800px">Experience</div><section id="skills"><h2>Skills</h2><div id="lazy-skills"></div></section>';
+      }
+      if (window.scrollY > 1700) document.getElementById('lazy-skills').innerHTML = '<h3>Vendor Management</h3>';
+    });
+  });
+  await page.addScriptTag({ path: 'extension/sidepanel/profile-utils.js' });
+  await page.addScriptTag({ path: 'extension/content.js' });
+  const result = await page.evaluate(async () => {
+    await performDeepScroll();
+    return { skills: extractLinkedInSkills(getSectionByHeader(['skills'])), scroll: window.scrollY };
+  });
+  assert.deepEqual(result.skills, ['Vendor Management']);
+  assert.equal(result.scroll, 0);
+});
