@@ -12,6 +12,8 @@ Release 1.1.9 was also checked with one real configured AI-provider request usin
 
 Release 1.1.10 displays only skill names in tags, with a single short suggestion hint. Source evidence remains in tooltips and imported notes; inference and validation behavior are unchanged.
 
+Release 1.1.11 matches the website's current premium shell colors and surfaces. Appearance in connection settings supports Dark, Light and Use device theme; the choice is saved independently as `extensionTheme`. The header and toolbar use `public/talentdesk.svg`, the favicon referenced by the website's `index.html`. Regenerate the extension's SVG copy and 16/32/48/128px PNG icons with `node extension/icons/generate_icons.js` (uses the existing Playwright dependency). Dark/light rendering was visually checked at 390px, with overflow checks at 320/390/520/768px, saved preference reload, live device-theme changes, icon loading and history tabs. The sourcing browser checks also pass with the new styling.
+
 Start Vite on port 5174, then run:
 
 ```sh

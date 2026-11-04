@@ -1,17 +1,18 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TalentDesk Candidate Sourcing Copilot</title>
   <link rel="stylesheet" href="sidepanel.css">
+  <script src="theme.js"></script>
 </head>
 <body>
   <div class="app-container">
-    <!-- Glassmorphic Header -->
+    <!-- TalentDesk brand header -->
     <header class="header">
       <div class="brand">
-        <div class="logo-icon">T</div>
+        <img class="logo-icon" src="../icons/talentdesk.svg" width="32" height="32" alt="TalentDesk">
         <div class="brand-text">
           <h1>TalentDesk</h1>
           <span class="badge">Copilot</span>
@@ -39,6 +40,14 @@
           <span>⚙️ Connection & API Settings</span>
         </div>
         <div class="config-body">
+          <div class="form-group">
+            <label for="appearanceTheme">Appearance</label>
+            <select id="appearanceTheme" class="form-select">
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+              <option value="system">Use device theme</option>
+            </select>
+          </div>
           <div class="form-group">
             <label for="apiUrl">API Server URL</label>
             <input type="text" id="apiUrl" value="http://localhost:4000" placeholder="http://localhost:4000">
