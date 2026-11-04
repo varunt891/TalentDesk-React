@@ -23,13 +23,14 @@ This software codebase, database schemas, UI designs, and custom AI integration 
 
 ## ⚙️ Local Setup
 
-### Temporary hosted preview
+### Optional browser preview
 
-Production builds currently open a no-login browser demo while Neon is unavailable.
-It uses fictional data, with supported CRM edits saved only in the current browser.
-To restore hosted login, set `VITE_DEMO_MODE=false` in Vercel and redeploy.
-Local development continues using normal authentication; `/demo` opens the preview.
-See [temporary demo details](docs/temporary-demo.md) for limits and restoration.
+Production and development use normal login and their configured API by default.
+Hosted login was restored after Neon recovered on November 4, 2026.
+The optional `/demo` preview uses fictional data and saves supported CRM edits only
+in the current browser. An explicit `VITE_DEMO_MODE=true` build also opens that
+preview at the root; leave it unset or `false` for live authentication.
+See [browser demo details](docs/temporary-demo.md) for limits and configuration.
 
 ### Work locally without Neon
 

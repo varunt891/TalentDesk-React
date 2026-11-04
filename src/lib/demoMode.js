@@ -1,12 +1,12 @@
-// Temporary public preview while the hosted database is unavailable.
-// Set VITE_DEMO_MODE=false and rebuild to restore hosted authentication.
+// Live authentication is the default in development and production.
+// Browser-only demos require /demo or an explicit VITE_DEMO_MODE=true build.
 const explicitDemo = typeof window !== 'undefined' && /^\/demo(?:\/|$)/.test(window.location.pathname)
 export function isDemoMode() {
   if (typeof window === 'undefined') return false
   if (explicitDemo) return true
   const configured = import.meta.env.VITE_DEMO_MODE
   if (configured === 'false') return false
-  return configured === 'true' || import.meta.env.PROD
+  return configured === 'true'
 }
 
 export const DEMO_STORAGE_KEY = 'td_browser_demo_v1'
