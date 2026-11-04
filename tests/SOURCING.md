@@ -4,6 +4,8 @@ Run `node --test tests/sourcing.test.mjs tests/ocr-fallback.test.mjs` for profil
 
 Run `node --test tests/extension-skills.test.mjs` for LinkedIn skill-section matching, activity/comment counter rejection, supported AI fallback, duplicate accessible-label handling and preservation of valid skills such as C++, C#, .NET, R, Live Streaming and non-English skill names. The side-panel browser checks also reproduce dirty DOM skills overriding AI results, verify the imported skills, and leave missing skills empty instead of inventing them.
 
+Run `node --test tests/extension-experience.test.mjs` for first-role preservation in text-only Experience sections, current-role badges before job titles, and grouped company roles. The screenshot regression verifies the latest Unoah role remains first, with its company and full dates, in the extracted profile and resume.
+
 Start Vite on port 5174, then run:
 
 ```sh
@@ -30,4 +32,4 @@ The installable extension archive is `public/downloads/talentdesk-extension.zip`
 Compress-Archive -Path extension/* -DestinationPath public/downloads/talentdesk-extension.zip -Force
 ```
 
-Extension 1.1.5 loads shared skill validation before the content script. After updating the unpacked extension, reload it on `chrome://extensions`, refresh the LinkedIn tab and capture again. Existing candidate records are not automatically rewritten.
+Extension 1.1.6 preserves the first experience entry and ignores standalone Present badges when parsing employment dates; it retains the shared skill validation added in 1.1.5. After updating the unpacked extension, reload it on `chrome://extensions`, refresh the LinkedIn tab and capture again. Existing candidate records are not automatically rewritten.

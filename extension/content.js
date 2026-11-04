@@ -470,7 +470,7 @@ function parseJobSpans(spans) {
   let location = '';
   let description = '';
 
-  const dateRegex = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December|\d{4}|Present|Current)\b/i;
+  const dateRegex = /\b(?:19|20)\d{2}\s*[-–]\s*(?:[a-z]+\s+)?(?:(?:19|20)\d{2}|Present|Current)\b/i;
   const durationRegex = /\b(\d+\s*(yrs?|years?|mos?|months?))\b/i;
   const empTypeRegex = /^\s*(Full-time|Part-time|Contract|Freelance|Self-employed|Internship|Apprenticeship|Seasonal)\s*$/i;
   const locationish = s => /(Remote|Hybrid|On-site|India|United States|USA|Canada|Europe|Maharashtra|District|Area|Nashik|Pune|Mumbai|Delhi|Bengaluru|Bangalore|Hyderabad|Chennai|Kolkata)/i.test(s);
@@ -479,6 +479,8 @@ function parseJobSpans(spans) {
   const remaining = [];
 
   for (const s of spans) {
+    // A current-role badge is not an employment date. It can precede the title.
+    if (/^(Present|Current)$/i.test(s)) continue;
     if (s.startsWith('Skills:') || s.startsWith('Skills :') || skillish(s)) {
       description = s;
     } else if (!dates && (dateRegex.test(s) || durationRegex.test(s))) {
@@ -765,7 +767,7 @@ function parseExperienceFromSectionText(text) {
     .split('\n')
     .map(line => line.replace(/\s+/g, ' ').trim())
     .filter(Boolean)
-    .filter(line => !/^experience$/i.test(line) && !/^show all/i.test(line));
+    .filter(line => !/^(experience|present|current)$/i.test(line) && !/^show all/i.test(line));
 
   const result = [];
   if (lines.length === 0) return result;
@@ -777,7 +779,10 @@ function parseExperienceFromSectionText(text) {
 
   let defaultCompany = '';
   let startIndex = 0;
-  if (lines.length >= 3 && !dateLine(lines[0]) && employmentLine(lines[1])) {
+  // A company group has a standalone employment-type/tenure line. A line like
+  // "Unoah · Full-time" belongs to the first job, so keep its preceding title.
+  const groupEmploymentLine = line => /^(Full-time|Part-time|Contract|Freelance|Self-employed|Internship|Apprenticeship|Seasonal)(?:\s*[·•]\s*\d+\s*(?:yrs?|years?|mos?|months?)\b.*)?$/i.test(line);
+  if (lines.length >= 3 && !dateLine(lines[0]) && groupEmploymentLine(lines[1])) {
     defaultCompany = lines[0].split('·')[0].trim();
     startIndex = 2;
     while (startIndex < lines.length && (employmentLine(lines[startIndex]) || locationLine(lines[startIndex])) && !dateLine(lines[startIndex])) {
