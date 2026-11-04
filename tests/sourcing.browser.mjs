@@ -132,7 +132,7 @@ try {
   await page.evaluate(() => { window.captureDelay = 400; });
   await page.locator('#scrapeBtn').click();
   await page.evaluate(() => window.changeTab({ windowId: 7, tabId: 2 }));
-  await page.waitForFunction(() => !document.querySelector('#scrapeBtn').disabled);
+  await page.waitForFunction(() => ['scrapeBtn', 'deepScanBtn', 'aiParseBtn'].every(id => !document.getElementById(id).disabled));
   assert.equal(await page.locator('#previewCard').isVisible(), false, 'Stale result must not replace review');
   assert.deepEqual(errors, []);
   const source = await browser.newPage();
@@ -277,7 +277,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#skillsInput').value === 'Contract Negotiation' && !document.querySelector('#aiParseBtn').disabled);
   assert.equal(aiRequests, beforeAuto + 1);
   assert.deepEqual(await page.evaluate(() => window.captureRequests.map(r => r.deepScan)), [false, true], 'Inference reuses the completed deep scan');
-  assert.deepEqual(await page.locator('#candSkills .tag').allTextContents(), ['Contract Negotiation · AI inferred']);
+  assert.deepEqual(await page.locator('#candSkills .tag').allTextContents(), ['Contract Negotiation']);
   assert.match(await page.locator('#candSkills .tag').getAttribute('title'), /Negotiate supplier agreements/);
   assert.equal(await page.locator('#skillsInferenceHint').isVisible(), true);
   await page.locator('#importBtn').click();
@@ -307,8 +307,8 @@ try {
   await page.waitForFunction(() => document.querySelector('#skillsInput').value.includes('IT Management') && !document.querySelector('#aiParseBtn').disabled);
   assert.equal(aiRequests, beforeRoleInference + 1, 'Roles without responsibility descriptions must still trigger inference');
   assert.deepEqual(await page.evaluate(() => window.captureRequests.map(r => r.deepScan)), [false, true]);
-  assert.deepEqual(await page.locator('#candSkills .tag').allTextContents(), roleSuggestions.map(s => `${s.skill} · AI role-based`));
-  assert.match(await page.locator('#skillsInferenceHint').textContent(), /role-based AI suggestions, not verified skills/);
+  assert.deepEqual(await page.locator('#candSkills .tag').allTextContents(), roleSuggestions.map(s => s.skill));
+  assert.equal(await page.locator('#skillsInferenceHint').textContent(), 'Suggested skills. Review or edit before importing.');
   assert.equal(await page.locator('#candExperience > div').count(), 7);
   await page.locator('#importBtn').click();
   await page.waitForFunction(() => document.querySelector('#importBtn').textContent === 'Imported');

@@ -10,6 +10,8 @@ AI skill inference is separate from explicit skill extraction. The web-profile p
 
 Release 1.1.9 was also checked with one real configured AI-provider request using a fictional candidate and the reported role titles: the model returned eight role-based suggestions, all accepted by the extension's validator. This verifies one representative model response, not every profile or model output.
 
+Release 1.1.10 displays only skill names in tags, with a single short suggestion hint. Source evidence remains in tooltips and imported notes; inference and validation behavior are unchanged.
+
 Start Vite on port 5174, then run:
 
 ```sh

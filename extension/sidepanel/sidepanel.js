@@ -1024,13 +1024,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const skills = profile.skills;
     skillsInput.value = skills.join(', ');
     const inferredSkills = new Map(profile.inferred_skills.map(item => [item.skill.toLowerCase(), item]));
-    const roleBased = profile.inferred_skills.some(item => item.basis === 'role');
-    showSkillsMessage(inferredSkills.size ? (roleBased ? 'Includes role-based AI suggestions, not verified skills. Confirm with the candidate before using.' : 'AI-inferred skills are suggestions from work experience. Review or edit before importing.') : skills.length ? '' : 'No skills captured. AI needs work history to suggest skills, or you can enter them manually.');
+    showSkillsMessage(inferredSkills.size ? 'Suggested skills. Review or edit before importing.' : skills.length ? '' : 'No skills captured. AI needs work history to suggest skills, or you can enter them manually.');
     skills.forEach(skill => {
       const tag = document.createElement('span');
       tag.className = 'tag';
       const inferred = inferredSkills.get(skill.toLowerCase());
-      tag.textContent = inferred ? `${skill} · ${inferred.basis === 'role' ? 'AI role-based' : 'AI inferred'}` : skill;
+      tag.textContent = skill;
       if (inferred) tag.title = `Suggested from ${inferred.basis === 'role' ? 'job title (unverified)' : 'experience'}: ${inferred.evidence}`;
       candSkills.appendChild(tag);
     });
